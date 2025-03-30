@@ -286,23 +286,3 @@ struct LockIndicator: View {
         .position(position)
     }
 }
-
-/// プレビュー
-//struct ElementSelectionView_Previews: PreviewProvider {
-//    static var previews: some View {
-//        ZStack {
-//            Color.gray.opacity(0.2)
-//                .edgesIgnoringSafeArea(.all)
-//            
-//            // サンプル要素の境界を表す矩形
-//            let sampleElement = TextElement(text: "サンプルテキスト")
-//            sampleElement.position = CGPoint(x: 100, y: 100)
-//            sampleElement.size = CGSize(width: 200, height: 100)
-//            
-//            // 選択ビューのプレビュー
-//            ElementSelectionView(element: sampleElement)
-//        }
-//        .frame(width: 400, height: 400)
-//        .previewLayout(.sizeThatFits)
-//    }
-//}

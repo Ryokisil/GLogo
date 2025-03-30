@@ -31,19 +31,33 @@ class CanvasRenderer {
         // レンダリングサイズを決定
         let size = settings.customSize ?? project.canvasSize
         
+        // サイズ関係をログ出力
+        print("レンダリング - 指定サイズ: \(size), プロジェクトサイズ: \(project.canvasSize)")
+        
         // UIGraphicsImageRendererを使用して描画
         let renderer = UIGraphicsImageRenderer(size: size)
         
         return renderer.image { context in
             let cgContext = context.cgContext
             
+            // スケーリング係数を計算
+            let scaleX = size.width / project.canvasSize.width
+            let scaleY = size.height / project.canvasSize.height
+            
+            // 変換行列を適用
+            cgContext.saveGState()
+            cgContext.scaleBy(x: scaleX, y: scaleY)
+            
             // 背景を描画
-            drawBackground(in: cgContext, size: size)
+            drawBackground(in: cgContext, size: project.canvasSize)
             
             // すべての要素を描画
             for element in project.elements where element.isVisible {
                 element.draw(in: cgContext)
             }
+            
+            // 変換行列を元に戻す
+            cgContext.restoreGState()
             
             // エクスポート時の品質向上のためのポストプロセス
             if settings.applyPostProcessing {

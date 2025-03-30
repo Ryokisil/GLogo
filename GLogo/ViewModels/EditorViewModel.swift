@@ -154,9 +154,33 @@ class EditorViewModel: ObservableObject {
     
     /// 画像要素をデータから追加
     func addImageElement(imageData: Data, position: CGPoint) {
-        let imageElement = ImageElement(imageData: imageData)
-        imageElement.position = position
+        print("DEBUG: キャンバスサイズ - 幅: \(project.canvasSize.width), 高さ: \(project.canvasSize.height)")
+        let imageElement = ImageElement(imageData: imageData, fitMode: .aspectFit)
+        print("DEBUG: 画像サイズ - 幅: \(imageElement.size.width), 高さ: \(imageElement.size.height)")
+
+        // キャンバスの中央に配置
+        let canvasCenter = CGPoint(
+            x: project.canvasSize.width / 2,
+            y: project.canvasSize.height / 2
+        )
+        print("DEBUG: キャンバス中心 - X: \(canvasCenter.x), Y: \(canvasCenter.y)")
+
+        // 画像のサイズに基づいてオフセットを計算
+        let offsetX = imageElement.size.width / 2
+        let offsetY = imageElement.size.height / 2
+        print("DEBUG: オフセット - X: \(offsetX), Y: \(offsetY)")
+        
+        // 中央配置の位置を設定
+        imageElement.position = CGPoint(
+            x: canvasCenter.x - offsetX,
+            y: canvasCenter.y - offsetY
+        )
+        print("DEBUG: 設定位置 - X: \(imageElement.position.x), Y: \(imageElement.position.y)")
+        
         addElement(imageElement)
+        
+        // 追加後すぐに選択状態にして編集しやすくする
+        selectElement(imageElement)
     }
     
     /// 選択中の要素を削除
@@ -1039,11 +1063,40 @@ class EditorViewModel: ObservableObject {
         }
     }
     
+    // MARK: - インポート
+    
+    /// 画像のクロップ後にImageElementを追加
+    func addCroppedImageElement(image: UIImage) {
+        // UIImageをDataに変換
+        guard let imageData = image.pngData() else { return }
+        
+        // ImageElementを作成 - AspectFitをデフォルトに設定
+        let imageElement = ImageElement(imageData: imageData, fitMode: .aspectFit)
+        
+        // 左端に強制配置する
+        imageElement.position = CGPoint(x: 50, y: 100)
+        
+        // 要素を追加
+        addElement(imageElement)
+        
+        // 追加後すぐに選択状態にする
+        selectElement(imageElement)
+    }
+
+    
     // MARK: - エクスポート
     
     /// プロジェクトを画像としてエクスポート
     func exportAsImage(size: CGSize? = nil, backgroundColor: UIColor? = nil) -> UIImage? {
-        let renderSize = size ?? project.canvasSize
+        // 要素の実際の範囲を計算
+        let boundingRect = calculateContentBounds()
+        
+        // 範囲が空の場合（要素がない場合）はデフォルトサイズを使用
+        let contentRect = boundingRect.isEmpty ?
+        CGRect(origin: .zero, size: project.canvasSize) : boundingRect
+        
+        // エクスポートサイズを決定
+        let renderSize = size ?? contentRect.size
         
         // UIGraphicsImageRendererを使用して描画
         let renderer = UIGraphicsImageRenderer(size: renderSize)
@@ -1051,19 +1104,48 @@ class EditorViewModel: ObservableObject {
         return renderer.image { context in
             let cgContext = context.cgContext
             
-            // 背景色の設定（指定されていない場合はプロジェクトの背景設定を使用）
+            // スケーリングとオフセットを適用
+            let scaleX = renderSize.width / contentRect.width
+            let scaleY = renderSize.height / contentRect.height
+            
+            cgContext.saveGState()
+            cgContext.scaleBy(x: scaleX, y: scaleY)
+            cgContext.translateBy(x: -contentRect.minX, y: -contentRect.minY)
+            
+            // 背景色の設定（透明の場合は描画しない）
             if let backgroundColor = backgroundColor {
                 cgContext.setFillColor(backgroundColor.cgColor)
-                cgContext.fill(CGRect(origin: .zero, size: renderSize))
-            } else {
-                project.backgroundSettings.draw(in: cgContext, rect: CGRect(origin: .zero, size: renderSize))
+                cgContext.fill(CGRect(origin: .zero, size: project.canvasSize))
+            } else if backgroundColor != .clear {
+                // 透明以外の場合は背景設定を適用
+                project.backgroundSettings.draw(in: cgContext, rect: CGRect(origin: .zero, size: project.canvasSize))
             }
             
             // すべての要素を描画
             for element in project.elements where element.isVisible {
                 element.draw(in: cgContext)
             }
+            
+            cgContext.restoreGState()
         }
+    }
+    
+    // すべての要素の境界ボックスを計算するメソッド
+    private func calculateContentBounds() -> CGRect {
+        var rect = CGRect.zero
+        var isFirst = true
+        
+        for element in project.elements where element.isVisible {
+            if isFirst {
+                rect = element.frame
+                isFirst = false
+            } else {
+                rect = rect.union(element.frame)
+            }
+        }
+        
+        // 少し余白を追加
+        return rect.insetBy(dx: -20, dy: -20)
     }
     
     /// 透明背景でプロジェクトをPNGとしてエクスポート

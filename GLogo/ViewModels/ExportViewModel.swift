@@ -143,12 +143,14 @@ class ExportViewModel: ObservableObject {
         isExporting = true
         isExportComplete = false
         
-        // 背景色の設定（透明背景が有効で、PNG形式の場合は透明に）
+        // 背景色の設定
         let backgroundColor: UIColor? = exportFormat == .png && transparentBackground ? .clear : nil
         
+        // エクスポートサイズを指定（サイズプリセットが選択されている場合）
+        let size = sizePreset != .original ? exportSize : nil
+        
         // エクスポート処理
-        // サイズを適用してエクスポート
-        if let image = editorViewModel.exportAsImage(size: exportSize, backgroundColor: backgroundColor) {
+        if let image = editorViewModel.exportAsImage(size: size, backgroundColor: backgroundColor) {
             exportedImage = image
             
             // 形式に応じてデータ変換

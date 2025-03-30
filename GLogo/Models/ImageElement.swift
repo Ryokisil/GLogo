@@ -181,9 +181,14 @@ class ImageElement: LogoElement {
     
     /// 画像のサイズに基づいて要素のサイズを更新
     private func updateSizeFromImage(_ image: UIImage) {
+        // 最大サイズは画面の状況に応じて調整
         let maxSize: CGFloat = 300
         let imageSize = image.size
         
+        // 余白を追加するために少し幅を広げる
+        let extraWidth: CGFloat = 60
+        
+        // アスペクト比を保持しながらサイズを設定
         if imageSize.width > imageSize.height {
             let aspectRatio = imageSize.height / imageSize.width
             size = CGSize(width: maxSize, height: maxSize * aspectRatio)
@@ -191,7 +196,10 @@ class ImageElement: LogoElement {
             let aspectRatio = imageSize.width / imageSize.height
             size = CGSize(width: maxSize * aspectRatio, height: maxSize)
         }
+        
+        print("DEBUG: 元画像サイズ: \(imageSize), 設定サイズ: \(size)")
     }
+
     
     /// 画像にフィルターを適用
     private func applyFilters(to image: UIImage) -> UIImage? {

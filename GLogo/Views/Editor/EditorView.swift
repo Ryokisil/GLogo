@@ -12,6 +12,18 @@
 
 import SwiftUI
 
+enum ActiveSheet: Identifiable {
+    case imagePicker
+    case imageCrop(UIImage)
+    
+    var id: Int {
+        switch self {
+        case .imagePicker: return 0
+        case .imageCrop: return 1
+        }
+    }
+}
+
 /// エディタビュー - アプリのメインエディタ画面
 struct EditorView: View {
     // MARK: - プロパティ
@@ -32,7 +44,10 @@ struct EditorView: View {
     @State private var isShowingProjectSettings = false
     
     /// 画像ピッカーの表示フラグ
-    @State private var isShowingImagePicker = false
+    @State private var selectedImage: UIImage? = nil
+    
+    /// 画像ピッカーやクロップビューの表示を切り替えるために使用
+    @State private var activeSheet: ActiveSheet?
     
     /// グリッド表示フラグ
     @State private var showGrid = true
@@ -90,8 +105,37 @@ struct EditorView: View {
             .sheet(isPresented: $isShowingProjectSettings) {
                 ProjectSettingsView(viewModel: viewModel)
             }
-            .sheet(isPresented: $isShowingImagePicker) {
-                ImagePickerView(onImageSelected: handleImageSelected)
+            .sheet(item: $activeSheet) { item in
+                switch item {
+                case .imagePicker:
+                    ImagePickerView { image in
+                        if let image = image {
+                            print("画像が選択されました") // デバッグログ
+                            DispatchQueue.main.async {
+                                // 非同期で状態を更新
+                                self.activeSheet = .imageCrop(image)
+                            }
+                        } else {
+                            print("画像選択がキャンセルされました") // デバッグログ
+                            activeSheet = nil
+                        }
+                    }
+                    .onDisappear {
+                        print("ImagePickerViewが閉じられました") // デバッグログ
+                    }
+                    
+                case .imageCrop(let image):
+                    ImageCropView(image: image) { croppedImage in
+                        print("画像がクロップされました") // デバッグログ
+                        // クロップ完了後、編集モードに戻る
+                        viewModel.addCroppedImageElement(image: croppedImage)
+                        viewModel.editorMode = .select
+                        activeSheet = nil
+                    }
+                    .onDisappear {
+                        print("ImageCropViewが閉じられました") // デバッグログ
+                    }
+                }
             }
             .alert(isPresented: $isShowingAlert) {
                 Alert(
@@ -279,7 +323,8 @@ struct EditorView: View {
             // 画像インポートモード
             Button(action: {
                 viewModel.editorMode = .imageImport
-                isShowingImagePicker = true
+                // activeSheetを使用する統一された方法に変更
+                activeSheet = .imagePicker
             }) {
                 Image(systemName: "photo")
                     .foregroundColor(viewModel.editorMode == .imageImport ? .blue : .primary)
@@ -437,9 +482,10 @@ struct EditorView: View {
         
         // カーソル位置（中央）に画像を追加
         let centerPosition = CGPoint(
-            x: viewModel.project.canvasSize.width / 2 - image.size.width / 2,
-            y: viewModel.project.canvasSize.height / 2 - image.size.height / 2
+            x: viewModel.project.canvasSize.width / 2,
+            y: viewModel.project.canvasSize.height / 2
         )
+        
         viewModel.addImageElement(imageData: imageData, position: centerPosition)
         
         // 選択モードに戻る
@@ -459,6 +505,8 @@ struct EditorView: View {
         confirmationAction = action
         isShowingConfirmation = true
     }
+    
+    
 }
 
 /// プレビュー
