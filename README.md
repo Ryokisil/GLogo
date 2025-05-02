@@ -6,7 +6,7 @@ GLogoは画像編集用のiOSアプリケーションです。
 - **ViewModels**: エディタ、要素編集、エクスポートなどの操作ロジック
 - **Views**: SwiftUIベースのユーザーインターフェース
 
-### 言語: Swift 5
+### 言語: Swift 6.0
 - UI Framework: SwiftUI + UIKit
 - グラフィックス: Core Graphics, Core Image
 - イベント処理: イベントソーシングパターンによるUndoとRedo
