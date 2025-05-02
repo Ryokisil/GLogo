@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5374D5942DC4BFE5003F5F23 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 5374D5932DC4BFE5003F5F23 /* README.md */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		53FC07B52D7200B50049A129 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,12 +28,18 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		5374D5932DC4BFE5003F5F23 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		53FC07A42D7200B40049A129 /* GLogo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GLogo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		53FC07B42D7200B50049A129 /* GLogoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GLogoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		53FC07BE2D7200B50049A129 /* GLogoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GLogoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		5374D5962DC4CD8C003F5F23 /* images */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = images;
+			sourceTree = "<group>";
+		};
 		53FC07A62D7200B40049A129 /* GLogo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = GLogo;
@@ -75,6 +85,8 @@
 		53FC079B2D7200B40049A129 = {
 			isa = PBXGroup;
 			children = (
+				5374D5962DC4CD8C003F5F23 /* images */,
+				5374D5932DC4BFE5003F5F23 /* README.md */,
 				53FC07A62D7200B40049A129 /* GLogo */,
 				53FC07B72D7200B50049A129 /* GLogoTests */,
 				53FC07C12D7200B50049A129 /* GLogoUITests */,
@@ -108,6 +120,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				5374D5962DC4CD8C003F5F23 /* images */,
 				53FC07A62D7200B40049A129 /* GLogo */,
 			);
 			name = GLogo;
@@ -212,6 +225,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5374D5942DC4BFE5003F5F23 /* README.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

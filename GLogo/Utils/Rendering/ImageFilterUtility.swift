@@ -7,10 +7,7 @@ import CoreImage
 class ImageFilterUtility {
     
     /// 基本的な色調補正を適用
-    static func applyBasicColorAdjustment(to image: CIImage,
-                                          saturation: CGFloat,
-                                          brightness: CGFloat,
-                                          contrast: CGFloat) -> CIImage? {
+    static func applyBasicColorAdjustment(to image: CIImage,saturation: CGFloat,brightness: CGFloat,contrast: CGFloat) -> CIImage? {
         guard let filter = CIFilter(name: "CIColorControls") else { return nil }
         
         filter.setValue(image, forKey: kCIInputImageKey)
