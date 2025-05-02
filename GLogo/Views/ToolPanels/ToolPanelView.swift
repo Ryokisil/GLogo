@@ -260,6 +260,26 @@ struct ImageEditorPanel: View {
                             Text("\(imageElement.contrastAdjustment, specifier: "%.2f")")
                                 .frame(width: 40, alignment: .trailing)
                         }
+                        
+                        HStack {
+                            Text("ハイライト:")
+                            Slider(value: Binding(
+                                get: { imageElement.highlightsAdjustment },
+                                set: { viewModel.updateHighlights($0) }
+                            ), in: -1...1, step: 0.01)
+                            Text("\(imageElement.highlightsAdjustment, specifier: "%.2f")")
+                                .frame(width: 40, alignment: .trailing)
+                        }
+                        
+                        HStack {
+                            Text("シャドウ:")
+                            Slider(value: Binding(
+                                get: { imageElement.shadowsAdjustment },
+                                set: { viewModel.updateShadows($0) }
+                            ), in: -1...1, step: 0.01)
+                            Text("\(imageElement.shadowsAdjustment, specifier: "%.2f")")
+                                .frame(width: 40, alignment: .trailing)
+                        }
                     }
                     
                     Divider()

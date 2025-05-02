@@ -522,6 +522,42 @@ class ElementViewModel: ObservableObject {
         editorViewModel?.updateImageContrast(imageElement, newContrast: contrast)
     }
     
+    // ハイライト調整の更新
+    func updateHighlights(_ highlights: CGFloat) {
+        print("DEBUG: ElementViewModel - ハイライト調整更新開始: \(highlights)")
+        guard let imageElement = imageElement else {
+            print("DEBUG: ElementViewModel - imageElementがnilのため更新できません")
+            return
+        }
+        
+        // 現在と同じ値なら何もしない
+        if imageElement.highlightsAdjustment == highlights {
+            print("DEBUG: ElementViewModel - ハイライトが同じなので変更をスキップします")
+            return
+        }
+        
+        // EditorViewModelの対応するメソッドを呼び出す
+        editorViewModel?.updateImageHighlights(imageElement, newHighlights: highlights)
+    }
+    
+    // シャドウ調整の更新
+    func updateShadows(_ shadows: CGFloat) {
+        print("DEBUG: ElementViewModel - シャドウ調整更新開始: \(shadows)")
+        guard let imageElement = imageElement else {
+            print("DEBUG: ElementViewModel - imageElementがnilのため更新できません")
+            return
+        }
+        
+        // 現在と同じ値なら何もしない
+        if imageElement.shadowsAdjustment == shadows {
+            print("DEBUG: ElementViewModel - シャドウが同じなので変更をスキップします")
+            return
+        }
+        
+        // EditorViewModelの対応するメソッドを呼び出す
+        editorViewModel?.updateImageShadows(imageElement, newShadows: shadows)
+    }
+    
     /// ティントカラーの更新
     func updateTintColor(_ color: UIColor?, intensity: CGFloat) {
         print("DEBUG: ElementViewModel - ティントカラー更新開始")

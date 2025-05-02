@@ -8,11 +8,11 @@
 //  選択、移動、リサイズ、回転などの操作を行えるようにします。
 //  また、ズーム、パン、グリッド表示などの機能も提供します。
 //  UIViewRepresentableプロトコルを実装したラッパークラスを通じてSwiftUIと統合されます。
-//
+//　SwiftUIとUIKitを統合、CoreGraphicsを直接扱うことでグラフィック処理を効率化しSwiftUIでUi設計
 
 import UIKit
 import SwiftUI
-import Combine
+//import Combine
 
 /// キャンバスビュー - ロゴ要素を描画・編集するためのUIKitビュー
 class CanvasView: UIView {

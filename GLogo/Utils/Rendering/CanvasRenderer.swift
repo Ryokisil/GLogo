@@ -28,40 +28,35 @@ class CanvasRenderer {
     
     /// プロジェクトをUIImageとしてレンダリング
     func renderAsImage() -> UIImage? {
-        // レンダリングサイズを決定
-        let size = settings.customSize ?? project.canvasSize
-        
-        // サイズ関係をログ出力
-        print("レンダリング - 指定サイズ: \(size), プロジェクトサイズ: \(project.canvasSize)")
+        // レンダリングサイズを決定（スケールファクターを考慮）
+        let baseSize = settings.customSize ?? project.canvasSize
+        let renderSize = CGSize(
+            width: baseSize.width * settings.resolutionScale,
+            height: baseSize.height * settings.resolutionScale
+        )
         
         // UIGraphicsImageRendererを使用して描画
-        let renderer = UIGraphicsImageRenderer(size: size)
+        let renderer = UIGraphicsImageRenderer(size: renderSize)
         
         return renderer.image { context in
             let cgContext = context.cgContext
             
-            // スケーリング係数を計算
-            let scaleX = size.width / project.canvasSize.width
-            let scaleY = size.height / project.canvasSize.height
-            
-            // 変換行列を適用
-            cgContext.saveGState()
-            cgContext.scaleBy(x: scaleX, y: scaleY)
+            // スケールを適用
+            if settings.resolutionScale != 1.0 {
+                cgContext.scaleBy(x: settings.resolutionScale, y: settings.resolutionScale)
+            }
             
             // 背景を描画
-            drawBackground(in: cgContext, size: project.canvasSize)
+            drawBackground(in: cgContext, size: baseSize)
             
             // すべての要素を描画
             for element in project.elements where element.isVisible {
                 element.draw(in: cgContext)
             }
             
-            // 変換行列を元に戻す
-            cgContext.restoreGState()
-            
             // エクスポート時の品質向上のためのポストプロセス
             if settings.applyPostProcessing {
-                applyPostProcessing(in: cgContext, size: size)
+                applyPostProcessing(in: cgContext, size: baseSize)
             }
         }
     }

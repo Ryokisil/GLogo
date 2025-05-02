@@ -190,7 +190,6 @@ class ExportViewModel: ObservableObject {
             completion(true)
             
             // URLをオブジェクトに保存（共有後に必要に応じて削除するため）
-            // 注意: 実際の削除処理はUIActivityViewControllerの完了時に行う必要があります
         } catch {
             print("Error writing temp file: \(error.localizedDescription)")
             completion(false)

@@ -30,8 +30,29 @@ class ImageElement: LogoElement {
     /// 画像データ（直接保存する場合）
     var imageData: Data?
     
+    /// 元画像のURL
+    var originalImageURL: URL?
+    
+    /// 元画像のパス
+    var originalImagePath: String?
+    
+    /// 元画像の識別子（UUIDなど）
+    var originalImageIdentifier: String?
+    
+    /// 編集履歴
+    private var editHistory: [ImageEditOperation] = []
+    
+    /// 画像メタデータ
+    var metadata: ImageMetadata?
+    
+    /// メタデータの編集履歴
+    private var metadataEditHistory: [String: Any] = [:]
+    
     /// キャッシュされた画像
     private var cachedImage: UIImage?
+    
+    /// キャッシュされた元画像
+    private var cachedOriginalImage: UIImage?
     
     /// 画像のフィッティングモード
     var fitMode: ImageFitMode = .aspectFit
@@ -44,6 +65,12 @@ class ImageElement: LogoElement {
     
     /// 色調補正（コントラスト調整）
     var contrastAdjustment: CGFloat = 1.0
+    
+    /// 色調補正（ハイライト調整）
+    var highlightsAdjustment: CGFloat = 0.0
+    
+    /// 色調補正（シャドウ調整）
+    var shadowsAdjustment: CGFloat = 0.0
     
     /// カラーフィルター
     var tintColor: UIColor?
@@ -71,32 +98,67 @@ class ImageElement: LogoElement {
         return .image
     }
     
+    /// 元画像を取得
+    var originalImage: UIImage? {
+        if let cachedOriginalImage = cachedOriginalImage {
+            return cachedOriginalImage
+        }
+        
+        var loadedImage: UIImage?
+        
+        if let originalImagePath = originalImagePath {
+            loadedImage = UIImage(contentsOfFile: originalImagePath)
+        } else if let originalImageURL = originalImageURL {
+            if originalImageURL.isFileURL {
+                loadedImage = UIImage(contentsOfFile: originalImageURL.path)
+            } else {
+                // URLからの画像ロードは非同期で行うべきですが、
+                // 簡略化のため同期処理としています
+                if let data = try? Data(contentsOf: originalImageURL) {
+                    loadedImage = UIImage(data: data)
+                }
+            }
+        } else if let imageFileName = imageFileName {
+            loadedImage = UIImage(named: imageFileName)
+        } else if let imageData = imageData {
+            loadedImage = UIImage(data: imageData)
+        }
+        
+        // 元画像をキャッシュ
+        cachedOriginalImage = loadedImage
+        return loadedImage
+    }
+    
     /// 画像を取得
     var image: UIImage? {
         if let cachedImage = cachedImage {
             return cachedImage
         }
         
-        var loadedImage: UIImage?
-        
-        if let imageFileName = imageFileName {
-            loadedImage = UIImage(named: imageFileName)
-        } else if let imageData = imageData {
-            loadedImage = UIImage(data: imageData)
+        guard let originalImage = self.originalImage else {
+            return nil
         }
         
-        // 画像をキャッシュ
-        cachedImage = loadedImage
-        return loadedImage
+        // 編集操作を適用した画像を返す
+        let processedImage = applyFilters(to: originalImage)
+        
+        // 編集後の画像をキャッシュ
+        cachedImage = processedImage
+        return processedImage
     }
     
     /// エンコード用のコーディングキー
     private enum ImageCodingKeys: String, CodingKey {
         case imageFileName, imageData, fitMode
+        case originalImageURL, originalImagePath, originalImageIdentifier
         case saturationAdjustment, brightnessAdjustment, contrastAdjustment
+        case highlightsAdjustment, shadowsAdjustment
         case tintColorData, tintIntensity
         case showFrame, frameColorData, frameWidth
         case roundedCorners, cornerRadius
+        case editHistory
+        case metadata
+        case metadataEditHistory
     }
     
     /// カスタムエンコーダー
@@ -106,15 +168,30 @@ class ImageElement: LogoElement {
         var container = encoder.container(keyedBy: ImageCodingKeys.self)
         try container.encodeIfPresent(imageFileName, forKey: .imageFileName)
         try container.encodeIfPresent(imageData, forKey: .imageData)
+        try container.encodeIfPresent(originalImageURL, forKey: .originalImageURL)
+        try container.encodeIfPresent(originalImagePath, forKey: .originalImagePath)
+        try container.encodeIfPresent(originalImageIdentifier, forKey: .originalImageIdentifier)
         try container.encode(fitMode, forKey: .fitMode)
         try container.encode(saturationAdjustment, forKey: .saturationAdjustment)
         try container.encode(brightnessAdjustment, forKey: .brightnessAdjustment)
         try container.encode(contrastAdjustment, forKey: .contrastAdjustment)
+        try container.encode(highlightsAdjustment, forKey: .highlightsAdjustment)
+        try container.encode(shadowsAdjustment, forKey: .shadowsAdjustment)
         try container.encode(tintIntensity, forKey: .tintIntensity)
         try container.encode(showFrame, forKey: .showFrame)
         try container.encode(frameWidth, forKey: .frameWidth)
         try container.encode(roundedCorners, forKey: .roundedCorners)
         try container.encode(cornerRadius, forKey: .cornerRadius)
+        try container.encode(editHistory, forKey: .editHistory)
+        try container.encodeIfPresent(metadata, forKey: .metadata)
+        
+        // メタデータ編集履歴をエンコード（Dictionary型は直接Codableに準拠していないため変換が必要）
+        if !metadataEditHistory.isEmpty {
+            let encodableHistory = metadataEditHistory.compactMapValues { value in
+                return (value as? String) ?? String(describing: value)
+            }
+            try container.encode(encodableHistory, forKey: .metadataEditHistory)
+        }
         
         // UIColorのエンコード
         if let tintColor = tintColor {
@@ -133,15 +210,27 @@ class ImageElement: LogoElement {
         let container = try decoder.container(keyedBy: ImageCodingKeys.self)
         imageFileName = try container.decodeIfPresent(String.self, forKey: .imageFileName)
         imageData = try container.decodeIfPresent(Data.self, forKey: .imageData)
+        originalImageURL = try container.decodeIfPresent(URL.self, forKey: .originalImageURL)
+        originalImagePath = try container.decodeIfPresent(String.self, forKey: .originalImagePath)
+        originalImageIdentifier = try container.decodeIfPresent(String.self, forKey: .originalImageIdentifier)
         fitMode = try container.decode(ImageFitMode.self, forKey: .fitMode)
         saturationAdjustment = try container.decode(CGFloat.self, forKey: .saturationAdjustment)
         brightnessAdjustment = try container.decode(CGFloat.self, forKey: .brightnessAdjustment)
         contrastAdjustment = try container.decode(CGFloat.self, forKey: .contrastAdjustment)
+        highlightsAdjustment = try container.decode(CGFloat.self, forKey: .highlightsAdjustment)
+        shadowsAdjustment = try container.decode(CGFloat.self, forKey: .shadowsAdjustment)
         tintIntensity = try container.decode(CGFloat.self, forKey: .tintIntensity)
         showFrame = try container.decode(Bool.self, forKey: .showFrame)
         frameWidth = try container.decode(CGFloat.self, forKey: .frameWidth)
         roundedCorners = try container.decode(Bool.self, forKey: .roundedCorners)
         cornerRadius = try container.decode(CGFloat.self, forKey: .cornerRadius)
+        editHistory = try container.decodeIfPresent([ImageEditOperation].self, forKey: .editHistory) ?? []
+        metadata = try container.decodeIfPresent(ImageMetadata.self, forKey: .metadata)
+        
+        // メタデータ編集履歴をデコード
+        if let history = try container.decodeIfPresent([String: String].self, forKey: .metadataEditHistory) {
+            metadataEditHistory = history
+        }
         
         // UIColorのデコード
         if let tintColorData = try? container.decode(Data.self, forKey: .tintColorData),
@@ -155,10 +244,30 @@ class ImageElement: LogoElement {
         }
     }
     
+    /// 画像とメタデータから初期化
+    init(imageData: Data, metadata: ImageMetadata?, fitMode: ImageFitMode = .aspectFit) {
+        super.init(name: "Image")
+        self.imageData = imageData
+        self.metadata = metadata
+        self.originalImageIdentifier = UUID().uuidString
+        self.fitMode = fitMode
+        
+        // 画像のサイズに合わせて要素のサイズを調整
+        if let image = UIImage(data: imageData) {
+            updateSizeFromImage(image)
+            
+            // メタデータがない場合は画像から抽出を試みる
+            if metadata == nil {
+                self.metadata = extractMetadataFromImageData(imageData)
+            }
+        }
+    }
+    
     /// ファイル名から画像要素を初期化
     init(fileName: String, fitMode: ImageFitMode = .aspectFit) {
         super.init(name: "Image")
         self.imageFileName = fileName
+        self.originalImageIdentifier = UUID().uuidString
         self.fitMode = fitMode
         
         // 画像のサイズに合わせて要素のサイズを調整
@@ -167,10 +276,48 @@ class ImageElement: LogoElement {
         }
     }
     
+    /// URLから初期化（メタデータの抽出を含む）
+    init(url: URL, fitMode: ImageFitMode = .aspectFit) {
+        super.init(name: "Image")
+        self.originalImageURL = url
+        self.originalImageIdentifier = UUID().uuidString
+        self.fitMode = fitMode
+        
+        do {
+            // URLから画像データを読み込む
+            let data = try Data(contentsOf: url)
+            self.imageData = data
+            
+            // 画像サイズを調整
+            if let image = UIImage(data: data) {
+                updateSizeFromImage(image)
+            }
+            
+            // メタデータを抽出
+            self.metadata = extractMetadataFromImageData(data)
+        } catch {
+            print("DEBUG: URLからの画像読み込みに失敗: \(error.localizedDescription)")
+        }
+    }
+    
+    /// パスから画像要素を初期化
+    init(path: String, fitMode: ImageFitMode = .aspectFit) {
+        super.init(name: "Image")
+        self.originalImagePath = path
+        self.originalImageIdentifier = UUID().uuidString
+        self.fitMode = fitMode
+        
+        // 画像をロードしてサイズを調整
+        if let image = UIImage(contentsOfFile: path) {
+            updateSizeFromImage(image)
+        }
+    }
+    
     /// データから画像要素を初期化
     init(imageData: Data, fitMode: ImageFitMode = .aspectFit) {
         super.init(name: "Image")
         self.imageData = imageData
+        self.originalImageIdentifier = UUID().uuidString
         self.fitMode = fitMode
         
         // 画像のサイズに合わせて要素のサイズを調整
@@ -179,14 +326,33 @@ class ImageElement: LogoElement {
         }
     }
     
+    /// 編集操作を記録
+    func recordEdit(operation: ImageEditOperation) {
+        editHistory.append(operation)
+        // キャッシュをクリアして再描画を促す
+        cachedImage = nil
+    }
+    
+    /// 元の画像に戻す
+    func resetToOriginal() {
+        saturationAdjustment = 1.0
+        brightnessAdjustment = 0.0
+        contrastAdjustment = 1.0
+        highlightsAdjustment = 0.0
+        shadowsAdjustment = 0.0
+        tintColor = nil
+        tintIntensity = 0.0
+        editHistory.removeAll()
+        
+        // キャッシュをクリアして再描画を促す
+        cachedImage = nil
+    }
+    
     /// 画像のサイズに基づいて要素のサイズを更新
     private func updateSizeFromImage(_ image: UIImage) {
         // 最大サイズは画面の状況に応じて調整
         let maxSize: CGFloat = 300
         let imageSize = image.size
-        
-        // 余白を追加するために少し幅を広げる
-        let extraWidth: CGFloat = 60
         
         // アスペクト比を保持しながらサイズを設定
         if imageSize.width > imageSize.height {
@@ -203,46 +369,54 @@ class ImageElement: LogoElement {
     
     /// 画像にフィルターを適用
     private func applyFilters(to image: UIImage) -> UIImage? {
-        guard let cgImage = image.cgImage,
-              let filter = CIFilter(name: "CIColorControls") else {
-            return image
+        guard let cgImage = image.cgImage else { return image }
+        
+        // 元のCIImageを作成
+        var ciImage = CIImage(cgImage: cgImage)
+        
+        // 基本的な色調整を適用
+        if let adjusted = ImageFilterUtility.applyBasicColorAdjustment(
+            to: ciImage,
+            saturation: saturationAdjustment,
+            brightness: brightnessAdjustment,
+            contrast: contrastAdjustment
+        ) {
+            ciImage = adjusted
         }
         
-        let ciImage = CIImage(cgImage: cgImage)
-        filter.setValue(ciImage, forKey: kCIInputImageKey)
-        
-        // 彩度、明度、コントラストの調整
-        filter.setValue(saturationAdjustment, forKey: kCIInputSaturationKey)
-        filter.setValue(brightnessAdjustment, forKey: kCIInputBrightnessKey)
-        filter.setValue(contrastAdjustment, forKey: kCIInputContrastKey)
-        
-        // フィルター結果の取得
-        guard let outputImage = filter.outputImage else {
-            return image
-        }
-        let context = CIContext(options: nil)
-        guard let outputCGImage = context.createCGImage(outputImage, from: outputImage.extent) else {
-            return image
+        // ハイライトの調整を適用（値が0でない場合のみ）
+        if highlightsAdjustment != 0,
+           let adjusted = ImageFilterUtility.applyHighlightAdjustment(
+            to: ciImage,
+            amount: highlightsAdjustment
+           ) {
+            ciImage = adjusted
         }
         
-        var filteredImage = UIImage(cgImage: outputCGImage, scale: image.scale, orientation: image.imageOrientation)
+        // シャドウの調整を適用（値が0でない場合のみ）
+        if shadowsAdjustment != 0,
+           let adjusted = ImageFilterUtility.applyShadowAdjustment(
+            to: ciImage,
+            amount: shadowsAdjustment
+           ) {
+            ciImage = adjusted
+        }
         
-        // ティントカラーの適用（オーバーレイブレンド）
-        if let tintColor = tintColor, tintIntensity > 0 {
-            UIGraphicsBeginImageContextWithOptions(filteredImage.size, false, filteredImage.scale)
-            
-            let rect = CGRect(origin: .zero, size: filteredImage.size)
-            filteredImage.draw(in: rect)
-            
-            // ティントカラーを指定された強度で適用
-            tintColor.withAlphaComponent(tintIntensity).setFill()
-            UIRectFillUsingBlendMode(rect, .overlay)
-            
-            if let tintedImage = UIGraphicsGetImageFromCurrentImageContext() {
-                filteredImage = tintedImage
-            }
-            
-            UIGraphicsEndImageContext()
+        // CIImageをUIImageに変換
+        var filteredImage = ImageFilterUtility.convertToUIImage(
+            ciImage,
+            scale: image.scale,
+            orientation: image.imageOrientation
+        ) ?? image
+        
+        // ティントカラーを適用
+        if let tintColor = tintColor, tintIntensity > 0,
+           let tinted = ImageFilterUtility.applyTintOverlay(
+            to: filteredImage,
+            color: tintColor,
+            intensity: tintIntensity
+           ) {
+            filteredImage = tinted
         }
         
         return filteredImage
@@ -403,6 +577,8 @@ class ImageElement: LogoElement {
         copy.saturationAdjustment = saturationAdjustment
         copy.brightnessAdjustment = brightnessAdjustment
         copy.contrastAdjustment = contrastAdjustment
+        copy.highlightsAdjustment = highlightsAdjustment
+        copy.shadowsAdjustment = shadowsAdjustment
         copy.tintColor = tintColor
         copy.tintIntensity = tintIntensity
         
@@ -413,5 +589,124 @@ class ImageElement: LogoElement {
         copy.cornerRadius = cornerRadius
         
         return copy
+    }
+    
+    /// 画像とメタデータを初期状態に戻す
+    func revertToInitialState() {
+        // フィルター設定をリセット
+        resetToOriginal()
+        
+        // メタデータをリバート
+        if let identifier = originalImageIdentifier {
+            let result = ImageMetadataManager.shared.revertMetadata(for: identifier)
+            if case .success = result {
+                // リバート後のメタデータを取得して設定
+                self.metadata = ImageMetadataManager.shared.getMetadata(for: identifier)
+            }
+        }
+        
+        // キャッシュをクリア
+        cachedImage = nil
+        cachedOriginalImage = nil
+    }
+    
+    /// この画像が過去に編集されたことがあるかを確認
+    var hasEditHistory: Bool {
+        guard let identifier = originalImageIdentifier else { return false }
+        
+        // 編集履歴の確認
+        let history = ImageMetadataManager.shared.getEditHistory(for: identifier)
+        return !history.isEmpty
+    }
+}
+
+/// 画像編集操作を表す構造体
+struct ImageEditOperation: Codable {
+    enum OperationType: String, Codable {
+        case adjustSaturation
+        case adjustBrightness
+        case adjustContrast
+        case adjustHighlights
+        case adjustShadows
+        case applyTint
+        case changeFrame
+        case changeCornerRadius
+    }
+    
+    let type: OperationType
+    let timestamp: Date
+    let parameters: [String: Double]
+    
+    init(type: OperationType, parameters: [String: Double] = [:]) {
+        self.type = type
+        self.timestamp = Date()
+        self.parameters = parameters
+    }
+}
+
+/// 画像メタデータを表す構造体
+struct ImageMetadata: Codable {
+    // 基本メタデータ
+    var creationDate: Date?
+    var modificationDate: Date?
+    var author: String?
+    var description: String?
+    var copyright: String?
+    var keywords: [String]
+    var title: String?
+    
+    // EXIF情報
+    var cameraMake: String?
+    var cameraModel: String?
+    var focalLength: Double?
+    var aperture: Double?
+    var shutterSpeed: Double?
+    var iso: Int?
+    var flash: Bool?
+    var longitude: Double?
+    var latitude: Double?
+    var altitude: Double?
+    
+    // その他のメタデータ（汎用的なDictionary形式で保存）
+    var additionalMetadata: [String: String]
+    
+    init(
+        creationDate: Date? = nil,
+        modificationDate: Date? = nil,
+        author: String? = nil,
+        description: String? = nil,
+        copyright: String? = nil,
+        keywords: [String] = [],
+        title: String? = nil,
+        cameraMake: String? = nil,
+        cameraModel: String? = nil,
+        focalLength: Double? = nil,
+        aperture: Double? = nil,
+        shutterSpeed: Double? = nil,
+        iso: Int? = nil,
+        flash: Bool? = nil,
+        longitude: Double? = nil,
+        latitude: Double? = nil,
+        altitude: Double? = nil,
+        additionalMetadata: [String: String] = [:]
+    ) {
+        self.creationDate = creationDate
+        self.modificationDate = modificationDate
+        self.author = author
+        self.description = description
+        self.copyright = copyright
+        self.keywords = keywords
+        self.title = title
+        self.cameraMake = cameraMake
+        self.cameraModel = cameraModel
+        self.focalLength = focalLength
+        self.aperture = aperture
+        self.shutterSpeed = shutterSpeed
+        self.iso = iso
+        self.flash = flash
+        self.longitude = longitude
+        self.latitude = latitude
+        self.altitude = altitude
+        self.additionalMetadata = additionalMetadata
     }
 }

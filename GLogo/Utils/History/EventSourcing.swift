@@ -935,6 +935,56 @@ struct ImageContrastChangedEvent: EditorEvent {
     }
 }
 
+/// 画像ハイライト変更イベント
+struct ImageHighlightsChangedEvent: EditorEvent {
+    let eventName = "ImageHighlightsChanged"
+    let timestamp = Date()
+    let elementId: UUID
+    let oldHighlights: CGFloat
+    let newHighlights: CGFloat
+    
+    var description: String {
+        return "画像のハイライトを変更しました"
+    }
+    
+    func apply(to project: LogoProject) {
+        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+            element.highlightsAdjustment = newHighlights
+        }
+    }
+    
+    func revert(from project: LogoProject) {
+        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+            element.highlightsAdjustment = oldHighlights
+        }
+    }
+}
+
+/// 画像シャドウ変更イベント
+struct ImageShadowsChangedEvent: EditorEvent {
+    let eventName = "ImageShadowsChanged"
+    let timestamp = Date()
+    let elementId: UUID
+    let oldShadows: CGFloat
+    let newShadows: CGFloat
+    
+    var description: String {
+        return "画像のシャドウを変更しました"
+    }
+    
+    func apply(to project: LogoProject) {
+        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+            element.shadowsAdjustment = newShadows
+        }
+    }
+    
+    func revert(from project: LogoProject) {
+        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+            element.shadowsAdjustment = oldShadows
+        }
+    }
+}
+
 /// 画像ティントカラー変更イベント
 struct ImageTintColorChangedEvent: EditorEvent {
     let eventName = "ImageTintColorChanged"

@@ -739,6 +739,50 @@ class EditorViewModel: ObservableObject {
         print("DEBUG: 画像コントラスト変更完了")
     }
     
+    /// 画像のハイライトを更新
+    func updateImageHighlights(_ imageElement: ImageElement, newHighlights: CGFloat) {
+        print("DEBUG: 画像ハイライト変更開始 - 要素ID: \(imageElement.id)")
+        
+        let event = ImageHighlightsChangedEvent(
+            elementId: imageElement.id,
+            oldHighlights: imageElement.highlightsAdjustment,
+            newHighlights: newHighlights
+        )
+        
+        history.recordAndApply(event)
+        
+        if selectedElement?.id == imageElement.id {
+            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
+                selectedElement = updatedElement
+            }
+        }
+        
+        isProjectModified = true
+        print("DEBUG: 画像ハイライト変更完了")
+    }
+    
+    /// 画像のシャドウを更新
+    func updateImageShadows(_ imageElement: ImageElement, newShadows: CGFloat) {
+        print("DEBUG: 画像シャドウ変更開始 - 要素ID: \(imageElement.id)")
+        
+        let event = ImageShadowsChangedEvent(
+            elementId: imageElement.id,
+            oldShadows: imageElement.shadowsAdjustment,
+            newShadows: newShadows
+        )
+        
+        history.recordAndApply(event)
+        
+        if selectedElement?.id == imageElement.id {
+            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
+                selectedElement = updatedElement
+            }
+        }
+        
+        isProjectModified = true
+        print("DEBUG: 画像シャドウ変更完了")
+    }
+    
     /// 画像のティントカラーを更新
     func updateImageTintColor(_ imageElement: ImageElement, oldColor: UIColor?, newColor: UIColor?, oldIntensity: CGFloat, newIntensity: CGFloat) {
         print("DEBUG: 画像ティントカラー変更開始 - 要素ID: \(imageElement.id)")
@@ -1095,7 +1139,7 @@ class EditorViewModel: ObservableObject {
         let contentRect = boundingRect.isEmpty ?
         CGRect(origin: .zero, size: project.canvasSize) : boundingRect
         
-        // エクスポートサイズを決定
+        // エクスポートサイズを決定（指定されたサイズか、内容の実際のサイズ）
         let renderSize = size ?? contentRect.size
         
         // UIGraphicsImageRendererを使用して描画
@@ -1104,22 +1148,22 @@ class EditorViewModel: ObservableObject {
         return renderer.image { context in
             let cgContext = context.cgContext
             
-            // スケーリングとオフセットを適用
+            // 背景色を設定
+            if let backgroundColor = backgroundColor {
+                cgContext.setFillColor(backgroundColor.cgColor)
+                cgContext.fill(CGRect(origin: .zero, size: renderSize))
+            } else {
+                // 背景設定を適用
+                project.backgroundSettings.draw(in: cgContext, rect: CGRect(origin: .zero, size: renderSize))
+            }
+            
+            // スケーリングとオフセットを適用して要素を描画エリア内に収める
             let scaleX = renderSize.width / contentRect.width
             let scaleY = renderSize.height / contentRect.height
             
             cgContext.saveGState()
             cgContext.scaleBy(x: scaleX, y: scaleY)
             cgContext.translateBy(x: -contentRect.minX, y: -contentRect.minY)
-            
-            // 背景色の設定（透明の場合は描画しない）
-            if let backgroundColor = backgroundColor {
-                cgContext.setFillColor(backgroundColor.cgColor)
-                cgContext.fill(CGRect(origin: .zero, size: project.canvasSize))
-            } else if backgroundColor != .clear {
-                // 透明以外の場合は背景設定を適用
-                project.backgroundSettings.draw(in: cgContext, rect: CGRect(origin: .zero, size: project.canvasSize))
-            }
             
             // すべての要素を描画
             for element in project.elements where element.isVisible {
@@ -1144,8 +1188,8 @@ class EditorViewModel: ObservableObject {
             }
         }
         
-        // 少し余白を追加
-        return rect.insetBy(dx: -20, dy: -20)
+        // 余白なし
+        return rect.insetBy(dx: -0, dy: -0)
     }
     
     /// 透明背景でプロジェクトをPNGとしてエクスポート

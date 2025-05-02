@@ -822,3 +822,10 @@ struct ElementEditorPanel: View {
         }
     }
 }
+
+/// プレビュー
+struct ElementEditor_Previews: PreviewProvider {
+    static var previews: some View {
+        EditorView(viewModel: EditorViewModel())
+    }
+}

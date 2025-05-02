@@ -52,7 +52,12 @@ class LogoElement: Codable {
     
     /// 要素の境界矩形を計算
     var frame: CGRect {
-        return CGRect(origin: position, size: size)
+        let baseFrame = CGRect(origin: position, size: size)
+        if rotation != 0 {
+            // 回転がある場合は、回転を考慮した境界ボックスを計算
+            return baseFrame.boundingBox(rotatedBy: rotation)
+        }
+        return baseFrame
     }
     
     /// エンコード用のコーディングキー

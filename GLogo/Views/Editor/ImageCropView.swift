@@ -17,6 +17,7 @@ import UIKit
 struct ImageCropView: View {
     @Environment(\.presentationMode) var presentationMode
     @State private var cropRect: CGRect
+    @State private var imageFrame: CGRect // 画像の実際の表示位置とサイズを保持
     @State private var scale: CGFloat = 1.0
     @State private var lastScale: CGFloat = 1.0
     @State private var dragOffset: CGSize = .zero
@@ -57,10 +58,13 @@ struct ImageCropView: View {
         }
         
         // 初期クロップ領域を画像全体に設定
-        self._cropRect = State(initialValue: CGRect(
+        let initialCropRect = CGRect(
             origin: origin,
             size: displaySize
-        ))
+        )
+        
+        self._cropRect = State(initialValue: initialCropRect)
+        self._imageFrame = State(initialValue: initialCropRect) // 画像枠も同じ値で初期化
     }
     
     var body: some View {
@@ -77,39 +81,18 @@ struct ImageCropView: View {
                             CheckerboardPattern()
                                 .frame(width: geometry.size.width, height: geometry.size.height)
                             
-                            // 画像表示
+                            // 画像表示 - 固定位置
                             Image(uiImage: originalImage)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
-                                .frame(width: cropRect.width / scale, height: cropRect.height / scale)
-                                .scaleEffect(scale)
-                                .position(x: cropRect.midX + dragOffset.width, y: cropRect.midY + dragOffset.height)
-                                .gesture(
-                                    MagnificationGesture()
-                                        .onChanged { value in
-                                            self.scale = min(4.0, max(0.5, self.lastScale * value.magnitude))
-                                        }
-                                        .onEnded { _ in
-                                            self.lastScale = self.scale
-                                        }
-                                )
-                                .gesture(
-                                    DragGesture()
-                                        .onChanged { value in
-                                            self.dragOffset = CGSize(
-                                                width: self.lastDragOffset.width + value.translation.width,
-                                                height: self.lastDragOffset.height + value.translation.height
-                                            )
-                                        }
-                                        .onEnded { _ in
-                                            self.lastDragOffset = self.dragOffset
-                                        }
-                                )
+                                .frame(width: imageFrame.width, height: imageFrame.height)
+                                .position(x: imageFrame.midX, y: imageFrame.midY)
                             
                             // クロップ領域の表示
-                            CropOverlay(cropRect: $cropRect)
+                            CropOverlay(cropRect: $cropRect, imageFrame: $imageFrame)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        // 画像のパンとズームを無効化
                     }
                     
                     // 下部のコントロール
@@ -139,92 +122,83 @@ struct ImageCropView: View {
     
     /// 画像のクロップ処理
     private func cropImage() -> UIImage? {
-        // 画像の表示サイズと位置を計算
-        let displayRect = calculateImageViewSize()
+        // デバッグ情報を出力
+        print("クロップ枠: \(cropRect)")
+        print("元画像サイズ: \(originalImage.size)")
         
-        // 元画像と表示サイズの比率を計算
-        let widthRatio = originalImage.size.width / displayRect.width
-        let heightRatio = originalImage.size.height / displayRect.height
+        // 画像表示時の実際のサイズと位置を取得
+        let displaySize = calculateImageViewSize()
+        print("画像表示サイズ: \(displaySize)")
         
-        // 画像の実際の位置（スケールとドラッグを考慮）
-        let effectiveImageRect = CGRect(
-            x: displayRect.origin.x + dragOffset.width,
-            y: displayRect.origin.y + dragOffset.height,
-            width: displayRect.width * scale,
-            height: displayRect.height * scale
-        )
+        // 画面上の表示と画像座標のマッピングを直接計算
+        // スクリーン座標から原画像座標への直接マッピング
+        let scaleX = originalImage.size.width / displaySize.width
+        let scaleY = originalImage.size.height / displaySize.height
         
-        // クロップ枠と実際の画像の相対位置を計算
-        let relativeRect = CGRect(
-            x: (cropRect.origin.x - effectiveImageRect.origin.x) / scale,
-            y: (cropRect.origin.y - effectiveImageRect.origin.y) / scale,
-            width: cropRect.width / scale,
-            height: cropRect.height / scale
-        )
+        // クロップ枠の左上座標を、画像の左上からの相対位置に変換
+        let cropLeft = cropRect.minX - displaySize.minX
+        let cropTop = cropRect.minY - displaySize.minY
         
-        // 左右の余白を調整するための補正値
-        // この値を調整して左右のバランスを取る
-        let horizontalOffset: CGFloat = 20.0  // 左側に追加する余白
-        let verticalOffset: CGFloat = 10.0    // 下側に追加する余白
+        // 元画像での座標に変換
+        let imgX = cropLeft * scaleX
+        let imgY = cropTop * scaleY
+        let imgWidth = cropRect.width * scaleX
+        let imgHeight = cropRect.height * scaleY
         
-        // 元画像の座標系に変換（補正値を適用）
-        let cropX = (relativeRect.origin.x - horizontalOffset) * widthRatio
-        let cropY = (relativeRect.origin.y - verticalOffset) * heightRatio
-        let cropWidth = relativeRect.width * widthRatio
-        let cropHeight = relativeRect.height * heightRatio
+        print("表示スケール: X=\(scaleX), Y=\(scaleY)")
+        print("変換座標: X=\(imgX), Y=\(imgY), W=\(imgWidth), H=\(imgHeight)")
         
         // 境界チェック
-        let safeX = max(0, min(cropX, originalImage.size.width - 1))
-        let safeY = max(0, min(cropY, originalImage.size.height - 1))
-        let safeWidth = min(cropWidth, originalImage.size.width - safeX)
-        let safeHeight = min(cropHeight, originalImage.size.height - safeY)
+        let safeX = max(0, min(imgX, originalImage.size.width))
+        let safeY = max(0, min(imgY, originalImage.size.height))
+        let safeWidth = min(imgWidth, originalImage.size.width - safeX)
+        let safeHeight = min(imgHeight, originalImage.size.height - safeY)
         
-        // 安全なクロップ領域を確保
-        let safeCropRect = CGRect(x: safeX, y: safeY, width: safeWidth, height: safeHeight)
+        let finalCropRect = CGRect(x: safeX, y: safeY, width: safeWidth, height: safeHeight)
+        print("最終クロップ領域: \(finalCropRect)")
         
-        print("補正後のクロップ計算:")
-        print("実効画像位置: \(effectiveImageRect)")
-        print("相対位置(補正前): \(relativeRect)")
-        print("補正値: 横=\(horizontalOffset), 縦=\(verticalOffset)")
-        print("実際のクロップ位置: \(safeCropRect)")
-        
-        // UIGraphicsImageRendererを使用してクロップ
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: safeWidth, height: safeHeight))
-        
-        return renderer.image { context in
-            // 元の画像をクロップ領域のオフセットを考慮して描画
-            originalImage.draw(at: CGPoint(x: -safeX, y: -safeY))
+        // CoreGraphicsを使用した正確なクロップ処理
+        if let cgImage = originalImage.cgImage?.cropping(to: finalCropRect) {
+            // 正確なクロップ画像を作成
+            return UIImage(cgImage: cgImage, scale: originalImage.scale, orientation: originalImage.imageOrientation)
         }
+        
+        return nil
     }
     
     // 画像の表示サイズと位置を計算するヘルパーメソッド
     private func calculateImageViewSize() -> CGRect {
-        let containerWidth: CGFloat = UIScreen.main.bounds.width - 40
-        let containerHeight: CGFloat = UIScreen.main.bounds.height * 0.6
+        // スクリーンサイズから計算範囲を取得
+        let screenWidth = UIScreen.main.bounds.width
+        let screenHeight = UIScreen.main.bounds.height * 0.6
         
+        // 元画像のアスペクト比
         let imageSize = originalImage.size
-        var displaySize: CGSize
-        var originX: CGFloat = 20  // デフォルトの左余白
-        var originY: CGFloat = 40  // デフォルトの上余白
+        let imageAspect = imageSize.width / imageSize.height
         
-        // 余白の調整値
-        let marginAdjustment: CGFloat = 15  // この値を調整して余白を微調整
+        // 表示サイズの計算（余白を考慮）
+        let padding: CGFloat = 20
+        let maxWidth = screenWidth - padding * 2
+        let maxHeight = screenHeight - padding * 2
         
-        if imageSize.width / imageSize.height > containerWidth / containerHeight {
-            // 画像が画面より横長の場合
-            let aspectRatio = imageSize.height / imageSize.width
-            displaySize = CGSize(width: containerWidth - marginAdjustment*2, height: (containerWidth - marginAdjustment*2) * aspectRatio)
-            originX += marginAdjustment
-            originY = (containerHeight - displaySize.height) / 2 + originY
+        var displayWidth: CGFloat
+        var displayHeight: CGFloat
+        
+        if imageAspect > maxWidth / maxHeight {
+            // 横長画像
+            displayWidth = maxWidth
+            displayHeight = displayWidth / imageAspect
         } else {
-            // 画像が画面より縦長の場合
-            let aspectRatio = imageSize.width / imageSize.height
-            displaySize = CGSize(width: (containerHeight - marginAdjustment*2) * aspectRatio, height: containerHeight - marginAdjustment*2)
-            originX = (containerWidth - displaySize.width) / 2 + originX
-            originY += marginAdjustment
+            // 縦長画像
+            displayHeight = maxHeight
+            displayWidth = displayHeight * imageAspect
         }
         
-        return CGRect(x: originX, y: originY, width: displaySize.width, height: displaySize.height)
+        // 中央配置の計算
+        let originX = (screenWidth - displayWidth) / 2
+        let originY = padding + (maxHeight - displayHeight) / 2
+        
+        return CGRect(x: originX, y: originY, width: displayWidth, height: displayHeight)
     }
     
     /// クロップ領域をリセット（元の画像サイズに合わせる）
@@ -285,9 +259,29 @@ struct ImageCropView: View {
     }
 }
 
+extension UIImage {
+    func cropToRect(_ rect: CGRect) -> UIImage? {
+        guard let cgImage = self.cgImage else { return nil }
+        
+        let scaleX = self.size.width / self.scale
+        let scaleY = self.size.height / self.scale
+        
+        let scaledRect = CGRect(
+            x: rect.origin.x * self.scale,
+            y: rect.origin.y * self.scale,
+            width: rect.size.width * self.scale,
+            height: rect.size.height * self.scale
+        )
+        
+        guard let croppedCGImage = cgImage.cropping(to: scaledRect) else { return nil }
+        return UIImage(cgImage: croppedCGImage, scale: self.scale, orientation: self.imageOrientation)
+    }
+}
+
 /// クロップオーバーレイビュー
 struct CropOverlay: View {
     @Binding var cropRect: CGRect
+    @Binding var imageFrame: CGRect
     
     var body: some View {
         GeometryReader { geometry in
@@ -310,8 +304,8 @@ struct CropOverlay: View {
                     .frame(width: cropRect.width, height: cropRect.height)
                     .position(x: cropRect.midX, y: cropRect.midY)
                 
-                // ハンドルの配置
-                CropHandles(cropRect: $cropRect)
+                // ハンドルの配置 - 画像フレーム情報も渡す
+                CropHandles(cropRect: $cropRect, imageFrame: $imageFrame)
             }
             .compositingGroup()
         }
@@ -346,6 +340,9 @@ struct CropHandles: View {
     @State private var activeHandle: CropHandleType?
     @State private var dragStart: CGPoint = .zero
     @State private var initialRect: CGRect = .zero
+    
+    // 画像の位置・サイズ情報を維持するための参照
+    @Binding var imageFrame: CGRect
     
     var body: some View {
         ZStack {
@@ -385,47 +382,53 @@ struct CropHandles: View {
         }
     }
     
-    /// クロップ領域の更新
+    /// クロップ領域の更新 - 画像の位置とサイズを考慮
     private func updateCropRect(for handleType: CropHandleType, at point: CGPoint) {
         let deltaX = point.x - dragStart.x
         let deltaY = point.y - dragStart.y
         
         var newRect = initialRect
         
+        // 画像の境界内に収まるように制限
+        let minX = imageFrame.minX
+        let minY = imageFrame.minY
+        let maxX = imageFrame.maxX
+        let maxY = imageFrame.maxY
+        
         switch handleType {
         case .topLeft:
-            newRect.origin.x = min(initialRect.maxX - 50, initialRect.minX + deltaX)
-            newRect.origin.y = min(initialRect.maxY - 50, initialRect.minY + deltaY)
+            newRect.origin.x = max(minX, min(initialRect.maxX - 50, initialRect.minX + deltaX))
+            newRect.origin.y = max(minY, min(initialRect.maxY - 50, initialRect.minY + deltaY))
             newRect.size.width = initialRect.maxX - newRect.minX
             newRect.size.height = initialRect.maxY - newRect.minY
             
         case .topCenter:
-            newRect.origin.y = min(initialRect.maxY - 50, initialRect.minY + deltaY)
+            newRect.origin.y = max(minY, min(initialRect.maxY - 50, initialRect.minY + deltaY))
             newRect.size.height = initialRect.maxY - newRect.minY
             
         case .topRight:
-            newRect.size.width = max(50, initialRect.width + deltaX)
-            newRect.origin.y = min(initialRect.maxY - 50, initialRect.minY + deltaY)
+            newRect.size.width = max(50, min(maxX - newRect.minX, initialRect.width + deltaX))
+            newRect.origin.y = max(minY, min(initialRect.maxY - 50, initialRect.minY + deltaY))
             newRect.size.height = initialRect.maxY - newRect.minY
             
         case .middleLeft:
-            newRect.origin.x = min(initialRect.maxX - 50, initialRect.minX + deltaX)
+            newRect.origin.x = max(minX, min(initialRect.maxX - 50, initialRect.minX + deltaX))
             newRect.size.width = initialRect.maxX - newRect.minX
             
         case .middleRight:
-            newRect.size.width = max(50, initialRect.width + deltaX)
+            newRect.size.width = max(50, min(maxX - newRect.minX, initialRect.width + deltaX))
             
         case .bottomLeft:
-            newRect.origin.x = min(initialRect.maxX - 50, initialRect.minX + deltaX)
+            newRect.origin.x = max(minX, min(initialRect.maxX - 50, initialRect.minX + deltaX))
             newRect.size.width = initialRect.maxX - newRect.minX
-            newRect.size.height = max(50, initialRect.height + deltaY)
+            newRect.size.height = max(50, min(maxY - newRect.minY, initialRect.height + deltaY))
             
         case .bottomCenter:
-            newRect.size.height = max(50, initialRect.height + deltaY)
+            newRect.size.height = max(50, min(maxY - newRect.minY, initialRect.height + deltaY))
             
         case .bottomRight:
-            newRect.size.width = max(50, initialRect.width + deltaX)
-            newRect.size.height = max(50, initialRect.height + deltaY)
+            newRect.size.width = max(50, min(maxX - newRect.minX, initialRect.width + deltaX))
+            newRect.size.height = max(50, min(maxY - newRect.minY, initialRect.height + deltaY))
         }
         
         cropRect = newRect

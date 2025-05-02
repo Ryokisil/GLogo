@@ -14,7 +14,7 @@ import UIKit
 /// ロゴプロジェクト全体を表すモデルクラス
 class LogoProject: Codable {
     /// プロジェクト名
-    var name: String = "Untitled"
+    var name: String = ""
     
     /// プロジェクトのすべての要素
     var elements: [LogoElement] = []
@@ -70,7 +70,7 @@ class LogoProject: Codable {
     }
     
     /// 新しいプロジェクトの初期化
-    init(name: String = "Untitled", canvasSize: CGSize = CGSize(width: 1024, height: 1024)) {
+    init(name: String = "", canvasSize: CGSize = CGSize(width: 1024, height: 1024)) {
         self.name = name
         self.canvasSize = canvasSize
     }

@@ -42,7 +42,6 @@ struct BackgroundEditorPanel: View {
                     Picker("", selection: $backgroundSettings.type) {
                         Text("単色").tag(BackgroundType.solid)
                         Text("グラデーション").tag(BackgroundType.gradient)
-                        Text("画像").tag(BackgroundType.image)
                         Text("透明").tag(BackgroundType.transparent)
                     }
                     .pickerStyle(SegmentedPickerStyle())
@@ -59,14 +58,11 @@ struct BackgroundEditorPanel: View {
                     case .gradient:
                         gradientProperties
                     case .image:
-                        imageProperties
+                        EmptyView()
                     case .transparent:
                         transparentProperties
                     }
                 }
-                
-                // プレビュー
-                previewSection
             }
             .padding()
         }
@@ -190,50 +186,6 @@ struct BackgroundEditorPanel: View {
         }
     }
     
-    // MARK: - 画像背景プロパティ
-    
-    private var imageProperties: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // 背景画像の選択ボタン
-            Button(action: {
-                isShowingImagePicker = true
-            }) {
-                HStack {
-                    Image(systemName: "photo")
-                    Text(backgroundSettings.imageFileName != nil ? "画像を変更" : "画像を選択")
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(8)
-            }
-            
-            // 選択されている画像の表示
-            if let imageFileName = backgroundSettings.imageFileName, let image = loadImage(named: imageFileName) {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(height: 100)
-                    .cornerRadius(4)
-            }
-            
-            // 不透明度
-            HStack {
-                Text("不透明度:")
-                Slider(value: Binding(
-                    get: { backgroundSettings.opacity },
-                    set: {
-                        backgroundSettings.opacity = $0
-                        updateBackground()
-                    }
-                ), in: 0...1, step: 0.01)
-                Text("\(Int(backgroundSettings.opacity * 100))%")
-                    .frame(width: 40, alignment: .trailing)
-            }
-        }
-    }
-    
     // MARK: - 透明背景プロパティ
     
     private var transparentProperties: some View {
@@ -245,38 +197,6 @@ struct BackgroundEditorPanel: View {
             Text("プロジェクトを PNG 形式でエクスポートする場合、背景は透明になります。")
                 .font(.caption)
                 .foregroundColor(.secondary)
-        }
-    }
-    
-    // MARK: - プレビューセクション
-    
-    private var previewSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("プレビュー")
-                .font(.headline)
-            
-            ZStack {
-                // 透明の場合はチェッカーボードパターンを表示
-                if backgroundSettings.type == .transparent {
-                    // ExportView.swiftで定義されているCheckerboardPatternを使用
-                    CheckerboardPattern()
-                }
-                
-                // 背景のプレビュー
-                Canvas { context, size in
-                    // 背景設定を適用してCanvasに描画
-                    let rect = CGRect(origin: .zero, size: size)
-                    context.withCGContext { cgContext in
-                        backgroundSettings.draw(in: cgContext, rect: rect)
-                    }
-                }
-            }
-            .frame(height: 100)
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-            )
         }
     }
     

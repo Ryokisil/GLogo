@@ -16,10 +16,10 @@ enum ActiveSheet: Identifiable {
     case imagePicker
     case imageCrop(UIImage)
     
-    var id: Int {
+    var id: String {  // ビルド時にInt型だとクラッシュしたのでString型に変更
         switch self {
-        case .imagePicker: return 0
-        case .imageCrop: return 1
+        case .imagePicker: return "imagePicker"
+        case .imageCrop: return "imageCrop"
         }
     }
 }
@@ -102,9 +102,9 @@ struct EditorView: View {
             .sheet(isPresented: $isShowingExportSheet) {
                 ExportView(viewModel: viewModel)
             }
-            .sheet(isPresented: $isShowingProjectSettings) {
-                ProjectSettingsView(viewModel: viewModel)
-            }
+//            .sheet(isPresented: $isShowingProjectSettings) {
+//                ProjectSettingsView(viewModel: viewModel)
+//            }
             .sheet(item: $activeSheet) { item in
                 switch item {
                 case .imagePicker:
@@ -258,7 +258,7 @@ struct EditorView: View {
         HStack(spacing: 12) {
             // 選択モード
             Button(action: { viewModel.editorMode = .select }) {
-                Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
+                Image(systemName: "")
                     .foregroundColor(viewModel.editorMode == .select ? .blue : .primary)
             }
             .help("選択ツール")
@@ -365,13 +365,6 @@ struct EditorView: View {
             }
             .help("グリッド表示")
             
-            // グリッドスナップ切替
-            Button(action: { snapToGrid.toggle() }) {
-                Image(systemName: snapToGrid ? "arrow.down.forward.and.arrow.up.backward.circle.fill" : "arrow.down.forward.and.arrow.up.backward.circle")
-                    .foregroundColor(snapToGrid ? .blue : .primary)
-            }
-            .help("グリッドにスナップ")
-            
             // 操作履歴
             HStack(spacing: 4) {
                 // アンドゥ
@@ -425,37 +418,29 @@ struct EditorView: View {
     
     private var toolbarItems: some ToolbarContent {
         Group {
-            // 左側アイテム
+            // 左側に保存ボタン
             ToolbarItem(placement: .navigationBarLeading) {
-                HStack {
-                    // プロジェクト設定
-                    Button(action: { isShowingProjectSettings = true }) {
-                        Image(systemName: "gear")
-                    }
-                    .help("プロジェクト設定")
-                    
-                    // プロジェクト保存
-                    Button(action: saveProject) {
-                        Image(systemName: "arrow.down.doc")
-                    }
-                    .help("保存")
+                Button("Save") {
+                    saveProject()
                 }
+                .help("プロジェクトを保存")
             }
             
-            // 右側アイテム
+            // 右側にリバートボタン
             ToolbarItem(placement: .navigationBarTrailing) {
-                HStack {
-                    // ツールパネル切替
-                    Button(action: { isShowingToolPanel.toggle() }) {
-                        Image(systemName: isShowingToolPanel ? "chevron.down" : "chevron.up")
+                Button("Revert") {
+                    // リバート機能の確認ダイアログを表示
+                    if canRevert() {
+                        showConfirmation(
+                            message: "画像を初期状態に戻しますか？この操作は元に戻せません。",
+                            action: revertSelectedImageToInitial
+                        )
+                    } else {
+                        showAlert(
+                            title: "リバートできません",
+                            message: "選択された画像に編集履歴がないか、画像が選択されていません。"
+                        )
                     }
-                    .help("プロパティパネル")
-                    
-                    // エクスポート
-                    Button(action: { isShowingExportSheet = true }) {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    .help("エクスポート")
                 }
             }
         }
@@ -467,7 +452,7 @@ struct EditorView: View {
     private func saveProject() {
         viewModel.saveProject { success in
             if success {
-                showAlert(title: "保存完了", message: "プロジェクトが保存されました。")
+                showAlert(title: "保存完了", message: "編集が保存されました。")
             } else {
                 showAlert(title: "エラー", message: "プロジェクトの保存に失敗しました。")
             }
@@ -506,7 +491,23 @@ struct EditorView: View {
         isShowingConfirmation = true
     }
     
+    /// 選択された画像のリバートが可能かどうかを判断
+    private func canRevert() -> Bool {
+        if let imageElement = viewModel.selectedElement as? ImageElement,
+           imageElement.hasEditHistory {
+            return true
+        }
+        return false
+    }
     
+    /// 選択された画像を初期状態に戻す
+    private func revertSelectedImageToInitial() {
+        if let imageElement = viewModel.selectedElement as? ImageElement {
+            imageElement.revertToInitialState()
+            // キャンバスの再描画を促す
+            viewModel.updateSelectedElement(imageElement)
+        }
+    }
 }
 
 /// プレビュー
