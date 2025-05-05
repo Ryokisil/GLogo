@@ -19,7 +19,7 @@ enum ImagePickerSource {
     case camera
 }
 
-/// 簡易化された画像選択ビュー - SwiftUIアプリ向け
+/// 簡易化された画像選択ビュー
 struct ImagePickerView: View {
     /// 選択終了時のコールバック
     var onSelect: (UIImage?) -> Void

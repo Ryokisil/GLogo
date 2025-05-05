@@ -242,10 +242,10 @@ struct TextEditorPanel: View {
             Text("色と整列")
                 .font(.headline)
             
-            // テキスト色
+            // テキスト要素の色とカラーピッカーを双方向バインディングで接続
             ColorPicker("テキスト色:", selection: Binding(
-                get: { Color(textElement?.textColor ?? .white) },
-                set: { viewModel.updateTextColor(UIColor($0)) }
+                get: { Color(textElement?.textColor ?? .white) }, // UIColorからSwiftUI Colorに変換、nilの場合は白色
+                set: { viewModel.updateTextColor(UIColor($0)) }   // ユーザー選択色をViewModelに通知
             ))
             
             // テキスト整列

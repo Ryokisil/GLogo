@@ -155,32 +155,32 @@ class EditorViewModel: ObservableObject {
     /// 画像要素をデータから追加
     func addImageElement(imageData: Data, position: CGPoint) {
         print("DEBUG: キャンバスサイズ - 幅: \(project.canvasSize.width), 高さ: \(project.canvasSize.height)")
-        let imageElement = ImageElement(imageData: imageData, fitMode: .aspectFit)
-        print("DEBUG: 画像サイズ - 幅: \(imageElement.size.width), 高さ: \(imageElement.size.height)")
-
-        // キャンバスの中央に配置
-        let canvasCenter = CGPoint(
-            x: project.canvasSize.width / 2,
-            y: project.canvasSize.height / 2
-        )
-        print("DEBUG: キャンバス中心 - X: \(canvasCenter.x), Y: \(canvasCenter.y)")
-
-        // 画像のサイズに基づいてオフセットを計算
-        let offsetX = imageElement.size.width / 2
-        let offsetY = imageElement.size.height / 2
-        print("DEBUG: オフセット - X: \(offsetX), Y: \(offsetY)")
         
-        // 中央配置の位置を設定
-        imageElement.position = CGPoint(
-            x: canvasCenter.x - offsetX,
-            y: canvasCenter.y - offsetY
+        let imageElement = ImageElement(imageData: imageData, fitMode: .aspectFit, canvasSize: project.canvasSize)
+        print("DEBUG: 画像サイズ - 幅: \(imageElement.size.width), 高さ: \(imageElement.size.height)")
+        
+        // 【修正箇所1】画面に表示される範囲の中央に配置（ビューポートの中央）
+        // デバイスの画面サイズを取得（おおよそのビューポート）
+        let viewportSize = getViewportSize() // 新しいメソッドを追加
+        let viewportCenter = CGPoint(
+            x: viewportSize.width / 2,
+            y: viewportSize.height / 4
         )
-        print("DEBUG: 設定位置 - X: \(imageElement.position.x), Y: \(imageElement.position.y)")
+        
+        // キャンバス上の可視範囲の中央に配置
+        imageElement.position = CGPoint(
+            x: viewportCenter.x - imageElement.size.width / 2,
+            y: viewportCenter.y - imageElement.size.height / 2
+        )
+        
+        print("DEBUG: 配置位置 - X: \(imageElement.position.x), Y: \(imageElement.position.y)")
+        print("DEBUG: ビューポートサイズ: \(viewportSize)")
         
         addElement(imageElement)
-        
-        // 追加後すぐに選択状態にして編集しやすくする
         selectElement(imageElement)
+        
+        // 【修正箇所2】画像が見えるようにカメラを移動
+        centerViewOnElement(imageElement)
     }
     
     /// 選択中の要素を削除
@@ -1114,20 +1114,58 @@ class EditorViewModel: ObservableObject {
         // UIImageをDataに変換
         guard let imageData = image.pngData() else { return }
         
-        // ImageElementを作成 - AspectFitをデフォルトに設定
-        let imageElement = ImageElement(imageData: imageData, fitMode: .aspectFit)
+        let imageElement = ImageElement(imageData: imageData, fitMode: .aspectFit, canvasSize: project.canvasSize)
         
-        // 左端に強制配置する
-        imageElement.position = CGPoint(x: 50, y: 100)
+        // 【修正箇所3】ビューポートの中央に配置
+        let viewportSize = getViewportSize()
+        let viewportCenter = CGPoint(
+            x: viewportSize.width / 2,
+            y: viewportSize.height / 4
+        )
+        
+        // 画像の中央位置を計算
+        imageElement.position = CGPoint(
+            x: viewportCenter.x - imageElement.size.width / 2,
+            y: viewportCenter.y - imageElement.size.height / 2
+        )
+        
+        print("DEBUG: クロップ済み画像配置位置 - X: \(imageElement.position.x), Y: \(imageElement.position.y)")
         
         // 要素を追加
         addElement(imageElement)
-        
-        // 追加後すぐに選択状態にする
         selectElement(imageElement)
+        
+        // 【修正箇所4】画像が見えるようにカメラを移動
+        centerViewOnElement(imageElement)
+    }
+    
+    /// 【新規追加】デバイスの画面サイズを取得
+    private func getViewportSize() -> CGSize {
+        // デバイスの画面サイズを取得
+        // 実際の実装は状況に応じて調整が必要
+        return UIScreen.main.bounds.size
+    }
+    
+    /// 【新規追加】特定の要素にビューを中央揃え
+    private func centerViewOnElement(_ element: LogoElement) {
+        // このメソッドは、カメラビューがある場合に、そのビューを特定の要素の位置に移動させる
+        // 実装はビューコントローラーのカメラビューの実装に依存
+        // NotificationCenter経由で通知を送るか、デリゲートパターンを使用
+        
+        let centerPoint = CGPoint(
+            x: element.position.x + element.size.width / 2,
+            y: element.position.y + element.size.height / 2
+        )
+        
+        print("DEBUG: カメラを中央に移動: \(centerPoint)")
+        
+        // 通知を送信して、ビューコントローラーにカメラ移動を要求
+        NotificationCenter.default.post(
+            name: Notification.Name("CenterCameraOnPoint"),
+            object: centerPoint
+        )
     }
 
-    
     // MARK: - エクスポート
     
     /// プロジェクトを画像としてエクスポート

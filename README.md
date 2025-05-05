@@ -79,6 +79,75 @@ b. シャドウを明るくする場合:
 - CIGammaAdjustでさらに中間〜暗い部分を強調
 - CIBlendWithMaskでマスクを使って元画像と調整画像をブレンド
 
-![調整前](./images/スクショ1.png)
-![ハイライト調整後](./images/スクショ2.png)
-![ハイライト&シャドウ調整後](./images/スクショ3.png)
+**編集前**
+<img src="./images/スクショ1.png" alt="調整前" width="250">
+
+**ハイライト編集後**
+<img src="./images/スクショ2.png" alt="ハイライト調整後" width="250">
+
+**ハイライト&シャドウ編集後**
+<img src="./images/スクショ3.png" alt="ハイライト&シャドウ調整後" width="250">
+
+
+#　画像クロップ処理の修正（iOS向き対応）
+## 問題の概要
+縦長画像のクロップ処理が正しく動作しない不具合が発生しました。特定サイズ（4284×5712、1178×1572等）の縦長画像でのみ、クロップ結果の幅と高さが入れ替わってしまうという症状が見られました。
+
+## 原因分析
+iOS画像処理の構造的な問題
+iOSにおける画像処理には、以下の2つの重要な概念があります：
+- 1 UIImage: 表示時の向き情報（orientation）を含む画像オブジェクト
+- 2 CGImage: 実際のピクセル配列のみを持つ低レベルな画像オブジェクト
+例：縦長画像の場合
+UIImage.size = (幅: 1178, 高さ: 1572)  ← 表示時のサイズ
+CGImage.size = (幅: 1572, 高さ: 1178)  ← 物理的なピクセル配列
+
+## 具体的な不具合のメカニズム
+1 クロップ処理ではUIImage.sizeを基準に座標計算を実行
+2 実際のクロップはCGImageに対して実行
+3 向き情報が反映されていないため、サイズが逆転した状態でクロップが発生
+
+### 向きを考慮したCGImageの生成
+
+```swift
+private func createOrientedCGImage(from uiImage: UIImage) -> CGImage? {
+    let size = uiImage.size
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = uiImage.scale
+    format.opaque = false
+    
+    let renderer = UIGraphicsImageRenderer(size: size, format: format)
+    
+    let renderedImage = renderer.image { context in
+        uiImage.draw(in: CGRect(origin: .zero, size: size))
+    }
+    
+    return renderedImage.cgImage
+}
+```
+
+### クロップ処理
+
+```swift
+private func cropImage() -> UIImage? {
+    // 座標とかの計算処理など、、
+    
+    // 向きを考慮したCGImageを作成
+    guard let orientedCGImage = createOrientedCGImage(from: originalImage) else {
+        return nil
+    }
+    
+    // このCGImageはUIImage.sizeと一致するサイズを持つ
+    guard let croppedCGImage = orientedCGImage.cropping(to: scaledCropRect) else {
+        return nil
+    }
+    
+    return UIImage(cgImage: croppedCGImage)
+}
+```
+## 重要なポイント
+- UIGraphicsRendererの使用: 向き情報を自動的に考慮して描画
+- 座標計算の一貫性: 常にUIImage.sizeを基準に計算
+
+https://developer.apple.com/documentation/uikit/uiimage/orientation
+https://developer.apple.com/library/archive/documentation/GraphicsImaging/Conceptual/drawingwithquartz2d/Introduction/Introduction.html

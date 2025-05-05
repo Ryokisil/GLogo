@@ -28,12 +28,13 @@ enum ActiveSheet: Identifiable {
 struct EditorView: View {
     // MARK: - プロパティ
     
-    /// エディタビューモデル
+    /// 複数ビューで参照するかもなのでこのラッパーを使用　ビュー再構築時に参照が失われる可能性あり
     @ObservedObject var viewModel: EditorViewModel
     
-    /// 要素編集ビューモデル
+    /// オブジェクトを維持しこのビューに所有権を渡すためこのラッパーを使用
     @StateObject private var elementViewModel: ElementViewModel
     
+    // 以下State群はenumで列挙型としてまとめとくと整理になるかもなので検討
     /// ツールパネルの表示フラグ
     @State private var isShowingToolPanel = true
     
@@ -99,9 +100,9 @@ struct EditorView: View {
                 // ツールバーアイテム
                 toolbarItems
             }
-            .sheet(isPresented: $isShowingExportSheet) {
-                ExportView(viewModel: viewModel)
-            }
+//            .sheet(isPresented: $isShowingExportSheet) {
+//                ExportView(viewModel: viewModel)
+//            }
 //            .sheet(isPresented: $isShowingProjectSettings) {
 //                ProjectSettingsView(viewModel: viewModel)
 //            }

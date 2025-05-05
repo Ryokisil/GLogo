@@ -23,7 +23,7 @@ class LogoProject: Codable {
     var backgroundSettings: BackgroundSettings = BackgroundSettings()
     
     /// キャンバスサイズ
-    var canvasSize: CGSize = CGSize(width: 1024, height: 1024)
+    var canvasSize: CGSize = CGSize(width: 3840, height: 2160)
     
     /// 作成日時
     var createdAt: Date = Date()
@@ -70,7 +70,7 @@ class LogoProject: Codable {
     }
     
     /// 新しいプロジェクトの初期化
-    init(name: String = "", canvasSize: CGSize = CGSize(width: 1024, height: 1024)) {
+    init(name: String = "", canvasSize: CGSize = CGSize(width: 3840, height: 2160)) {
         self.name = name
         self.canvasSize = canvasSize
     }

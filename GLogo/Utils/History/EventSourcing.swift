@@ -3,14 +3,14 @@
 //  GameLogoMaker
 //
 //  概要:
-//  このファイルはイベントソーシングに基づくシンプルなアンドゥ・リドゥ機能を実装します。
-//  コマンドパターンより実装が容易でありながら、「何をしたか」を明確に記録します。
+//  このファイルはイベントソーシングに基づくシンプルなアンドゥ・リドゥ機能を実装
+//  コマンドパターンより実装が簡単、「何をしたか」を明確に記録します。
 //
 
 import Foundation
 import UIKit
 
-/// エディタイベントのプロトコル - すべてのイベントが実装する必要がある
+/// エディタイベントのプロトコル - すべてのイベントが実装される必要がある
 protocol EditorEvent: Codable {
     /// イベントを識別するための名前
     var eventName: String { get }
@@ -24,7 +24,7 @@ protocol EditorEvent: Codable {
     /// イベントを元に戻すメソッド
     func revert(from project: LogoProject)
     
-    /// イベントの説明（UIに表示できる）
+    /// イベントの説明
     var description: String { get }
 }
 
@@ -72,7 +72,7 @@ class EditorHistory {
         undoneEventStack.removeAll()
     }
     
-    /// アンドゥ操作
+    /// アンドゥ操作 使いたい時だけ使う設計なので戻り値をBool型に。リドゥも同じ あと戻り値破棄しても警告出ないようにdiscardableResult使用
     @discardableResult
     func undo() -> Bool {
         
@@ -154,8 +154,8 @@ class EditorHistory {
 
 /// 要素追加イベント
 struct ElementAddedEvent: EditorEvent {
-    let eventName = "ElementAdded"
-    let timestamp = Date()
+    var eventName = "ElementAdded"
+    var timestamp = Date()
     let element: LogoElement
     
     var description: String {
@@ -173,8 +173,8 @@ struct ElementAddedEvent: EditorEvent {
 
 /// 要素削除イベント
 struct ElementRemovedEvent: EditorEvent {
-    let eventName = "ElementRemoved"
-    let timestamp = Date()
+    var eventName = "ElementRemoved"
+    var timestamp = Date()
     let element: LogoElement
     let index: Int
     
@@ -195,8 +195,8 @@ struct ElementRemovedEvent: EditorEvent {
 
 /// 要素移動イベント
 struct ElementMovedEvent: EditorEvent {
-    let eventName = "ElementMoved"
-    let timestamp = Date()
+    var eventName = "ElementMoved"
+    var timestamp = Date()
     let elementId: UUID
     let oldPosition: CGPoint
     let newPosition: CGPoint
@@ -220,8 +220,8 @@ struct ElementMovedEvent: EditorEvent {
 
 /// 要素サイズ変更イベント
 struct ElementResizedEvent: EditorEvent {
-    let eventName = "ElementResized"
-    let timestamp = Date()
+    var eventName = "ElementResized"
+    var timestamp = Date()
     let elementId: UUID
     let oldSize: CGSize
     let newSize: CGSize
@@ -245,8 +245,8 @@ struct ElementResizedEvent: EditorEvent {
 
 /// 要素回転イベント
 struct ElementRotatedEvent: EditorEvent {
-    let eventName = "ElementRotated"
-    let timestamp = Date()
+    var eventName = "ElementRotated"
+    var timestamp = Date()
     let elementId: UUID
     let oldRotation: CGFloat
     let newRotation: CGFloat
@@ -270,8 +270,8 @@ struct ElementRotatedEvent: EditorEvent {
 
 /// テキスト内容変更イベント
 struct TextContentChangedEvent: EditorEvent {
-    let eventName = "TextContentChanged"
-    let timestamp = Date()
+    var eventName = "TextContentChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldText: String
     let newText: String
@@ -371,8 +371,8 @@ struct TextColorChangedEvent: EditorEvent {
 
 /// フォント変更イベント
 struct FontChangedEvent: EditorEvent {
-    let eventName = "FontChanged"
-    let timestamp = Date()
+    var eventName = "FontChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldFontName: String
     let newFontName: String
@@ -407,8 +407,8 @@ struct FontChangedEvent: EditorEvent {
 
 /// 図形タイプ変更イベント
 struct ShapeTypeChangedEvent: EditorEvent {
-    let eventName = "ShapeTypeChanged"
-    let timestamp = Date()
+    var eventName = "ShapeTypeChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldType: ShapeType
     let newType: ShapeType
@@ -520,8 +520,8 @@ struct ShapeFillColorChangedEvent: EditorEvent {
 
 /// 図形の塗りつぶしモード変更イベント
 struct ShapeFillModeChangedEvent: EditorEvent {
-    let eventName = "ShapeFillModeChanged"
-    let timestamp = Date()
+    var eventName = "ShapeFillModeChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldMode: FillMode
     let newMode: FillMode
@@ -619,8 +619,8 @@ struct ShapeStrokeColorChangedEvent: EditorEvent {
 
 /// 図形の枠線太さ変更イベント
 struct ShapeStrokeWidthChangedEvent: EditorEvent {
-    let eventName = "ShapeStrokeWidthChanged"
-    let timestamp = Date()
+    var eventName = "ShapeStrokeWidthChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldWidth: CGFloat
     let newWidth: CGFloat
@@ -644,8 +644,8 @@ struct ShapeStrokeWidthChangedEvent: EditorEvent {
 
 /// 図形の枠線モード変更イベント
 struct ShapeStrokeModeChangedEvent: EditorEvent {
-    let eventName = "ShapeStrokeModeChanged"
-    let timestamp = Date()
+    var eventName = "ShapeStrokeModeChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldMode: StrokeMode
     let newMode: StrokeMode
@@ -669,8 +669,8 @@ struct ShapeStrokeModeChangedEvent: EditorEvent {
 
 /// 図形の角丸半径変更イベント
 struct ShapeCornerRadiusChangedEvent: EditorEvent {
-    let eventName = "ShapeCornerRadiusChanged"
-    let timestamp = Date()
+    var eventName = "ShapeCornerRadiusChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldRadius: CGFloat
     let newRadius: CGFloat
@@ -694,8 +694,8 @@ struct ShapeCornerRadiusChangedEvent: EditorEvent {
 
 /// 図形の辺の数変更イベント
 struct ShapeSidesChangedEvent: EditorEvent {
-    let eventName = "ShapeSidesChanged"
-    let timestamp = Date()
+    var eventName = "ShapeSidesChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldSides: Int
     let newSides: Int
@@ -810,8 +810,8 @@ struct ShapeGradientColorsChangedEvent: EditorEvent {
 
 /// 図形のグラデーション角度変更イベント
 struct ShapeGradientAngleChangedEvent: EditorEvent {
-    let eventName = "ShapeGradientAngleChanged"
-    let timestamp = Date()
+    var eventName = "ShapeGradientAngleChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldAngle: CGFloat
     let newAngle: CGFloat
@@ -837,8 +837,8 @@ struct ShapeGradientAngleChangedEvent: EditorEvent {
 
 /// 画像フィットモード変更イベント
 struct ImageFitModeChangedEvent: EditorEvent {
-    let eventName = "ImageFitModeChanged"
-    let timestamp = Date()
+    var eventName = "ImageFitModeChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldMode: ImageFitMode
     let newMode: ImageFitMode
@@ -862,8 +862,8 @@ struct ImageFitModeChangedEvent: EditorEvent {
 
 /// 画像彩度変更イベント
 struct ImageSaturationChangedEvent: EditorEvent {
-    let eventName = "ImageSaturationChanged"
-    let timestamp = Date()
+    var eventName = "ImageSaturationChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldSaturation: CGFloat
     let newSaturation: CGFloat
@@ -887,8 +887,8 @@ struct ImageSaturationChangedEvent: EditorEvent {
 
 /// 画像明度変更イベント
 struct ImageBrightnessChangedEvent: EditorEvent {
-    let eventName = "ImageBrightnessChanged"
-    let timestamp = Date()
+    var eventName = "ImageBrightnessChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldBrightness: CGFloat
     let newBrightness: CGFloat
@@ -912,8 +912,8 @@ struct ImageBrightnessChangedEvent: EditorEvent {
 
 /// 画像コントラスト変更イベント
 struct ImageContrastChangedEvent: EditorEvent {
-    let eventName = "ImageContrastChanged"
-    let timestamp = Date()
+    var eventName = "ImageContrastChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldContrast: CGFloat
     let newContrast: CGFloat
@@ -937,8 +937,8 @@ struct ImageContrastChangedEvent: EditorEvent {
 
 /// 画像ハイライト変更イベント
 struct ImageHighlightsChangedEvent: EditorEvent {
-    let eventName = "ImageHighlightsChanged"
-    let timestamp = Date()
+    var eventName = "ImageHighlightsChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldHighlights: CGFloat
     let newHighlights: CGFloat
@@ -962,8 +962,8 @@ struct ImageHighlightsChangedEvent: EditorEvent {
 
 /// 画像シャドウ変更イベント
 struct ImageShadowsChangedEvent: EditorEvent {
-    let eventName = "ImageShadowsChanged"
-    let timestamp = Date()
+    var eventName = "ImageShadowsChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldShadows: CGFloat
     let newShadows: CGFloat
@@ -1081,8 +1081,8 @@ struct ImageTintColorChangedEvent: EditorEvent {
 
 /// 画像フレーム表示変更イベント
 struct ImageShowFrameChangedEvent: EditorEvent {
-    let eventName = "ImageShowFrameChanged"
-    let timestamp = Date()
+    var eventName = "ImageShowFrameChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldValue: Bool
     let newValue: Bool
@@ -1180,8 +1180,8 @@ struct ImageFrameColorChangedEvent: EditorEvent {
 
 /// 画像フレーム太さ変更イベント
 struct ImageFrameWidthChangedEvent: EditorEvent {
-    let eventName = "ImageFrameWidthChanged"
-    let timestamp = Date()
+    var eventName = "ImageFrameWidthChanged"
+    var timestamp = Date()
     let elementId: UUID
     let oldWidth: CGFloat
     let newWidth: CGFloat
@@ -1205,8 +1205,8 @@ struct ImageFrameWidthChangedEvent: EditorEvent {
 
 /// 画像角丸設定変更イベント
 struct ImageRoundedCornersChangedEvent: EditorEvent {
-    let eventName = "ImageRoundedCornersChanged"
-    let timestamp = Date()
+    var eventName = "ImageRoundedCornersChanged"
+    var timestamp = Date()
     let elementId: UUID
     let wasRounded: Bool
     let isRounded: Bool
@@ -1240,8 +1240,8 @@ struct ImageRoundedCornersChangedEvent: EditorEvent {
 
 /// 背景設定変更イベント
 struct BackgroundSettingsChangedEvent: EditorEvent {
-    let eventName = "BackgroundSettingsChanged"
-    let timestamp = Date()
+    var eventName = "BackgroundSettingsChanged"
+    var timestamp = Date()
     let oldSettings: BackgroundSettings
     let newSettings: BackgroundSettings
     
@@ -1260,8 +1260,8 @@ struct BackgroundSettingsChangedEvent: EditorEvent {
 
 /// プロジェクト名変更イベント
 struct ProjectNameChangedEvent: EditorEvent {
-    let eventName = "ProjectNameChanged"
-    let timestamp = Date()
+    var eventName = "ProjectNameChanged"
+    var timestamp = Date()
     let oldName: String
     let newName: String
     
@@ -1280,8 +1280,8 @@ struct ProjectNameChangedEvent: EditorEvent {
 
 /// キャンバスサイズ変更イベント
 struct CanvasSizeChangedEvent: EditorEvent {
-    let eventName = "CanvasSizeChanged"
-    let timestamp = Date()
+    var eventName = "CanvasSizeChanged"
+    var timestamp = Date()
     let oldSize: CGSize
     let newSize: CGSize
     
@@ -1300,8 +1300,8 @@ struct CanvasSizeChangedEvent: EditorEvent {
 
 /// 要素の複合変更イベント（移動 + サイズ変更 + 回転）
 struct ElementTransformedEvent: EditorEvent {
-    let eventName = "ElementTransformed"
-    let timestamp = Date()
+    var eventName = "ElementTransformed"
+    var timestamp = Date()
     let elementId: UUID
     let oldPosition: CGPoint?
     let newPosition: CGPoint?

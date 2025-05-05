@@ -14,7 +14,7 @@ extension UIColor {
     
     // MARK: - イニシャライザ
     
-    /// RGB値から色を作成（0-255の整数値）
+    /// RGB値から色を作成（0-255の整数値）＊色の強さは0から255の数字で表現。0 = 真っ暗（その色の光が全く無い）255 = 最大の明るさ（その色の光が最大）
     convenience init(r: Int, g: Int, b: Int, a: CGFloat = 1.0) {
         self.init(
             red: CGFloat(r) / 255.0,
@@ -26,7 +26,9 @@ extension UIColor {
     
     /// 16進数の文字列から色を作成（例: "#FF5500" または "FF5500"）
     convenience init?(hex: String, alpha: CGFloat = 1.0) {
+        // 前後の空白や改行を取り除く
         var hexSanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        // "#"を取り除く
         hexSanitized = hexSanitized.replacingOccurrences(of: "#", with: "")
         
         var rgb: UInt64 = 0

@@ -184,7 +184,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 }
 
-// 以下はプロジェクトのディレクトリ構造　今は一応書いとく
+// プロジェクトのディレクトリ構造　今は一応書いとく
 //GameLogoMaker/
 //├── App/
 //│   ├── AppDelegate.swift

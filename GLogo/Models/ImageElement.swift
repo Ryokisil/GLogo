@@ -39,6 +39,9 @@ class ImageElement: LogoElement {
     /// 元画像の識別子（UUIDなど）
     var originalImageIdentifier: String?
     
+    /// キャンバスサイズを保持（表示サイズ計算用）
+    private var canvasSize: CGSize = CGSize(width: 3840, height: 2160)
+    
     /// 編集履歴
     private var editHistory: [ImageEditOperation] = []
     
@@ -313,6 +316,47 @@ class ImageElement: LogoElement {
         }
     }
     
+    /// データから画像要素を初期化（動的サイズ調整フラグ付き）
+    init(imageData: Data, fitMode: ImageFitMode = .aspectFit, isDynamicSizing: Bool = true) {
+        super.init(name: "Image")
+        self.imageData = imageData
+        self.originalImageIdentifier = UUID().uuidString
+        self.fitMode = fitMode
+        
+        // isDynamicSizingフラグによってサイズ調整の実行を制御
+        if let image = UIImage(data: imageData) {
+            print("DEBUG: 初期化時の画像サイズ: \(image.size)")
+            
+            if isDynamicSizing {
+                // 新規画像のインポート時はサイズを調整
+                updateSizeFromImage(image)
+            } else {
+                // クロップ済み画像は元のサイズを維持
+                size = image.size
+                print("DEBUG: クロップ済み画像のサイズを維持: \(size)")
+            }
+        } else {
+            print("DEBUG: エラー: UIImageの作成に失敗しました")
+        }
+    }
+    
+    /// データから画像要素を初期化（キャンバスサイズ付き）
+    init(imageData: Data, fitMode: ImageFitMode = .aspectFit, canvasSize: CGSize = CGSize(width: 3840, height: 2160)) {
+        super.init(name: "Image")
+        self.imageData = imageData
+        self.originalImageIdentifier = UUID().uuidString
+        self.fitMode = fitMode
+        self.canvasSize = canvasSize
+        
+        // 画像のサイズに合わせて要素のサイズを調整
+        if let image = UIImage(data: imageData) {
+            print("DEBUG: 初期化時の画像サイズ: \(image.size)")
+            updateSizeFromImage(image)
+        } else {
+            print("DEBUG: エラー: UIImageの作成に失敗しました")
+        }
+    }
+    
     /// データから画像要素を初期化
     init(imageData: Data, fitMode: ImageFitMode = .aspectFit) {
         super.init(name: "Image")
@@ -322,7 +366,10 @@ class ImageElement: LogoElement {
         
         // 画像のサイズに合わせて要素のサイズを調整
         if let image = UIImage(data: imageData) {
+            print("DEBUG: 初期化時の画像サイズ: \(image.size)")
             updateSizeFromImage(image)
+        } else {
+            print("DEBUG: エラー: UIImageの作成に失敗しました")
         }
     }
     
@@ -350,20 +397,37 @@ class ImageElement: LogoElement {
     
     /// 画像のサイズに基づいて要素のサイズを更新
     private func updateSizeFromImage(_ image: UIImage) {
-        // 最大サイズは画面の状況に応じて調整
-        let maxSize: CGFloat = 300
+        // キャンバスの15%程度を最大サイズとして使用
+        let maxSize: CGFloat = min(canvasSize.width, canvasSize.height) * 0.15
+        
+        print("DEBUG: キャンバスサイズ: \(canvasSize)")
+        print("DEBUG: 計算された最大サイズ: \(maxSize)")
+        
         let imageSize = image.size
         
         // アスペクト比を保持しながらサイズを設定
+        var newSize: CGSize
+        
         if imageSize.width > imageSize.height {
             let aspectRatio = imageSize.height / imageSize.width
-            size = CGSize(width: maxSize, height: maxSize * aspectRatio)
+            newSize = CGSize(width: maxSize, height: maxSize * aspectRatio)
         } else {
             let aspectRatio = imageSize.width / imageSize.height
-            size = CGSize(width: maxSize * aspectRatio, height: maxSize)
+            newSize = CGSize(width: maxSize * aspectRatio, height: maxSize)
         }
         
-        print("DEBUG: 元画像サイズ: \(imageSize), 設定サイズ: \(size)")
+        size = CGSize(
+            width: max(1, newSize.width),
+            height: max(1, newSize.height)
+        )
+        
+        print("DEBUG: updateSizeFromImage - 元画像サイズ: \(imageSize), 設定サイズ: \(size)")
+    }
+    
+    private func getCanvasSize() -> CGSize {
+        // プロジェクトのキャンバスサイズを取得（キャッシュなどを使用）
+        // デフォルトは4Kサイズ
+        return CGSize(width: 3840, height: 2160)
     }
 
     
@@ -617,6 +681,21 @@ class ImageElement: LogoElement {
         // 編集履歴の確認
         let history = ImageMetadataManager.shared.getEditHistory(for: identifier)
         return !history.isEmpty
+    }
+}
+
+extension ImageElement {
+    func resizeToFit(maxSize: CGFloat) {
+        guard let image = self.image else { return }
+        
+        let imageSize = image.size
+        if imageSize.width > imageSize.height {
+            let aspectRatio = imageSize.height / imageSize.width
+            size = CGSize(width: maxSize, height: maxSize * aspectRatio)
+        } else {
+            let aspectRatio = imageSize.width / imageSize.height
+            size = CGSize(width: maxSize * aspectRatio, height: maxSize)
+        }
     }
 }
 

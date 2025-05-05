@@ -164,9 +164,10 @@ struct ProjectSettingsView: View {
     
     /// キャンバスサイズのプリセット
     private let canvasSizePresets = [
-        CanvasSizePreset(name: "小", size: CGSize(width: 512, height: 512)),
-        CanvasSizePreset(name: "中", size: CGSize(width: 1024, height: 1024)),
-        CanvasSizePreset(name: "大", size: CGSize(width: 2048, height: 2048))
+        CanvasSizePreset(name: "HD", size: CGSize(width: 1920, height: 1080)),
+        CanvasSizePreset(name: "2K", size: CGSize(width: 2560, height: 1440)),
+        CanvasSizePreset(name: "4K", size: CGSize(width: 3840, height: 2160)),
+        CanvasSizePreset(name: "8K", size: CGSize(width: 7680, height: 4320))
     ]
     
     /// キャンバスサイズプリセット構造体
