@@ -1,13 +1,24 @@
 
 //  概要:
-//  このファイルは画像メタデータの管理と操作を担当するマネージャークラスです。
-//  メタデータの読み取り、保存、編集履歴の管理、およびリバート機能を提供します。
+// このファイルは画像メタデータの管理と操作を担当するマネージャークラス
+// メタデータの読み取り、保存、編集履歴の管理、およびリバート機能を実装
+// リバート機能実装の為にメタデータが必要なので用意したが不要なメソッドも多いのでいつか整理する
+// アンドゥリドゥと動作は似てるがあれは1個前の操作に戻るだけでリバートは編集前の初期状態に戻すので本質が異なる、オリジナルのメタデータを保持が必要
 
-import Foundation
-import UIKit
-import Photos
-import CoreLocation
-import ImageIO
+// コード量が多いがrevertMetadataToOriginal関数(2200行目辺り)が機能がメインなのでその処理を簡潔に残す ぶっちゃけこれだけあれば...
+// 識別子取得 - 画像要素の識別子を取得（なければ失敗）
+// リバート実行 - メタデータマネージャーを使い履歴の初期状態に戻す
+// メタデータ適用 - 成功したら最新メタデータを取得して要素に設定
+// プロパティ復元 - メタデータ値から実際のプロパティ（frameWidth, roundedCorners等）に適用
+// キャッシュクリア - 画像キャッシュをクリアして変更を反映
+// 結果返却 - 成功/失敗状態を返す
+
+
+import Foundation  // 基本的なデータ型、ファイル操作、日付処理などの基本機能
+import UIKit       // UIColor、UIImageなどのUI関連の型
+import Photos      // PHAsset、PHPhotoLibraryなど写真ライブラリアクセス
+import CoreLocation // 位置情報（緯度・経度・高度）の処理
+import ImageIO     // 画像メタデータの読み取り・書き込み
 
 /// メタデータ編集操作の種類
 enum MetadataEditOperationType: String, Codable {
@@ -48,13 +59,48 @@ enum MetadataOperationResult {
 }
 
 /// メタデータ操作エラー
-enum MetadataError: Error {
+enum MetadataError: Error, LocalizedError {
     case invalidData
     case extractionFailed
     case saveFailed
     case operationNotFound
     case historyCorrupted
     case unsupportedField
+    case assetNotFound
+    case authorizationDenied
+    case imageDataNotAvailable
+    case metadataApplicationFailed
+    case readOnlyAsset
+    case partialSuccess(errorCode: Int)
+    //switch文は全てのケースを書く
+    var errorDescription: String? {
+        switch self {
+        case .invalidData:
+            return "メタデータが無効です。"
+        case .extractionFailed:
+            return "メタデータの抽出に失敗しました。"
+        case .saveFailed:
+            return "メタデータの保存に失敗しました。"
+        case .operationNotFound:
+            return "指定された操作が見つかりません。"
+        case .historyCorrupted:
+            return "編集履歴が破損しています。"
+        case .unsupportedField:
+            return "サポートされていないフィールドです。"
+        case .assetNotFound:
+            return "対応する写真アセットが見つかりません。"
+        case .authorizationDenied:
+            return "写真ライブラリへのアクセス権限がありません。"
+        case .imageDataNotAvailable:
+            return "画像データを取得できません。"
+        case .metadataApplicationFailed:
+            return "メタデータの適用に失敗しました。"
+        case .readOnlyAsset:
+            return "写真は読み取り専用です。アプリ内のみメタデータを保存しました。"
+        case .partialSuccess(let code):
+            return "元の写真への書き込みは失敗しましたが、アプリ内にメタデータは保存されました。(エラーコード: \(code))"
+        }
+    }
 }
 
 /// メタデータフィールドのタイプ
@@ -322,6 +368,210 @@ class ImageMetadataManager {
         
         // ストレージに保存
         return saveMetadataToStorage(metadata, for: identifier)
+    }
+    
+    /// メタデータを元の写真に保存
+    func saveMetadataToOriginalPhoto(for identifier: String, completion: @escaping (Bool, Error?) -> Void) {
+        print("DEBUG: メタデータの保存を開始: \(identifier)")
+        
+        // MARK: - 1. PHAssetの取得
+        guard let asset = fetchAsset(from: identifier) else {
+            completion(false, MetadataError.assetNotFound)
+            return
+        }
+        
+        // MARK: - 2. 編集可能性の確認
+        if !isAssetEditable(asset) {
+            print("DEBUG: 写真は読み取り専用です - アプリ内のみメタデータを保存します")
+            completion(true, MetadataError.readOnlyAsset)
+            return
+        }
+        
+        // MARK: - 3. メタデータの取得
+        guard let metadata = getMetadata(for: identifier) else {
+            print("DEBUG: メタデータが見つかりません")
+            completion(false, MetadataError.invalidData)
+            return
+        }
+        
+        // MARK: - 4. 権限の確認と処理の実行
+        checkAuthorizationAndProcessAsset(asset: asset, metadata: metadata, completion: completion)
+    }
+    
+    // MARK: - ヘルパーメソッド
+    
+    /// 識別子からPHAssetを取得
+    private func fetchAsset(from identifier: String) -> PHAsset? {
+        print("DEBUG: 識別子の形式: \(identifier.count)文字, \(identifier.contains("-") ? "PHAsset形式" : "UUID形式")")
+        
+        // スラッシュで分割して基本識別子のみを取得
+        let baseIdentifier: String
+        if identifier.contains("/") {
+            baseIdentifier = String(identifier.split(separator: "/")[0])
+            print("DEBUG: 基本識別子に変換: \(baseIdentifier)")
+        } else {
+            baseIdentifier = identifier
+        }
+        
+        // 基本識別子でアセットを検索
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [baseIdentifier], options: nil)
+        
+        if fetchResult.count == 0 {
+            print("DEBUG: 基本識別子でも見つかりません: \(baseIdentifier)")
+            return nil
+        }
+        
+        print("DEBUG: 基本識別子でアセットを見つけました！")
+        return fetchResult.firstObject
+    }
+    
+    /// 権限を確認してアセット処理を実行
+    private func checkAuthorizationAndProcessAsset(asset: PHAsset, metadata: ImageMetadata, completion: @escaping (Bool, Error?) -> Void) {
+        PHPhotoLibrary.requestAuthorization { status in
+            if status != .authorized {
+                print("DEBUG: 写真ライブラリの権限がありません: \(status.rawValue)")
+                DispatchQueue.main.async {
+                    completion(false, MetadataError.authorizationDenied)
+                }
+                return
+            }
+            
+            // アセットの詳細情報を出力
+            print("DEBUG: アセット詳細情報:")
+            self.debugAssetStatus(asset)
+            
+            // 編集入力を要求
+            self.requestEditingInputAndApplyMetadata(asset: asset, metadata: metadata, completion: completion)
+        }
+    }
+    
+    /// アセットの詳細情報を出力
+    private func debugAssetStatus(_ asset: PHAsset) {
+        print("DEBUG: 写真の編集可能性: \(asset.canPerform(.content) ? "編集可能" : "読み取り専用")")
+        print("DEBUG: アセット作成日: \(asset.creationDate?.description ?? "なし")")
+        print("DEBUG: アセット変更日: \(asset.modificationDate?.description ?? "なし")")
+        print("DEBUG: アセット場所: \(asset.location?.description ?? "なし")")
+        
+        // 可能であればiCloud状態も確認
+        if asset.responds(to: NSSelectorFromString("locallyAvailable")) {
+            print("DEBUG: ローカル可用性: \(asset.value(forKey: "locallyAvailable") ?? "不明")")
+        }
+    }
+    
+    /// 編集入力を要求してメタデータを適用
+    private func requestEditingInputAndApplyMetadata(asset: PHAsset, metadata: ImageMetadata, completion: @escaping (Bool, Error?) -> Void) {
+        let options = PHContentEditingInputRequestOptions()
+        options.canHandleAdjustmentData = { _ in true }
+        
+        asset.requestContentEditingInput(with: options) { contentEditingInput, info in
+            guard let contentEditingInput = contentEditingInput,
+                  let url = contentEditingInput.fullSizeImageURL else {
+                print("DEBUG: 画像データの取得に失敗しました")
+                DispatchQueue.main.async {
+                    completion(false, MetadataError.imageDataNotAvailable)
+                }
+                return
+            }
+            
+            print("DEBUG: 元画像のURLを取得: \(url.path)")
+            
+            // 画像データの読み込みとメタデータ適用
+            self.readImageAndApplyMetadata(url: url, contentEditingInput: contentEditingInput, metadata: metadata, asset: asset, completion: completion)
+        }
+    }
+    
+    /// 画像データを読み込み、メタデータを適用して保存
+    private func readImageAndApplyMetadata(url: URL, contentEditingInput: PHContentEditingInput, metadata: ImageMetadata, asset: PHAsset, completion: @escaping (Bool, Error?) -> Void) {
+        do {
+            let imageData = try Data(contentsOf: url)
+            print("DEBUG: 元画像データを取得: \(ByteCountFormatter.string(fromByteCount: Int64(imageData.count), countStyle: .file))")
+            
+            guard let updatedImageData = self.applyMetadataToImageData(imageData, metadata: metadata) else {
+                print("DEBUG: メタデータの適用に失敗しました")
+                DispatchQueue.main.async {
+                    completion(false, MetadataError.metadataApplicationFailed)
+                }
+                return
+            }
+            
+            print("DEBUG: メタデータを適用しました: \(ByteCountFormatter.string(fromByteCount: Int64(updatedImageData.count), countStyle: .file))")
+            
+            // PHContentEditingOutputの作成と保存
+            self.createAndSaveEditingOutput(updatedImageData: updatedImageData, contentEditingInput: contentEditingInput, asset: asset, retryCount: 0, completion: completion)
+        } catch {
+            print("DEBUG: 元画像データの読み込みに失敗: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                completion(false, error)
+            }
+        }
+    }
+    
+    /// 編集出力を作成して保存（再試行メカニズム付き）
+    private func createAndSaveEditingOutput(updatedImageData: Data, contentEditingInput: PHContentEditingInput, asset: PHAsset, retryCount: Int, completion: @escaping (Bool, Error?) -> Void) {
+        let output = PHContentEditingOutput(contentEditingInput: contentEditingInput)
+        
+        do {
+            try updatedImageData.write(to: output.renderedContentURL)
+            print("DEBUG: 画像データを出力先に書き込みました: \(output.renderedContentURL.path)")
+            
+            // 調整データの設定
+            let adjustmentData = PHAdjustmentData(
+                formatIdentifier: "com.gamelogomaker.metadataeditor",
+                formatVersion: "1.0",
+                data: "Metadata updated".data(using: .utf8)!
+            )
+            output.adjustmentData = adjustmentData
+            
+            // 変更リクエストの実行（再試行メカニズム付き）
+            performChangeWithRetry(output: output, asset: asset, retryCount: retryCount, completion: completion)
+        } catch {
+            print("DEBUG: 画像データの書き込みに失敗: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                completion(false, error)
+            }
+        }
+    }
+    
+    /// 変更リクエストを実行（再試行メカニズム付き）
+    private func performChangeWithRetry(output: PHContentEditingOutput, asset: PHAsset, retryCount: Int, completion: @escaping (Bool, Error?) -> Void) {
+        PHPhotoLibrary.shared().performChanges({
+            let request = PHAssetChangeRequest(for: asset)
+            request.contentEditingOutput = output
+            print("DEBUG: 変更リクエストを作成しました")
+        }, completionHandler: { success, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    let errorCode = (error as NSError).code
+                    print("DEBUG: 写真ライブラリの変更に失敗: \(error.localizedDescription), コード: \(errorCode)")
+                    
+                    // エラーコード3302で再試行回数が3未満なら再試行
+                    if errorCode == 3302 && retryCount < 3 {
+                        print("DEBUG: 再試行します (\(retryCount + 1)/3)")
+                        // 1秒待ってから再試行
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            self.performChangeWithRetry(output: output, asset: asset, retryCount: retryCount + 1, completion: completion)
+                        }
+                        return
+                    }
+                    
+                    // アプリ内のメタデータは保存できているので部分的に成功と見なす
+                    completion(true, MetadataError.partialSuccess(errorCode: errorCode))
+                } else {
+                    print("DEBUG: 写真ライブラリの変更が成功しました")
+                    completion(success, nil)
+                }
+            }
+        })
+    }
+    
+    /// PHAssetが編集可能かどうかを確認
+    func isAssetEditable(_ asset: PHAsset) -> Bool {
+        // 編集操作が可能かチェック
+        let canEdit = PHPhotoLibrary.authorizationStatus() == .authorized &&
+        asset.canPerform(.content)
+        
+        print("DEBUG: 写真の編集可能性: \(canEdit ? "編集可能" : "読み取り専用")")
+        return canEdit
     }
     
     /// 編集履歴を取得
@@ -767,6 +1017,16 @@ class ImageMetadataManager {
             } else if let stringValue = value as? String {
                 metadata.flash = stringValue.lowercased() == "true" || stringValue == "1"
             }
+        case "frameWidth":
+            if let doubleValue = value as? Double {
+                metadata.additionalMetadata["frameWidth"] = String(doubleValue)
+            } else if let floatValue = value as? CGFloat {
+                metadata.additionalMetadata["frameWidth"] = String(describing: value)
+            }
+        case "roundedCorners":
+            if let boolValue = value as? Bool {
+                metadata.additionalMetadata["roundedCorners"] = boolValue ? "true" : "false"
+            }
         default:
             // 追加メタデータに保存
             metadata.additionalMetadata[fieldKey] = String(describing: value)
@@ -1028,6 +1288,142 @@ class ImageMetadataManager {
             print("DEBUG: 編集履歴の読み込みに失敗: \(error.localizedDescription)")
             return nil
         }
+    }
+    
+    /// 画像データにメタデータを適用
+    private func applyMetadataToImageData(_ imageData: Data, metadata: ImageMetadata) -> Data? {
+        guard let source = CGImageSourceCreateWithData(imageData as CFData, nil) else {
+            print("DEBUG: CGImageSourceの作成に失敗")
+            return nil
+        }
+        
+        let sourceType = CGImageSourceGetType(source)
+        print("DEBUG: 画像タイプ: \(sourceType as Any)")
+        
+        // メタデータをCFDictionaryに変換
+        let metadataDict = createMetadataDictionary(from: metadata)
+        print("DEBUG: メタデータディクショナリを作成: \(metadataDict.keys)")
+        
+        // 出力データの作成
+        let mutableData = NSMutableData()
+        
+        guard let destination = CGImageDestinationCreateWithData(
+            mutableData as CFMutableData,
+            sourceType!,
+            1,
+            nil
+        ) else {
+            print("DEBUG: CGImageDestinationの作成に失敗")
+            return nil
+        }
+        
+        // メタデータオプションを設定
+        let options: [String: Any] = [
+            kCGImageDestinationMergeMetadata as String: true,
+            kCGImageDestinationMetadata as String: metadataDict
+        ]
+        
+        // 元の画像とメタデータをコピー
+        CGImageDestinationAddImageFromSource(
+            destination,
+            source,
+            0,
+            options as CFDictionary
+        )
+        
+        if CGImageDestinationFinalize(destination) {
+            print("DEBUG: メタデータの書き込みに成功")
+            return mutableData as Data
+        } else {
+            print("DEBUG: メタデータの書き込みに失敗")
+            return nil
+        }
+    }
+    
+    /// メタデータオブジェクトからCFDictionaryを作成
+    private func createMetadataDictionary(from metadata: ImageMetadata) -> [String: Any] {
+        var dict = [String: Any]()
+        
+        // EXIFディクショナリ
+        var exifDict = [String: Any]()
+        if let dateTime = metadata.creationDate {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+            exifDict[kCGImagePropertyExifDateTimeOriginal as String] = formatter.string(from: dateTime)
+        }
+        if let focalLength = metadata.focalLength {
+            exifDict[kCGImagePropertyExifFocalLength as String] = focalLength
+        }
+        if let aperture = metadata.aperture {
+            exifDict[kCGImagePropertyExifFNumber as String] = aperture
+        }
+        if let shutterSpeed = metadata.shutterSpeed {
+            exifDict[kCGImagePropertyExifExposureTime as String] = shutterSpeed
+        }
+        if let iso = metadata.iso {
+            exifDict[kCGImagePropertyExifISOSpeedRatings as String] = [iso]
+        }
+        if let flash = metadata.flash {
+            exifDict[kCGImagePropertyExifFlash as String] = flash ? 1 : 0
+        }
+        
+        // TIFFディクショナリ
+        var tiffDict = [String: Any]()
+        if let make = metadata.cameraMake {
+            tiffDict[kCGImagePropertyTIFFMake as String] = make
+        }
+        if let model = metadata.cameraModel {
+            tiffDict[kCGImagePropertyTIFFModel as String] = model
+        }
+        if let copyright = metadata.copyright {
+            tiffDict[kCGImagePropertyTIFFCopyright as String] = copyright
+        }
+        if let artist = metadata.author {
+            tiffDict[kCGImagePropertyTIFFArtist as String] = artist
+        }
+        
+        // GPSディクショナリ
+        var gpsDict = [String: Any]()
+        if let latitude = metadata.latitude {
+            gpsDict[kCGImagePropertyGPSLatitude as String] = abs(latitude)
+            gpsDict[kCGImagePropertyGPSLatitudeRef as String] = latitude >= 0 ? "N" : "S"
+        }
+        if let longitude = metadata.longitude {
+            gpsDict[kCGImagePropertyGPSLongitude as String] = abs(longitude)
+            gpsDict[kCGImagePropertyGPSLongitudeRef as String] = longitude >= 0 ? "E" : "W"
+        }
+        if let altitude = metadata.altitude {
+            gpsDict[kCGImagePropertyGPSAltitude as String] = abs(altitude)
+            gpsDict[kCGImagePropertyGPSAltitudeRef as String] = altitude >= 0 ? 0 : 1
+        }
+        
+        // IPTCディクショナリ
+        var iptcDict = [String: Any]()
+        if let title = metadata.title {
+            iptcDict[kCGImagePropertyIPTCObjectName as String] = title
+        }
+        if let description = metadata.description {
+            iptcDict[kCGImagePropertyIPTCCaptionAbstract as String] = description
+        }
+        if !metadata.keywords.isEmpty {
+            iptcDict[kCGImagePropertyIPTCKeywords as String] = metadata.keywords
+        }
+        
+        // メインディクショナリに追加
+        if !exifDict.isEmpty {
+            dict[kCGImagePropertyExifDictionary as String] = exifDict
+        }
+        if !tiffDict.isEmpty {
+            dict[kCGImagePropertyTIFFDictionary as String] = tiffDict
+        }
+        if !gpsDict.isEmpty {
+            dict[kCGImagePropertyGPSDictionary as String] = gpsDict
+        }
+        if !iptcDict.isEmpty {
+            dict[kCGImagePropertyIPTCDictionary as String] = iptcDict
+        }
+        
+        return dict
     }
 }
 
@@ -1770,6 +2166,10 @@ extension ImageElement {
             metadata = ImageMetadata()
         }
         
+        // 文字列表現に変換
+        let oldValueString = oldValue != nil ? String(describing: oldValue!) : nil
+        let newValueString = newValue != nil ? String(describing: newValue!) : nil
+        
         // 操作の種類を決定
         let operationType: MetadataEditOperationType
         if oldValue == nil && newValue != nil {
@@ -1780,25 +2180,32 @@ extension ImageElement {
             operationType = .edit
         }
         
-        // 文字列表現に変換
-        let oldValueString = oldValue != nil ? String(describing: oldValue!) : nil
-        let newValueString = newValue != nil ? String(describing: newValue!) : nil
-        
-        // 操作を作成
-        let operation = MetadataEditOperation(
-            type: operationType,
-            fieldKey: fieldKey,
-            oldValue: oldValueString,
-            newValue: newValueString
-        )
-        
-        // マネージャーを通して編集履歴に追加
-        if let metadata = metadata {
+        // メタデータ内のadditionalMetadataに直接値を保存
+        if var metadata = metadata {
+            if let newValue = newValue {
+                // 値を文字列として保存
+                metadata.additionalMetadata[fieldKey] = String(describing: newValue)
+            } else {
+                // nilの場合は削除
+                metadata.additionalMetadata.removeValue(forKey: fieldKey)
+            }
+            
+            // メタデータを更新
+            self.metadata = metadata
+            
+            // 操作を作成
+            let operation = MetadataEditOperation(
+                type: operationType,
+                fieldKey: fieldKey,
+                oldValue: oldValueString,
+                newValue: newValueString
+            )
+            
+            // マネージャーを通して編集履歴に追加
+            ImageMetadataManager.shared.addToEditHistory(identifier: identifier, operation: operation)
+            
             // メタデータの保存
             _ = ImageMetadataManager.shared.saveMetadata(metadata, for: identifier)
-            
-            // 編集操作を記録（直接追加メソッドを使用）
-            ImageMetadataManager.shared.addToEditHistory(identifier: identifier, operation: operation)
         }
     }
     
@@ -1811,10 +2218,61 @@ extension ImageElement {
         switch result {
         case .success:
             // リバート後のメタデータを取得
-            self.metadata = ImageMetadataManager.shared.getMetadata(for: identifier)
-            return true
+            if let metadata = ImageMetadataManager.shared.getMetadata(for: identifier) {
+                self.metadata = metadata
+                
+                // メタデータからプロパティを復元
+                applyMetadataToProperties(metadata)
+                
+                // キャッシュをクリア
+                cachedImage = nil
+                
+                return true
+            }
         default:
             return false
+        }
+        return false
+    }
+    
+    /// メタデータからプロパティを適用
+    private func applyMetadataToProperties(_ metadata: ImageMetadata) {
+        // フレーム太さ   Swiftでは文字列を直接CGFloatに変換出来ない
+        if let frameWidthString = metadata.additionalMetadata["frameWidth"], // additionalMetadataの辞書型から"frameWidth"キーで値を取得 オプショナルではないことを確認（値が存在する場合のみ処理を続行）
+            let frameWidthDouble = Double(frameWidthString) { // 取得した文字列をDouble型の数値に変換 変換が成功した場合のみ（文字列が有効な数値だった場合のみ）処理を続行
+            self.frameWidth = CGFloat(frameWidthDouble) // DoubleをCGFloatにキャストしてframeWidthプロパティに代入 CGFloatは直接文字列から生成できないため、Double経由で変換が必要
+            print("DEBUG: リバート - フレーム太さ: \(frameWidth)")
+        }
+        
+        // 角丸設定
+        if let roundedCornersString = metadata.additionalMetadata["roundedCorners"] {
+            self.roundedCorners = roundedCornersString == "true"
+            print("DEBUG: リバート - 角丸設定: \(roundedCorners)")
+        }
+        
+        // 角丸半径
+        if let cornerRadiusString = metadata.additionalMetadata["cornerRadius"],
+           let cornerRadiusDouble = Double(cornerRadiusString) {
+            self.cornerRadius = CGFloat(cornerRadiusDouble)
+            print("DEBUG: リバート - 角丸半径: \(cornerRadius)")
+        }
+        
+        // フレーム表示
+        if let showFrameString = metadata.additionalMetadata["showFrame"] {
+            self.showFrame = showFrameString == "true"
+            print("DEBUG: リバート - フレーム表示: \(showFrame)")
+        }
+        
+        // フレーム色（これはより複雑な処理が必要）
+        if let frameColorString = metadata.additionalMetadata["frameColor"] {
+            // UIColorを文字列から復元する適切な方法を実装する必要があります
+            // ここでは簡略化します
+            if frameColorString == "white" {
+                self.frameColor = .white
+            } else if frameColorString == "black" {
+                self.frameColor = .black
+            }
+            
         }
     }
     

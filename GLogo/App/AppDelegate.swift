@@ -159,8 +159,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     
     /// 未保存データを保存
     private func saveUnsavedData() {
-        // 未保存プロジェクトのバックアップなど
-        // 必要に応じて実装
+       
     }
     
     /// 一時ファイルをクリーンアップ
@@ -183,54 +182,3 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 }
-
-// プロジェクトのディレクトリ構造　今は一応書いとく
-//GameLogoMaker/
-//├── App/
-//│   ├── AppDelegate.swift
-//│   ├── SceneDelegate.swift
-//│   └── GameLogoMakerApp.swift
-//├── Models/
-//│   ├── LogoProject.swift
-//│   ├── LogoElement.swift
-//│   ├── TextElement.swift
-//│   ├── ShapeElement.swift
-//│   ├── ImageElement.swift
-//│   └── BackgroundSettings.swift
-//├── ViewModels/
-//│   ├── EditorViewModel.swift
-//│   ├── ElementViewModel.swift
-//│   ├── LibraryViewModel.swift
-//│   └── ExportViewModel.swift
-//├── Views/
-//│   ├── Editor/
-//│   │   ├── EditorView.swift
-//│   │   ├── CanvasView.swift
-//│   │   └── ElementSelectionView.swift
-//│   ├── ToolPanels/
-//│   │   ├── ToolPanelView.swift
-//│   │   ├── TextEditorPanel.swift
-//│   │   ├── ShapeEditorPanel.swift
-//│   │   └── BackgroundEditorPanel.swift
-//│   ├── Library/
-//│   │   ├── ElementLibraryView.swift
-//│   │   ├── TemplateView.swift
-//│   │   └── ElementCategoryView.swift
-//│   └── Export/
-//│       ├── ExportView.swift
-//│       └── ExportOptionsView.swift
-//├── Utils/
-//│   ├── Rendering/
-//│   │   ├── CanvasRenderer.swift
-//│   │   └── ElementRenderer.swift
-//│   ├── Extensions/
-//│   │   ├── UIColor+Extensions.swift
-//│   │   ├── UIFont+Extensions.swift
-//│   │   └── CGGeometry+Extensions.swift
-//│   └── Storage/
-//│       ├── ProjectStorage.swift
-//│       └── AssetManager.swift
-//└── Resources/
-//├── Assets.xcassets
-//├── Fonts/
-//└── Templates/

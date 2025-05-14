@@ -19,10 +19,36 @@ enum ImagePickerSource {
     case camera
 }
 
+/// 選択された画像の情報を保持する構造体
+struct SelectedImageInfo {
+    let image: UIImage?
+    let assetIdentifier: String?
+    let url: URL?
+    let phAsset: PHAsset?
+    let metadata: ImageMetadata?
+    
+    init(image: UIImage?, assetIdentifier: String? = nil, url: URL? = nil, phAsset: PHAsset? = nil, metadata: ImageMetadata? = nil) {
+        self.image = image
+        self.assetIdentifier = assetIdentifier
+        self.url = url
+        self.phAsset = phAsset
+        self.metadata = metadata
+    }
+}
+
+class TemporaryImageData {
+    static let shared = TemporaryImageData()
+    
+    var lastSelectedAssetIdentifier: String?
+    var lastSelectedPHAsset: PHAsset?
+    
+    private init() {}
+}
+
 /// 簡易化された画像選択ビュー
 struct ImagePickerView: View {
     /// 選択終了時のコールバック
-    var onSelect: (UIImage?) -> Void
+    var onSelect: (SelectedImageInfo) -> Void
     
     /// ソースタイプ（デフォルトはフォトライブラリ）
     var source: ImagePickerSource = .photoLibrary
@@ -36,21 +62,18 @@ struct ImagePickerView: View {
                 if #available(iOS 14, *) {
                     PhotoPicker(onSelect: { image in
                         print("PhotoPickerで画像が選択されました") // デバッグログ
-                        onSelect(image)
-                        // presentationMode.wrappedValue.dismiss() // この行はコメントアウトまたは削除
+                        onSelect(SelectedImageInfo(image: image))
                     })
                 } else {
                     LegacyImagePicker(source: .photoLibrary, onSelect: { image in
                         print("LegacyImagePickerで画像が選択されました") // デバッグログ
-                        onSelect(image)
-                        // presentationMode.wrappedValue.dismiss() // この行はコメントアウトまたは削除
+                        onSelect(SelectedImageInfo(image: image))
                     })
                 }
             } else {
                 LegacyImagePicker(source: .camera, onSelect: { image in
                     print("カメラで画像が撮影されました") // デバッグログ
-                    onSelect(image)
-                    // presentationMode.wrappedValue.dismiss() // この行はコメントアウトまたは削除
+                    onSelect(SelectedImageInfo(image: image))
                 })
             }
         }
@@ -62,10 +85,15 @@ struct ImagePickerView: View {
 struct PhotoPicker: UIViewControllerRepresentable {
     var onSelect: (UIImage?) -> Void
     
+    /// ソースタイプ（デフォルトはフォトライブラリ）
+    var source: ImagePickerSource = .photoLibrary
+    
     func makeUIViewController(context: Context) -> PHPickerViewController {
-        var config = PHPickerConfiguration()
+        var config = PHPickerConfiguration(photoLibrary: PHPhotoLibrary.shared())
         config.filter = .images
         config.selectionLimit = 1
+        
+        config.preferredAssetRepresentationMode = .current
         
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = context.coordinator
@@ -86,27 +114,47 @@ struct PhotoPicker: UIViewControllerRepresentable {
         }
         
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            // 画像が選択されなかった場合
+            // 選択がキャンセルされた場合
             guard let provider = results.first?.itemProvider else {
                 parent.onSelect(nil)
+                picker.dismiss(animated: true)
                 return
             }
             
-            // 画像をロード
+            // PHAsset識別子を取得して保存（グローバル変数または共有クラスに保存）
+            if #available(iOS 15.0, *) {
+                if let assetIdentifier = results.first?.assetIdentifier {
+                    print("DEBUG: PHPicker - 取得した識別子: \(assetIdentifier)")
+                    // 識別子を一時保存（EditorViewModelで使用するため）
+                    TemporaryImageData.shared.lastSelectedAssetIdentifier = assetIdentifier
+                    
+                    // PHAssetも取得して保存
+                    let assets = PHAsset.fetchAssets(withLocalIdentifiers: [assetIdentifier], options: nil)
+                    TemporaryImageData.shared.lastSelectedPHAsset = assets.firstObject
+                }
+            }
+            
+            // 画像だけをロードして返す
             if provider.canLoadObject(ofClass: UIImage.self) {
                 provider.loadObject(ofClass: UIImage.self) { [weak self] image, error in
                     DispatchQueue.main.async {
-                        self?.parent.onSelect(image as? UIImage)
+                        guard let image = image as? UIImage else {
+                            self?.parent.onSelect(nil)
+                            picker.dismiss(animated: true)
+                            return
+                        }
+                        
+                        // 単純に画像だけを返す
+                        self?.parent.onSelect(image)
+                        picker.dismiss(animated: true)
                     }
                 }
-            } else {
-                parent.onSelect(nil)
             }
         }
     }
 }
 
-/// 従来のUIImagePickerControllerのラッパー（iOS 13以前およびカメラ用）
+/// 従来のUIImagePickerControllerのラッパー
 struct LegacyImagePicker: UIViewControllerRepresentable {
     var source: ImagePickerSource
     var onSelect: (UIImage?) -> Void

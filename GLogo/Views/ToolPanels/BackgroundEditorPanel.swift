@@ -67,9 +67,9 @@ struct BackgroundEditorPanel: View {
             .padding()
         }
         .sheet(isPresented: $isShowingImagePicker) {
-            ImagePickerView { image in
-                if let image = image {
-                    handleSelectedImage(image)
+            ImagePickerView { imageInfo in
+                if imageInfo.image != nil {
+                    handleSelectedImage(imageInfo)  // 引数をimageInfoに変更
                 }
             }
         }
@@ -208,15 +208,24 @@ struct BackgroundEditorPanel: View {
     }
     
     /// 選択された画像を処理
-    private func handleSelectedImage(_ image: UIImage) {
-        // AssetManagerを使用して画像を保存
-        let imageName = "bg_\(UUID().uuidString)"
-        
-        if AssetManager.shared.saveImage(image, name: imageName, type: .background) {
-            // 背景設定を更新
-            backgroundSettings.imageFileName = imageName
-            updateBackground()
+    private func handleSelectedImage(_ imageInfo: SelectedImageInfo) {
+        guard let image = imageInfo.image, let imageData = image.pngData() else {
+            return
         }
+        
+        // 中央位置を計算（もし定義されていなければ）
+        let centerPosition = CGPoint(
+            x: viewModel.project.canvasSize.width / 2,
+            y: viewModel.project.canvasSize.height / 2
+        )
+        
+        // PHAssetとassetIdentifierも一緒に渡す
+        viewModel.addImageElement(
+            imageData: imageData,
+            position: centerPosition,
+            phAsset: imageInfo.phAsset,
+            assetIdentifier: imageInfo.assetIdentifier
+        )
     }
     
     /// 画像を読み込み

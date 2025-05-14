@@ -18,7 +18,9 @@ import Combine
 class ElementViewModel: ObservableObject {
     // MARK: - プロパティ
     
-    /// エディタビューモデルへの参照
+    /// エディタビューモデルへの弱参照 - 循環参照を防ぐため弱参照で保持。
+    /// ElementViewModel　は　EditorViewによって所有され、EditorViewModelとは参照のみの関係を持つ。
+    /// この設計により、EditorViewModelが解放されたときに自動的にnilになる。
     private weak var editorViewModel: EditorViewModel?
     
     /// 現在編集中の要素
@@ -27,7 +29,9 @@ class ElementViewModel: ObservableObject {
     /// 要素の種類
     @Published private(set) var elementType: LogoElementType?
     
-    /// テキスト要素（キャスト済み）
+    /// 型変換済みの参照 - LogoElement型から適切なサブクラス型へ一度だけ変換しておくことで、
+    /// 元の型を失わずに特定の要素タイプ固有のプロパティやメソッドに直接アクセスできる
+    /// これによりビューコードでの毎回の型チェックや変換処理が不要になる
     @Published private(set) var textElement: TextElement?
     
     /// 図形要素（キャスト済み）
@@ -482,8 +486,20 @@ class ElementViewModel: ObservableObject {
             return
         }
         
+        // 変更前の値を記録（メタデータ編集履歴用）
+        let oldValue = imageElement.saturationAdjustment
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageSaturation(imageElement, newSaturation: saturation)
+        
+        // メタデータに編集を記録
+        if imageElement.originalImageIdentifier != nil {
+            imageElement.recordMetadataEdit(
+                fieldKey: "saturationAdjustment",
+                oldValue: oldValue,
+                newValue: saturation
+            )
+        }
     }
     
     /// 明度調整の更新
@@ -500,8 +516,17 @@ class ElementViewModel: ObservableObject {
             return
         }
         
+        let oldvalue = imageElement.brightnessAdjustment
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageBrightness(imageElement, newBrightness: brightness)
+        
+        if imageElement.originalImageIdentifier != nil {
+            imageElement.recordMetadataEdit(
+                fieldKey: "brigthtnessAdjustment",
+                oldValue: oldvalue,
+                newValue: brightness)
+        }
     }
     
     /// コントラスト調整の更新
@@ -518,8 +543,17 @@ class ElementViewModel: ObservableObject {
             return
         }
         
+        let oldvalue = imageElement.contrastAdjustment
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageContrast(imageElement, newContrast: contrast)
+        
+        if imageElement.originalImageIdentifier != nil {
+            imageElement.recordMetadataEdit(
+                fieldKey: "contrastAdjustment",
+                oldValue: oldvalue,
+                newValue: contrast)
+        }
     }
     
     // ハイライト調整の更新
@@ -536,8 +570,17 @@ class ElementViewModel: ObservableObject {
             return
         }
         
+        let oldvalue = imageElement.highlightsAdjustment
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageHighlights(imageElement, newHighlights: highlights)
+        
+        if imageElement.originalImageIdentifier != nil {
+            imageElement.recordMetadataEdit(
+                fieldKey: "highlightsAdjustment",
+                oldValue: oldvalue,
+                newValue: highlights)
+        }
     }
     
     // シャドウ調整の更新
@@ -554,8 +597,17 @@ class ElementViewModel: ObservableObject {
             return
         }
         
+        let oldvalue = imageElement.shadowsAdjustment
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageShadows(imageElement, newShadows: shadows)
+        
+        if imageElement.originalImageIdentifier != nil {
+            imageElement.recordMetadataEdit(
+                fieldKey: "shadowsAdjustment",
+                oldValue: oldvalue,
+                newValue: shadows)
+        }
     }
     
     /// ティントカラーの更新
@@ -576,8 +628,28 @@ class ElementViewModel: ObservableObject {
             return
         }
         
+        let oldColor = imageElement.tintColor
+        let oldIntensity = imageElement.tintIntensity
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageTintColor(imageElement, oldColor: imageElement.tintColor, newColor: color, oldIntensity: imageElement.tintIntensity, newIntensity: intensity)
+        
+        // メタデータに編集を記録
+        if imageElement.originalImageIdentifier != nil {
+            // 色の変更を記録
+            imageElement.recordMetadataEdit(
+                fieldKey: "tintColor",
+                oldValue: oldColor?.description,
+                newValue: color?.description
+            )
+            
+            // 強度の変更を記録
+            imageElement.recordMetadataEdit(
+                fieldKey: "tintIntensity",
+                oldValue: oldIntensity,
+                newValue: intensity
+            )
+        }
     }
     
     /// フレーム表示の更新
@@ -594,8 +666,20 @@ class ElementViewModel: ObservableObject {
             return
         }
         
+        // 変更前の値を記録
+        let oldValue = imageElement.showFrame
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageShowFrame(imageElement, newValue: showFrame)
+        
+        // メタデータに編集を記録
+        if imageElement.originalImageIdentifier != nil {
+            imageElement.recordMetadataEdit(
+                fieldKey: "showFrame",
+                oldValue: oldValue,
+                newValue: showFrame
+            )
+        }
     }
     
     /// フレームの色の更新
@@ -612,8 +696,20 @@ class ElementViewModel: ObservableObject {
             return
         }
         
+        // 変更前の値を記録
+        let oldColor = imageElement.frameColor
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageFrameColor(imageElement, newColor: color)
+        
+        // メタデータに編集を記録
+        if imageElement.originalImageIdentifier != nil {
+            imageElement.recordMetadataEdit(
+                fieldKey: "frameColor",
+                oldValue: oldColor.description,
+                newValue: color.description
+            )
+        }
     }
     
     /// フレームの太さの更新
@@ -630,8 +726,20 @@ class ElementViewModel: ObservableObject {
             return
         }
         
+        // 変更前の値を記録
+        let oldWidth = imageElement.frameWidth
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageFrameWidth(imageElement, newWidth: width)
+        
+        // メタデータに編集を記録
+        if imageElement.originalImageIdentifier != nil {
+            imageElement.recordMetadataEdit(
+                fieldKey: "frameWidth",
+                oldValue: oldWidth,
+                newValue: width
+            )
+        }
     }
     
     /// 角丸の設定の更新
@@ -648,8 +756,29 @@ class ElementViewModel: ObservableObject {
             return
         }
         
+        // 変更前の値を記録
+        let wasRounded = imageElement.roundedCorners
+        let oldRadius = imageElement.cornerRadius
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageRoundedCorners(imageElement, wasRounded: imageElement.roundedCorners, isRounded: rounded, oldRadius: imageElement.cornerRadius, newRadius: radius)
+        
+        // メタデータに編集を記録
+        if imageElement.originalImageIdentifier != nil {
+            // 角丸の有効/無効の変更を記録
+            imageElement.recordMetadataEdit(
+                fieldKey: "roundedCorners",
+                oldValue: wasRounded,
+                newValue: rounded
+            )
+            
+            // 角丸半径の変更を記録
+            imageElement.recordMetadataEdit(
+                fieldKey: "cornerRadius",
+                oldValue: oldRadius,
+                newValue: radius
+            )
+        }
     }
 
     

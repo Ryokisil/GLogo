@@ -62,16 +62,16 @@ class CanvasRenderer {
     }
     
     /// プロジェクトを指定された形式でデータとしてエクスポート
-    func exportData(format: ExportFormat) -> Data? {
-        guard let image = renderAsImage() else { return nil }
-        
-        switch format {
-        case .png:
-            return image.pngData()
-        case .jpg:
-            return image.jpegData(compressionQuality: settings.jpegQuality)
-        }
-    }
+//    func exportData(format: ExportFormat) -> Data? {
+//        guard let image = renderAsImage() else { return nil }
+//        
+//        switch format {
+//        case .png:
+//            return image.pngData()
+//        case .jpg:
+//            return image.jpegData(compressionQuality: settings.jpegQuality)
+//        }
+//    }
     
     // MARK: - 描画メソッド
     
@@ -155,32 +155,32 @@ class CanvasRenderer {
 // MARK: - 便利な拡張メソッド
 
 extension CanvasRenderer {
-    /// シンプルな設定でプロジェクトをPNGデータとしてエクスポート
-    static func quickExportAsPNG(_ project: LogoProject, transparentBackground: Bool = true) -> Data? {
-        let settings = RenderSettings(transparentBackground: transparentBackground)
-        let renderer = CanvasRenderer(project: project, settings: settings)
-        return renderer.exportData(format: .png)
-    }
-    
-    /// シンプルな設定でプロジェクトをJPEGデータとしてエクスポート
-    static func quickExportAsJPEG(_ project: LogoProject, quality: CGFloat = 0.9) -> Data? {
-        let settings = RenderSettings(transparentBackground: false, jpegQuality: quality)
-        let renderer = CanvasRenderer(project: project, settings: settings)
-        return renderer.exportData(format: .jpg)
-    }
-    
-    /// 高解像度でプロジェクトをエクスポート
-    static func exportHighResolution(_ project: LogoProject, format: ExportFormat, scale: CGFloat = 2.0) -> Data? {
-        let settings = RenderSettings(
-            transparentBackground: format == .png,
-            jpegQuality: 1.0,
-            applyAntiAliasing: true,
-            applyPostProcessing: true,
-            resolutionScale: scale
-        )
-        let renderer = CanvasRenderer(project: project, settings: settings)
-        return renderer.exportData(format: format)
-    }
+//    /// シンプルな設定でプロジェクトをPNGデータとしてエクスポート
+//    static func quickExportAsPNG(_ project: LogoProject, transparentBackground: Bool = true) -> Data? {
+//        let settings = RenderSettings(transparentBackground: transparentBackground)
+//        let renderer = CanvasRenderer(project: project, settings: settings)
+//        return renderer.exportData(format: .png)
+//    }
+//    
+//    /// シンプルな設定でプロジェクトをJPEGデータとしてエクスポート
+//    static func quickExportAsJPEG(_ project: LogoProject, quality: CGFloat = 0.9) -> Data? {
+//        let settings = RenderSettings(transparentBackground: false, jpegQuality: quality)
+//        let renderer = CanvasRenderer(project: project, settings: settings)
+//        return renderer.exportData(format: .jpg)
+//    }
+//    
+//    /// 高解像度でプロジェクトをエクスポート
+//    static func exportHighResolution(_ project: LogoProject, format: ExportFormat, scale: CGFloat = 2.0) -> Data? {
+//        let settings = RenderSettings(
+//            transparentBackground: format == .png,
+//            jpegQuality: 1.0,
+//            applyAntiAliasing: true,
+//            applyPostProcessing: true,
+//            resolutionScale: scale
+//        )
+//        let renderer = CanvasRenderer(project: project, settings: settings)
+//        return renderer.exportData(format: format)
+//    }
     
     /// プロジェクトのサムネイル画像を生成
     static func createThumbnail(for project: LogoProject, size: CGSize = CGSize(width: 200, height: 200)) -> UIImage? {

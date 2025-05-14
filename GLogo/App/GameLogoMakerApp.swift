@@ -3,9 +3,9 @@
 //  GameLogoMaker
 //
 //  概要:
-//  このファイルはSwiftUIアプリケーションのエントリーポイントを定義します。
-//  iOS 14以降のSwiftUIライフサイクルに対応し、WindowGroupとSceneを管理します。
-//  AppDelegateと連携してアプリケーションの状態を管理します。
+//  このファイルはSwiftUIアプリケーションのエントリーポイントを定義
+//  iOS 14以降のSwiftUIライフサイクルに対応し、WindowGroupとSceneを管理
+//  AppDelegateと連携してアプリケーションの状態を管理
 //
 
 import SwiftUI
@@ -145,14 +145,12 @@ struct GameLogoMakerApp: App {
         
         /// 画像をインポート
         private func importImage() {
-            // 画像選択シートを表示するためのフラグを設定
-            // 実際の実装では、editorViewModel内のフラグを設定するなど
+            
         }
         
         /// 通知リスナーの設定
         private func setupNotificationListeners() {
-            // その他の通知リスナーを設定
-            // 例：自動保存タイマーの制御など
+            
         }
     }
     

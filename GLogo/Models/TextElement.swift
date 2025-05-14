@@ -339,7 +339,6 @@ class TextElement: LogoElement {
         copy.letterSpacing = letterSpacing
         
         // 効果のコピー
-        // 注意: ここではディープコピーが必要な場合がある
         copy.effects = effects
         
         return copy

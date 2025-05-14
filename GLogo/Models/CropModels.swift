@@ -29,8 +29,8 @@ extension UIImage {
     func cropToRect(_ rect: CGRect) -> UIImage? {
         guard let cgImage = self.cgImage else { return nil }
         
-        let scaleX = self.size.width / self.scale
-        let scaleY = self.size.height / self.scale
+        _ = self.size.width / self.scale
+        _ = self.size.height / self.scale
         
         let scaledRect = CGRect(
             x: rect.origin.x * self.scale,

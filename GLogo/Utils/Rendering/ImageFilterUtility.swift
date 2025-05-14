@@ -115,7 +115,7 @@ class ImageFilterUtility {
             // シャドウを暗くする場合：CIColorControlsとCIVignetteEffectの組み合わせ
             let darkness = abs(clampedAmount) * 0.5  // 最大で0.5の暗さ（緩やかな変化）
             
-            // 1. まず暗い部分をより暗くする（コントラスト調整）
+            // まず暗い部分をより暗くする（コントラスト調整）
             guard let contrastFilter = CIFilter(name: "CIColorControls") else { return image }
             contrastFilter.setValue(image, forKey: kCIInputImageKey)
             contrastFilter.setValue(1.0 + darkness * 0.3, forKey: kCIInputContrastKey)  // 微小なコントラスト増加
@@ -123,8 +123,8 @@ class ImageFilterUtility {
             
             guard let contrastImage = contrastFilter.outputImage else { return image }
             
-            // 2. 暗い部分により効果を出すためのマスク生成
-            guard let luminanceFilter = CIFilter(name: "CIColorMatr") else { return contrastImage }
+            // 暗い部分により効果を出すためのマスク生成
+            guard let luminanceFilter = CIFilter(name: "CIColorMatrix") else { return contrastImage }
             luminanceFilter.setValue(image, forKey: kCIInputImageKey)
             
             // RGB→グレースケール変換行列（暗い部分を検出）
@@ -134,14 +134,14 @@ class ImageFilterUtility {
             
             guard let luminanceImage = luminanceFilter.outputImage else { return contrastImage }
             
-            // 3. 暗い部分のマスクをガンマ補正してシャドウ部分を強調
+            // 暗い部分のマスクをガンマ補正してシャドウ部分を強調
             guard let gammaFilter = CIFilter(name: "CIGammaAdjust") else { return contrastImage }
             gammaFilter.setValue(luminanceImage, forKey: kCIInputImageKey)
             gammaFilter.setValue(2.0 + darkness * 3.0, forKey: "inputPower")  // ガンマ値を大きくして暗い部分を強調
             
             guard let maskImage = gammaFilter.outputImage else { return contrastImage }
             
-            // 4. マスク画像を使ってブレンド
+            // マスク画像を使ってブレンド
             guard let blendFilter = CIFilter(name: "CIBlendWithMask") else { return contrastImage }
             blendFilter.setValue(image, forKey: kCIInputImageKey)  // 元画像
             blendFilter.setValue(contrastImage, forKey: kCIInputBackgroundImageKey)  // コントラスト調整画像
@@ -153,14 +153,14 @@ class ImageFilterUtility {
             // シャドウを明るくする場合：CIColorCurveとマスクの組み合わせ
             let brightness = clampedAmount * 0.3  // 最大で0.3の明るさ（緩やかな変化）
             
-            // 1. まず暗い部分をより明るくする
+            // まず暗い部分をより明るくする
             guard let brightnessFilter = CIFilter(name: "CIColorControls") else { return image }
             brightnessFilter.setValue(image, forKey: kCIInputImageKey)
             brightnessFilter.setValue(brightness, forKey: kCIInputBrightnessKey)
             
             guard let brightImage = brightnessFilter.outputImage else { return image }
             
-            // 2. 暗い部分により効果を出すためのマスク生成（反転）
+            // 暗い部分により効果を出すためのマスク生成（反転）
             guard let luminanceFilter = CIFilter(name: "CIColorMatrix") else { return brightImage }
             luminanceFilter.setValue(image, forKey: kCIInputImageKey)
             
@@ -171,20 +171,20 @@ class ImageFilterUtility {
             
             guard let luminanceImage = luminanceFilter.outputImage else { return brightImage }
             
-            // 3. 明るい部分を反転して暗い部分を強調
+            // 明るい部分を反転して暗い部分を強調
             guard let invertFilter = CIFilter(name: "CIColorInvert") else { return brightImage }
             invertFilter.setValue(luminanceImage, forKey: kCIInputImageKey)
             
             guard let invertedImage = invertFilter.outputImage else { return brightImage }
             
-            // 4. ガンマ補正で中間〜暗い部分をさらに強調
+            // ガンマ補正で中間〜暗い部分をさらに強調
             guard let gammaFilter = CIFilter(name: "CIGammaAdjust") else { return brightImage }
             gammaFilter.setValue(invertedImage, forKey: kCIInputImageKey)
             gammaFilter.setValue(1.5, forKey: "inputPower")
             
             guard let maskImage = gammaFilter.outputImage else { return brightImage }
             
-            // 5. マスク画像を使ってブレンド
+            // マスク画像を使ってブレンド
             guard let blendFilter = CIFilter(name: "CIBlendWithMask") else { return brightImage }
             blendFilter.setValue(image, forKey: kCIInputImageKey)  // 元画像
             blendFilter.setValue(brightImage, forKey: kCIInputBackgroundImageKey)  // 明るさ調整画像
@@ -193,6 +193,8 @@ class ImageFilterUtility {
             return blendFilter.outputImage
         }
     }
+    
+// 以下はまだUIとして未実装なのでこれから
     
     /// 色温度（Warmth）調整を適用
     static func applyWarmthAdjustment(to image: CIImage, warmth: CGFloat) -> CIImage? {

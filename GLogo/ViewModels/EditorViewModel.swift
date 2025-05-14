@@ -13,6 +13,7 @@
 import Foundation
 import UIKit
 import Combine
+import Photos
 
 /// エディタモード
 enum EditorMode {
@@ -153,11 +154,22 @@ class EditorViewModel: ObservableObject {
     }
     
     /// 画像要素をデータから追加
-    func addImageElement(imageData: Data, position: CGPoint) {
-        print("DEBUG: キャンバスサイズ - 幅: \(project.canvasSize.width), 高さ: \(project.canvasSize.height)")
+    func addImageElement(imageData: Data, position: CGPoint, phAsset: PHAsset? = nil, assetIdentifier: String? = nil) {
+        print("DEBUG: addImageElement開始 - PHAsset: \(phAsset != nil), 識別子: \(assetIdentifier ?? "なし")")
+        let imageElement = ImageElement(imageData: imageData, fitMode: .aspectFit)
         
-        let imageElement = ImageElement(imageData: imageData, fitMode: .aspectFit, canvasSize: project.canvasSize)
-        print("DEBUG: 画像サイズ - 幅: \(imageElement.size.width), 高さ: \(imageElement.size.height)")
+        // 一時保存された識別子を使用
+        if let assetIdentifier = TemporaryImageData.shared.lastSelectedAssetIdentifier {
+            imageElement.originalImageIdentifier = assetIdentifier
+            print("DEBUG: 一時保存されていた識別子を設定: \(assetIdentifier)")
+            
+            // 使用したら消去（次回のために）
+            TemporaryImageData.shared.lastSelectedAssetIdentifier = nil
+        } else {
+            // PHAssetがない場合は内部で生成したUUIDを使用
+            imageElement.originalImageIdentifier = UUID().uuidString
+            print("DEBUG: 内部生成のUUIDを設定: \(imageElement.originalImageIdentifier!)")
+        }
         
         // 【修正箇所1】画面に表示される範囲の中央に配置（ビューポートの中央）
         // デバイスの画面サイズを取得（おおよそのビューポート）
@@ -1085,6 +1097,50 @@ class EditorViewModel: ObservableObject {
         }
     }
     
+    /// プロジェクトを保存（メタデータも含む）
+    func saveProjectWithMetadata(completion: @escaping (Bool, Error?) -> Void) {
+        // まずプロジェクト自体を保存
+        saveProject { success in
+            guard success else {
+                completion(false, nil)
+                return
+            }
+            
+            // メタデータの保存が必要な画像要素を探す
+            var metadataSaveOperations = 0
+            var allSuccess = true
+            var lastError: Error? = nil
+            
+            for element in self.project.elements {
+                if let imageElement = element as? ImageElement,
+                   let identifier = imageElement.originalImageIdentifier {
+                    
+                    metadataSaveOperations += 1
+                    
+                    // メタデータを元の写真に保存
+                    ImageMetadataManager.shared.saveMetadataToOriginalPhoto(for: identifier) { success, error in
+                        metadataSaveOperations -= 1
+                        
+                        if !success {
+                            allSuccess = false
+                            lastError = error
+                        }
+                        
+                        // すべての操作が完了したらコールバックを呼び出す
+                        if metadataSaveOperations == 0 {
+                            completion(allSuccess, lastError)
+                        }
+                    }
+                }
+            }
+            
+            // 画像要素がなかった場合
+            if metadataSaveOperations == 0 {
+                completion(true, nil)
+            }
+        }
+    }
+    
     /// プロジェクト読み込み
     func loadProject(withId id: UUID, completion: @escaping (Bool) -> Void) {
         // ProjectStorageクラスを使用してプロジェクトを読み込み
@@ -1166,81 +1222,81 @@ class EditorViewModel: ObservableObject {
         )
     }
 
-    // MARK: - エクスポート
-    
-    /// プロジェクトを画像としてエクスポート
-    func exportAsImage(size: CGSize? = nil, backgroundColor: UIColor? = nil) -> UIImage? {
-        // 要素の実際の範囲を計算
-        let boundingRect = calculateContentBounds()
-        
-        // 範囲が空の場合（要素がない場合）はデフォルトサイズを使用
-        let contentRect = boundingRect.isEmpty ?
-        CGRect(origin: .zero, size: project.canvasSize) : boundingRect
-        
-        // エクスポートサイズを決定（指定されたサイズか、内容の実際のサイズ）
-        let renderSize = size ?? contentRect.size
-        
-        // UIGraphicsImageRendererを使用して描画
-        let renderer = UIGraphicsImageRenderer(size: renderSize)
-        
-        return renderer.image { context in
-            let cgContext = context.cgContext
-            
-            // 背景色を設定
-            if let backgroundColor = backgroundColor {
-                cgContext.setFillColor(backgroundColor.cgColor)
-                cgContext.fill(CGRect(origin: .zero, size: renderSize))
-            } else {
-                // 背景設定を適用
-                project.backgroundSettings.draw(in: cgContext, rect: CGRect(origin: .zero, size: renderSize))
-            }
-            
-            // スケーリングとオフセットを適用して要素を描画エリア内に収める
-            let scaleX = renderSize.width / contentRect.width
-            let scaleY = renderSize.height / contentRect.height
-            
-            cgContext.saveGState()
-            cgContext.scaleBy(x: scaleX, y: scaleY)
-            cgContext.translateBy(x: -contentRect.minX, y: -contentRect.minY)
-            
-            // すべての要素を描画
-            for element in project.elements where element.isVisible {
-                element.draw(in: cgContext)
-            }
-            
-            cgContext.restoreGState()
-        }
-    }
-    
-    // すべての要素の境界ボックスを計算するメソッド
-    private func calculateContentBounds() -> CGRect {
-        var rect = CGRect.zero
-        var isFirst = true
-        
-        for element in project.elements where element.isVisible {
-            if isFirst {
-                rect = element.frame
-                isFirst = false
-            } else {
-                rect = rect.union(element.frame)
-            }
-        }
-        
-        // 余白なし
-        return rect.insetBy(dx: -0, dy: -0)
-    }
-    
-    /// 透明背景でプロジェクトをPNGとしてエクスポート
-    func exportAsPNG() -> Data? {
-        guard let image = exportAsImage(backgroundColor: .clear) else { return nil }
-        return image.pngData()
-    }
-    
-    /// プロジェクトをJPEGとしてエクスポート
-    func exportAsJPEG(quality: CGFloat = 0.9) -> Data? {
-        guard let image = exportAsImage() else { return nil }
-        return image.jpegData(compressionQuality: quality)
-    }
+//    // MARK: - エクスポート
+//    
+//    /// プロジェクトを画像としてエクスポート
+//    func exportAsImage(size: CGSize? = nil, backgroundColor: UIColor? = nil) -> UIImage? {
+//        // 要素の実際の範囲を計算
+//        let boundingRect = calculateContentBounds()
+//        
+//        // 範囲が空の場合（要素がない場合）はデフォルトサイズを使用
+//        let contentRect = boundingRect.isEmpty ?
+//        CGRect(origin: .zero, size: project.canvasSize) : boundingRect
+//        
+//        // エクスポートサイズを決定（指定されたサイズか、内容の実際のサイズ）
+//        let renderSize = size ?? contentRect.size
+//        
+//        // UIGraphicsImageRendererを使用して描画
+//        let renderer = UIGraphicsImageRenderer(size: renderSize)
+//        
+//        return renderer.image { context in
+//            let cgContext = context.cgContext
+//            
+//            // 背景色を設定
+//            if let backgroundColor = backgroundColor {
+//                cgContext.setFillColor(backgroundColor.cgColor)
+//                cgContext.fill(CGRect(origin: .zero, size: renderSize))
+//            } else {
+//                // 背景設定を適用
+//                project.backgroundSettings.draw(in: cgContext, rect: CGRect(origin: .zero, size: renderSize))
+//            }
+//            
+//            // スケーリングとオフセットを適用して要素を描画エリア内に収める
+//            let scaleX = renderSize.width / contentRect.width
+//            let scaleY = renderSize.height / contentRect.height
+//            
+//            cgContext.saveGState()
+//            cgContext.scaleBy(x: scaleX, y: scaleY)
+//            cgContext.translateBy(x: -contentRect.minX, y: -contentRect.minY)
+//            
+//            // すべての要素を描画
+//            for element in project.elements where element.isVisible {
+//                element.draw(in: cgContext)
+//            }
+//            
+//            cgContext.restoreGState()
+//        }
+//    }
+//    
+//    // すべての要素の境界ボックスを計算するメソッド
+//    private func calculateContentBounds() -> CGRect {
+//        var rect = CGRect.zero
+//        var isFirst = true
+//        
+//        for element in project.elements where element.isVisible {
+//            if isFirst {
+//                rect = element.frame
+//                isFirst = false
+//            } else {
+//                rect = rect.union(element.frame)
+//            }
+//        }
+//        
+//        // 余白なし
+//        return rect.insetBy(dx: -0, dy: -0)
+//    }
+//    
+//    /// 透明背景でプロジェクトをPNGとしてエクスポート
+//    func exportAsPNG() -> Data? {
+//        guard let image = exportAsImage(backgroundColor: .clear) else { return nil }
+//        return image.pngData()
+//    }
+//    
+//    /// プロジェクトをJPEGとしてエクスポート
+//    func exportAsJPEG(quality: CGFloat = 0.9) -> Data? {
+//        guard let image = exportAsImage() else { return nil }
+//        return image.jpegData(compressionQuality: quality)
+//    }
     
     // MARK: - デバッグ
     

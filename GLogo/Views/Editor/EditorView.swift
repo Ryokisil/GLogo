@@ -28,13 +28,15 @@ enum ActiveSheet: Identifiable {
 struct EditorView: View {
     // MARK: - プロパティ
     
-    /// 複数ビューで参照するかもなのでこのラッパーを使用　ビュー再構築時に参照が失われる可能性あり
+    /// 複数ビューで参照するかもなのでこのラッパーを使用
     @ObservedObject var viewModel: EditorViewModel
     
-    /// オブジェクトを維持しこのビューに所有権を渡すためこのラッパーを使用
+    /// オブジェクトを維持しこのビューに所有権を渡すためこのラッパーを使用             ||   EditorView → ElementViewModel（強参照）
+    /// 要素編集ビューモデル - 強参照で保持され、EditorViewModel（弱参照）と通信。 ||   ElementViewModel → EditorViewModel（弱参照）
+    /// これにより循環参照を避けつつ、選択された要素の編集機能を提供。                    ||   EditorView → EditorViewModel（強参照）
     @StateObject private var elementViewModel: ElementViewModel
     
-    // 以下State群はenumで列挙型としてまとめとくと整理になるかもなので検討
+    /// 以下State群はenumで列挙型としてまとめとくと整理になるかもなので検討
     /// ツールパネルの表示フラグ
     @State private var isShowingToolPanel = true
     
@@ -78,7 +80,7 @@ struct EditorView: View {
     
     init(viewModel: EditorViewModel) {
         self.viewModel = viewModel
-        // StateObjectの初期化はプロパティイニシャライザで行えないため、_elementViewModelを直接初期化
+        // StateObjectの初期化はプロパティイニシャライザで行えないため、_elementViewModelを直接初期化 プロパティラッパーの初期化などを行う際 _ を付けた変数を使って初期化する必要がある
         _elementViewModel = StateObject(wrappedValue: ElementViewModel(editorViewModel: viewModel))
     }
     
@@ -100,41 +102,30 @@ struct EditorView: View {
                 // ツールバーアイテム
                 toolbarItems
             }
-//            .sheet(isPresented: $isShowingExportSheet) {
-//                ExportView(viewModel: viewModel)
-//            }
-//            .sheet(isPresented: $isShowingProjectSettings) {
-//                ProjectSettingsView(viewModel: viewModel)
-//            }
+            // print("DEBUG: ImagePickerViewからの選択 - 識別子: \(imageInfo.assetIdentifier ?? "なし"), PHAsset: \(imageInfo.phAsset != nil)")
+            // 画像ピッカー内でクロップ画面への遷移を追加
             .sheet(item: $activeSheet) { item in
                 switch item {
                 case .imagePicker:
-                    ImagePickerView { image in
-                        if let image = image {
-                            print("画像が選択されました") // デバッグログ
-                            DispatchQueue.main.async {
-                                // 非同期で状態を更新
-                                self.activeSheet = .imageCrop(image)
+                    ImagePickerView { imageInfo in
+                        if let image = imageInfo.image {
+                            // 画像が選択されたら、一度シートをnilにしてから再度表示
+                            Task {
+                                // まずシートを閉じる
+                                activeSheet = nil
+                                // UIの更新を待つ
+                                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1秒待機
+                                // クロップ画面を表示
+                                activeSheet = .imageCrop(image)
                             }
-                        } else {
-                            print("画像選択がキャンセルされました") // デバッグログ
-                            activeSheet = nil
                         }
-                    }
-                    .onDisappear {
-                        print("ImagePickerViewが閉じられました") // デバッグログ
                     }
                     
                 case .imageCrop(let image):
                     ImageCropView(image: image) { croppedImage in
-                        print("画像がクロップされました") // デバッグログ
-                        // クロップ完了後、編集モードに戻る
                         viewModel.addCroppedImageElement(image: croppedImage)
                         viewModel.editorMode = .select
                         activeSheet = nil
-                    }
-                    .onDisappear {
-                        print("ImageCropViewが閉じられました") // デバッグログ
                     }
                 }
             }
@@ -199,7 +190,6 @@ struct EditorView: View {
             Spacer()
             
             Button(action: {
-                // タブの切り替え処理（必要に応じて実装）
             }) {
                 Text("エフェクト")
                     .foregroundColor(.secondary)
@@ -422,9 +412,9 @@ struct EditorView: View {
             // 左側に保存ボタン
             ToolbarItem(placement: .navigationBarLeading) {
                 Button("Save") {
-                    saveProject()
+                    saveProjectWithMetadata()
                 }
-                .help("プロジェクトを保存")
+                .help("保存")
             }
             
             // 右側にリバートボタン
@@ -433,7 +423,7 @@ struct EditorView: View {
                     // リバート機能の確認ダイアログを表示
                     if canRevert() {
                         showConfirmation(
-                            message: "画像を初期状態に戻しますか？この操作は元に戻せません。",
+                            message: "画像を初期状態に戻しますか？",
                             action: revertSelectedImageToInitial
                         )
                     } else {
@@ -451,11 +441,47 @@ struct EditorView: View {
     
     /// プロジェクトを保存
     private func saveProject() {
+        // 現在選択されている画像要素のメタデータを保存
+        if let imageElement = viewModel.selectedElement as? ImageElement,
+           let identifier = imageElement.originalImageIdentifier {
+            
+            // 最新のメタデータを保存
+            if let metadata = imageElement.metadata {
+                let saved = ImageMetadataManager.shared.saveMetadata(metadata, for: identifier)
+                if saved {
+                    print("DEBUG: 画像メタデータを保存しました - ID: \(identifier)")
+                } else {
+                    print("DEBUG: 画像メタデータの保存に失敗しました")
+                }
+            }
+            
+            // 編集履歴も保存（既に自動的に保存されている場合もあります）
+            let history = ImageMetadataManager.shared.getEditHistory(for: identifier)
+            if !history.isEmpty {
+                print("DEBUG: 編集履歴があります - \(history.count)件")
+            } else {
+                print("DEBUG: 警告 - 編集履歴がありません")
+            }
+        }
+        
+        // 通常のプロジェクト保存処理
         viewModel.saveProject { success in
             if success {
-                showAlert(title: "保存完了", message: "編集が保存されました。")
+                showAlert(title: "保存完了", message: "プロジェクトが保存されました。")
             } else {
                 showAlert(title: "エラー", message: "プロジェクトの保存に失敗しました。")
+            }
+        }
+    }
+    
+    /// プロジェクトとメタデータを保存
+    private func saveProjectWithMetadata() {
+        viewModel.saveProjectWithMetadata { success, error in
+            if success {
+                showAlert(title: "保存完了", message: "プロジェクトとメタデータが保存されました。")
+            } else {
+                let errorMessage = error?.localizedDescription ?? "不明なエラー"
+                showAlert(title: "エラー", message: "保存に失敗しました: \(errorMessage)")
             }
         }
     }
@@ -472,7 +498,7 @@ struct EditorView: View {
             y: viewModel.project.canvasSize.height / 2
         )
         
-        viewModel.addImageElement(imageData: imageData, position: centerPosition)
+        viewModel.addImageElement(imageData: imageData, position: centerPosition, phAsset: nil)
         
         // 選択モードに戻る
         viewModel.editorMode = .select

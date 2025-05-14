@@ -12,7 +12,6 @@
 
 import UIKit
 import SwiftUI
-//import Combine
 
 /// キャンバスビュー - ロゴ要素を描画・編集するためのUIKitビュー
 class CanvasView: UIView {
@@ -448,7 +447,7 @@ class CanvasView: UIView {
         }
         
         // 選択中の要素がない、またはヒットしなかった場合
-        // ここが重要: 新しい要素を選択する際に、ちゃんとonElementSelectedを呼ぶ
+        // 新しい要素を選択する際に、onElementSelectedを呼ぶ
         if let hitElement = hitElement {
             // 要素を選択
             onElementSelected?(hitElement)
@@ -608,13 +607,6 @@ class CanvasView: UIView {
         transform = transform.translatedBy(x: panOffset.x, y: panOffset.y)
         transform = transform.scaledBy(x: zoomScale, y: zoomScale)
         
-        // 中央を原点とする場合は以下のような変換も可能
-        // let centerX = bounds.width / 2
-        // let centerY = bounds.height / 2
-        // transform = transform.translatedBy(x: centerX, y: centerY)
-        // transform = transform.scaledBy(x: zoomScale, y: zoomScale)
-        // transform = transform.translatedBy(x: -centerX + panOffset.x, y: -centerY + panOffset.y)
-        
         viewTransform = transform
         setNeedsDisplay()
     }
@@ -678,6 +670,66 @@ struct CanvasViewRepresentable: UIViewRepresentable {
     /// グリッドスナップフラグ
     var snapToGrid: Bool = false
     
+    /// コーディネータークラス - UIKitの委託パターンをSwiftUIに橋渡し
+    class Coordinator: NSObject {
+        var parent: CanvasViewRepresentable
+        
+        init(_ parent: CanvasViewRepresentable) {
+            self.parent = parent
+        }
+        
+        // コールバック設定
+        func setupCallbacks(canvasView: CanvasView) {
+            // 要素選択時のコールバック
+            canvasView.onElementSelected = { [viewModel = parent.viewModel] element in
+                // 要素が選択された場合は明示的に設定
+                if let element = element {
+                    viewModel.selectElement(element)
+                } else {
+                    viewModel.clearSelection()
+                }
+            }
+            
+            // 操作開始時のコールバック
+            canvasView.onManipulationStarted = { [viewModel = parent.viewModel] type, point in
+                viewModel.startManipulation(type, at: point)
+            }
+            
+            // 操作中のコールバック
+            canvasView.onManipulationChanged = { [viewModel = parent.viewModel] point in
+                viewModel.continueManipulation(at: point)
+            }
+            
+            // 操作終了時のコールバック
+            canvasView.onManipulationEnded = { [viewModel = parent.viewModel] in
+                viewModel.endManipulation()
+            }
+            
+            // 要素作成時のコールバック
+            canvasView.onCreateElement = { [viewModel = parent.viewModel] point in
+                switch viewModel.editorMode {
+                case .textCreate:
+                    viewModel.addTextElement(text: "テキストを入力", position: point)
+                case .shapeCreate:
+                    viewModel.addShapeElement(type: viewModel.nextShapeType, position: point)
+                case .imageImport:
+                    // 画像インポートは別処理（ファイル選択ダイアログ等）
+                    break
+                default:
+                    break
+                }
+                
+                // 要素を作成したら選択モードに戻る
+                viewModel.editorMode = .select
+            }
+            
+            // 要素削除時のコールバック
+            canvasView.onElementDelete = { [viewModel = parent.viewModel] in
+                viewModel.deleteSelectedElement()
+            }
+        }
+    }
+    
     /// UIViewの作成
     func makeUIView(context: Context) -> CanvasView {
         let canvasView = CanvasView(frame: .zero)
@@ -685,7 +737,24 @@ struct CanvasViewRepresentable: UIViewRepresentable {
         canvasView.snapToGrid = snapToGrid
         
         // コールバックの設定
-        setupCallbacks(canvasView: canvasView)
+        context.coordinator.setupCallbacks(canvasView: canvasView)
+        
+        // カメラ位置変更通知の監視を追加
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("CenterCameraOnPoint"),
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let centerPoint = notification.object as? CGPoint {
+                // キャンバスビューのカメラ位置を更新
+                canvasView.panOffset = CGPoint(
+                    x: -centerPoint.x + canvasView.bounds.width / 2,
+                    y: -centerPoint.y + canvasView.bounds.height / 2
+                )
+                // ビューを再描画
+                canvasView.setNeedsDisplay()
+            }
+        }
         
         return canvasView
     }
@@ -700,57 +769,9 @@ struct CanvasViewRepresentable: UIViewRepresentable {
         canvasView.snapToGrid = snapToGrid
     }
     
-    /// コールバックの設定
-    private func setupCallbacks(canvasView: CanvasView) {
-        // 要素選択時のコールバック
-        canvasView.onElementSelected = { [viewModel] element in
-            viewModel.selectElement(at: CGPoint(x: 0, y: 0)) // 任意の座標（実際には使用されない）
-            
-            // 要素が選択された場合は明示的に設定
-            if let element = element {
-                viewModel.selectElement(element)
-            } else {
-                viewModel.clearSelection()
-            }
-        }
-        
-        // 操作開始時のコールバック
-        canvasView.onManipulationStarted = { [viewModel] type, point in
-            viewModel.startManipulation(type, at: point)
-        }
-        
-        // 操作中のコールバック
-        canvasView.onManipulationChanged = { [viewModel] point in
-            viewModel.continueManipulation(at: point)
-        }
-        
-        // 操作終了時のコールバック
-        canvasView.onManipulationEnded = { [viewModel] in
-            viewModel.endManipulation()
-        }
-        
-        // 要素作成時のコールバック
-        canvasView.onCreateElement = { [viewModel] point in
-            switch viewModel.editorMode {
-            case .textCreate:
-                viewModel.addTextElement(text: "テキストを入力", position: point)
-            case .shapeCreate:
-                viewModel.addShapeElement(type: viewModel.nextShapeType, position: point)
-            case .imageImport:
-                // 画像インポートは別処理（ファイル選択ダイアログ等）
-                break
-            default:
-                break
-            }
-            
-            // 要素を作成したら選択モードに戻る
-            viewModel.editorMode = .select
-        }
-        
-        // 要素削除時のコールバック
-        canvasView.onElementDelete = { [viewModel] in
-            viewModel.deleteSelectedElement()
-        }
+    /// コーディネーターの作成
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
     }
 }
 

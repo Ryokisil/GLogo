@@ -3,9 +3,7 @@
 //  GameLogoMaker
 //
 //  概要:
-//  このファイルはiOS 13以降のマルチウィンドウ環境でのシーンライフサイクルを管理します。
-//  アプリのUI状態（フォアグラウンド/バックグラウンド）の変更や、
-//  シーンの接続/切断イベントを処理します。
+//  このファイルはiPadOS環境でのシーンライフサイクルを管理目的だけどiPad版としてリリースするかはまだ未定
 //
 
 import UIKit
@@ -180,35 +178,35 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     
     /// 自動保存タイマーを再開
     private func resumeAutosaveTimer() {
-        // 適切な実装を追加
-        // 例：NotificationCenterを使用してタイマー再開通知を送信
+        //
+        // NotificationCenterを使用してタイマー再開通知を送信
         NotificationCenter.default.post(name: NSNotification.Name("ResumeAutosaveTimer"), object: nil)
     }
     
     /// 自動保存タイマーを一時停止
     private func pauseAutosaveTimer() {
-        // 適切な実装を追加
-        // 例：NotificationCenterを使用してタイマー停止通知を送信
+        //
+        // NotificationCenterを使用してタイマー停止通知を送信
         NotificationCenter.default.post(name: NSNotification.Name("PauseAutosaveTimer"), object: nil)
     }
     
     /// 現在のプロジェクトの状態を保存
     private func saveCurrentProjectState() {
-        // 適切な実装を追加
-        // 例：NotificationCenterを使用して保存通知を送信
+        //
+        // NotificationCenterを使用して保存通知を送信
         NotificationCenter.default.post(name: NSNotification.Name("SaveCurrentProject"), object: nil)
     }
     
     /// データの更新が必要かチェックして更新
     private func refreshDataIfNeeded() {
-        // 適切な実装を追加
-        // 例：長時間バックグラウンドにいた場合、データを更新
+        //
+        // 長時間バックグラウンドにいた場合、データを更新
     }
     
     /// アクティビティモニタリングを再開
     private func resumeActivityMonitoring() {
-        // 適切な実装を追加
-        // 例：分析やパフォーマンス監視を再開
+        //
+        // 分析やパフォーマンス監視を再開
     }
     
     /// エラーアラートを表示

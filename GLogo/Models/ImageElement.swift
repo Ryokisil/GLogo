@@ -52,7 +52,7 @@ class ImageElement: LogoElement {
     private var metadataEditHistory: [String: Any] = [:]
     
     /// キャッシュされた画像
-    private var cachedImage: UIImage?
+    var cachedImage: UIImage?
     
     /// キャッシュされた元画像
     private var cachedOriginalImage: UIImage?
@@ -425,7 +425,6 @@ class ImageElement: LogoElement {
     }
     
     private func getCanvasSize() -> CGSize {
-        // プロジェクトのキャンバスサイズを取得（キャッシュなどを使用）
         // デフォルトは4Kサイズ
         return CGSize(width: 3840, height: 2160)
     }
@@ -665,13 +664,53 @@ class ImageElement: LogoElement {
             let result = ImageMetadataManager.shared.revertMetadata(for: identifier)
             if case .success = result {
                 // リバート後のメタデータを取得して設定
-                self.metadata = ImageMetadataManager.shared.getMetadata(for: identifier)
+                if let metadata = ImageMetadataManager.shared.getMetadata(for: identifier) {
+                    self.metadata = metadata
+                    
+                    // メタデータから画像プロパティを復元
+                    applyMetadataToImageProperties(metadata)
+                }
             }
         }
         
         // キャッシュをクリア
         cachedImage = nil
         cachedOriginalImage = nil
+    }
+    
+    /// メタデータから画像プロパティを復元する
+    private func applyMetadataToImageProperties(_ metadata: ImageMetadata) {
+        // フレーム太さの復元
+        if let frameWidthString = metadata.additionalMetadata["frameWidth"],
+           let frameWidthValue = Double(frameWidthString) {
+            self.frameWidth = CGFloat(frameWidthValue)
+            print("DEBUG: フレーム太さを復元: \(frameWidthValue)")
+        }
+        
+        // 角丸の復元
+        if let roundedCornersString = metadata.additionalMetadata["roundedCorners"] {
+            self.roundedCorners = roundedCornersString == "true"
+            print("DEBUG: 角丸設定を復元: \(roundedCorners)")
+        }
+        
+        // 角丸半径の復元
+        if let cornerRadiusString = metadata.additionalMetadata["cornerRadius"],
+           let cornerRadiusValue = Double(cornerRadiusString) {
+            self.cornerRadius = CGFloat(cornerRadiusValue)
+            print("DEBUG: 角丸半径を復元: \(cornerRadiusValue)")
+        }
+        
+        // フレーム表示の復元
+        if let showFrameString = metadata.additionalMetadata["showFrame"] {
+            self.showFrame = showFrameString == "true"
+        }
+        
+        // フレーム色の復元
+        if let frameColorString = metadata.additionalMetadata["frameColor"],
+           let frameColorData = frameColorString.data(using: .utf8),
+           let frameColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: frameColorData) {
+            self.frameColor = frameColor
+        }
     }
     
     /// この画像が過去に編集されたことがあるかを確認
@@ -722,7 +761,7 @@ struct ImageEditOperation: Codable {
         self.parameters = parameters
     }
 }
-
+// MARK: - メタデータ関連の実装
 /// 画像メタデータを表す構造体
 struct ImageMetadata: Codable {
     // 基本メタデータ
