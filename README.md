@@ -92,7 +92,7 @@ b. シャドウを明るくする場合:
 
 # 画像クロップ処理の問題（iOS向き対応）
 ## 問題の概要
-縦長画像のクロップ処理が正しく動作しない不具合が発生しました。特定サイズ（4284×5712、1178×1572等）の縦長画像でのみ、クロップ結果の幅と高さが入れ替わってしまうという症状が見られました。
+縦長の特定サイズ画像（例：4284×5712、1178×1572）をクロップすると、結果の幅と高さが逆転してしまう。
 
 ## 原因分析
 iOS画像処理の構造的な問題
@@ -111,18 +111,42 @@ CGImage.size = (幅: 1572, 高さ: 1178)  ← 物理的なピクセル配列
 ### 向きを考慮したCGImageの生成
 
 ```swift
+/// UIImageの向き情報を考慮したCGImageを生成する
+/// - Parameter uiImage: 向き情報を持つ元のUIImage
+/// - Returns: UIImageの表示サイズと一致するCGImage
+/// 
+/// なぜ必要か：
+/// iOSではUIImageとCGImageで画像の向きの扱いが異なる
+/// - UIImage: orientation情報を持ち、表示時に自動的に向きを調整
+/// - CGImage: 実際のピクセル配列のみを持ち、向き情報を持たない
+/// 
+/// 例：縦長写真の場合
+/// - UIImage.size = (幅: 1178, 高さ: 1572) ← ユーザーが見ている向き
+/// - CGImage.size = (幅: 1572, 高さ: 1178) ← 実際のピクセル配列
+/// 
+/// この不一致により、UIImageの座標系でクロップ範囲を計算しても、
+/// CGImageに直接適用すると90度回転した位置をクロップしてしまう
 private func createOrientedCGImage(from uiImage: UIImage) -> CGImage? {
+    // UIImageの表示サイズを取得（向きが考慮されたサイズ）
     let size = uiImage.size
-    let format = UIGraphicsImageRendererFormat()
-    format.scale = uiImage.scale
-    format.opaque = false
     
+    // レンダラーの設定を準備
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = uiImage.scale  // Retinaディスプレイ対応のため元画像のscaleを維持
+    format.opaque = false         // 透明度を保持（PNG画像などに対応）
+    
+    // UIGraphicsImageRendererを使用する理由：
+    // このAPIは自動的にUIImageのorientation情報を考慮して描画するため、
+    // 生成されるCGImageはUIImageの表示サイズと一致する
     let renderer = UIGraphicsImageRenderer(size: size, format: format)
     
+    // 向きを考慮した新しい画像を生成
     let renderedImage = renderer.image { context in
+        // drawメソッドは自動的にorientation情報を適用して描画
         uiImage.draw(in: CGRect(origin: .zero, size: size))
     }
     
+    // この時点でCGImageのサイズはUIImageの表示サイズと一致している
     return renderedImage.cgImage
 }
 ```
@@ -133,12 +157,15 @@ private func createOrientedCGImage(from uiImage: UIImage) -> CGImage? {
 private func cropImage() -> UIImage? {
     // 座標とかの計算処理など、、
     
-    // 向きを考慮したCGImageを作成
+    // 重要：向きを考慮したCGImageを作成
+    // これにより、UIImageの座標系で計算したクロップ範囲を
+    // そのままCGImageに適用できる
     guard let orientedCGImage = createOrientedCGImage(from: originalImage) else {
         return nil
     }
     
-    // このCGImageはUIImage.sizeと一致するサイズを持つ
+    // このCGImageはUIImage.sizeと一致するサイズを持つため、
+    // UIImageの座標系で計算したscaledCropRectをそのまま使用できる
     guard let croppedCGImage = orientedCGImage.cropping(to: scaledCropRect) else {
         return nil
     }
