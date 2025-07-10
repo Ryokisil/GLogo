@@ -368,40 +368,40 @@ struct ElementEditorPanel: View {
                 Divider()
                 
                 // 色調補正
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("色調補正")
-                        .font(.headline)
-                    
-                    HStack {
-                        Text("彩度:")
-                        Slider(value: Binding(
-                            get: { imageElement.saturationAdjustment },
-                            set: { viewModel.updateSaturation($0) }
-                        ), in: 0...2, step: 0.01)
-                        Text("\(imageElement.saturationAdjustment, specifier: "%.2f")")
-                            .frame(width: 40, alignment: .trailing)
-                    }
-                    
-                    HStack {
-                        Text("明度:")
-                        Slider(value: Binding(
-                            get: { imageElement.brightnessAdjustment },
-                            set: { viewModel.updateBrightness($0) }
-                        ), in: -1...1, step: 0.01)
-                        Text("\(imageElement.brightnessAdjustment, specifier: "%.2f")")
-                            .frame(width: 40, alignment: .trailing)
-                    }
-                    
-                    HStack {
-                        Text("コントラスト:")
-                        Slider(value: Binding(
-                            get: { imageElement.contrastAdjustment },
-                            set: { viewModel.updateContrast($0) }
-                        ), in: 0.5...1.5, step: 0.01)
-                        Text("\(imageElement.contrastAdjustment, specifier: "%.2f")")
-                            .frame(width: 40, alignment: .trailing)
-                    }
-                }
+//                VStack(alignment: .leading, spacing: 8) {
+//                    Text("色調補正")
+//                        .font(.headline)
+//                    
+//                    HStack {
+//                        Text("彩度:")
+//                        Slider(value: Binding(
+//                            get: { imageElement.saturationAdjustment },
+//                            set: { viewModel.updateSaturation($0) }
+//                        ), in: 0...2, step: 0.01)
+//                        Text("\(imageElement.saturationAdjustment, specifier: "%.2f")")
+//                            .frame(width: 40, alignment: .trailing)
+//                    }
+//                    
+//                    HStack {
+//                        Text("明度:")
+//                        Slider(value: Binding(
+//                            get: { imageElement.brightnessAdjustment },
+//                            set: { viewModel.updateBrightness($0) }
+//                        ), in: -1...1, step: 0.01)
+//                        Text("\(imageElement.brightnessAdjustment, specifier: "%.2f")")
+//                            .frame(width: 40, alignment: .trailing)
+//                    }
+//                    
+//                    HStack {
+//                        Text("コントラスト:")
+//                        Slider(value: Binding(
+//                            get: { imageElement.contrastAdjustment },
+//                            set: { viewModel.updateContrast($0) }
+//                        ), in: 0.5...1.5, step: 0.01)
+//                        Text("\(imageElement.contrastAdjustment, specifier: "%.2f")")
+//                            .frame(width: 40, alignment: .trailing)
+//                    }
+//                }
             }
         }
     }

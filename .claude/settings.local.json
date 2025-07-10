@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(xcrun simctl list:*)",
+      "Bash(xcrun simctl help:*)",
+      "Bash(chmod:*)",
+      "Bash(claude mcp add:*)",
+      "Bash(claude mcp:*)",
+      "Bash(xcrun simctl boot:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(xcrun simctl launch:*)",
+      "Bash(xcrun simctl install:*)",
+      "Bash(open:*)",
+      "Bash(cat:*)",
+      "Bash(mkdir:*)",
+      "Bash(claude --debug)",
+      "Bash(python3:*)",
+      "Bash(find:*)",
+      "mcp__ios-simulator__list_devices",
+      "mcp__ios-simulator__boot_device",
+      "mcp__ios-simulator__build_and_run",
+      "mcp__ios-simulator__install_app",
+      "mcp__ios-simulator__launch_app",
+      "mcp__ios-simulator__get_app_status",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "WebFetch(domain:developer.apple.com)",
+      "WebFetch(domain:stackoverflow.com)",
+      "Bash(swift:*)",
+      "Bash(rm:*)",
+      "Bash(ls:*)"
+    ],
+    "deny": []
+  }
+}

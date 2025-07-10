@@ -12,7 +12,7 @@
 
 import Foundation
 import UIKit
-import Combine
+//import Combine
 import Photos
 
 /// エディタモード
@@ -793,6 +793,72 @@ class EditorViewModel: ObservableObject {
         
         isProjectModified = true
         print("DEBUG: 画像シャドウ変更完了")
+    }
+    
+    /// 画像の色相を更新
+    func updateImageHue(_ imageElement: ImageElement, newHue: CGFloat) {
+        print("DEBUG: 画像色相変更開始 - 要素ID: \(imageElement.id)")
+        
+        let event = ImageHueChangedEvent(
+            elementId: imageElement.id,
+            oldHue: imageElement.hueAdjustment,
+            newHue: newHue
+        )
+        
+        history.recordAndApply(event)
+        
+        if selectedElement?.id == imageElement.id {
+            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
+                selectedElement = updatedElement
+            }
+        }
+        
+        isProjectModified = true
+        print("DEBUG: 画像色相変更完了")
+    }
+    
+    /// 画像のシャープネスを更新
+    func updateImageSharpness(_ imageElement: ImageElement, newSharpness: CGFloat) {
+        print("DEBUG: 画像シャープネス変更開始 - 要素ID: \(imageElement.id)")
+        
+        let event = ImageSharpnessChangedEvent(
+            elementId: imageElement.id,
+            oldSharpness: imageElement.sharpnessAdjustment,
+            newSharpness: newSharpness
+        )
+        
+        history.recordAndApply(event)
+        
+        if selectedElement?.id == imageElement.id {
+            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
+                selectedElement = updatedElement
+            }
+        }
+        
+        isProjectModified = true
+        print("DEBUG: 画像シャープネス変更完了")
+    }
+    
+    /// 画像のガウシアンブラーを更新
+    func updateImageGaussianBlur(_ imageElement: ImageElement, newRadius: CGFloat) {
+        print("DEBUG: 画像ガウシアンブラー変更開始 - 要素ID: \(imageElement.id)")
+        
+        let event = ImageGaussianBlurChangedEvent(
+            elementId: imageElement.id,
+            oldRadius: imageElement.gaussianBlurRadius,
+            newRadius: newRadius
+        )
+        
+        history.recordAndApply(event)
+        
+        if selectedElement?.id == imageElement.id {
+            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
+                selectedElement = updatedElement
+            }
+        }
+        
+        isProjectModified = true
+        print("DEBUG: 画像ガウシアンブラー変更完了")
     }
     
     /// 画像のティントカラーを更新

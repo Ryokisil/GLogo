@@ -194,8 +194,6 @@ class ImageFilterUtility {
         }
     }
     
-// 以下はまだUIとして未実装なのでこれから
-    
     /// 色温度（Warmth）調整を適用
     static func applyWarmthAdjustment(to image: CIImage, warmth: CGFloat) -> CIImage? {
         guard let filter = CIFilter(name: "CITemperatureAndTint") else { return nil }
@@ -207,6 +205,90 @@ class ImageFilterUtility {
         filter.setValue(vector, forKey: "inputTargetNeutral")
         
         return filter.outputImage
+    }
+    
+    /// 色相調整を適用
+    static func applyHueAdjustment(to image: CIImage, angle: CGFloat) -> CIImage? {
+        // 値が0の場合は変更なし - 処理コストを節約するため、早期リターン
+        if angle == 0 {
+            return image
+        }
+        
+        // 入力値を-180〜180度の範囲に制限し、ラジアンに変換
+        let clampedAngle = max(-180.0, min(180.0, angle))
+        let radians = clampedAngle * .pi / 180.0
+        
+        // 色相調整フィルターを作成
+        guard let filter = CIFilter(name: "CIHueAdjust") else { return nil }
+        
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(radians, forKey: kCIInputAngleKey)
+        
+        return filter.outputImage
+    }
+    
+    /// シャープネス調整を適用
+    static func applySharpness(to image: CIImage, intensity: CGFloat) -> CIImage? {
+        // 値が0の場合は変更なし - 処理コストを節約するため、早期リターン
+        if intensity == 0 {
+            return image
+        }
+        
+        // 入力値を0.0〜2.0の範囲に制限（安全な範囲）
+        let clampedIntensity = max(0.0, min(2.0, intensity))
+        
+        // まずCISharpenLuminanceを試す
+        if let filter = CIFilter(name: "CISharpenLuminance") {
+            filter.setValue(image, forKey: kCIInputImageKey)
+            filter.setValue(clampedIntensity, forKey: "inputSharpness")
+            
+            if let output = filter.outputImage {
+                return output
+            }
+        }
+        
+        // CISharpenLuminanceが失敗した場合、CIUnsharpMaskを使用
+        guard let filter = CIFilter(name: "CIUnsharpMask") else {
+            print("DEBUG: シャープネスフィルターが使用できません")
+            return image
+        }
+        
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(clampedIntensity, forKey: "inputIntensity")
+        filter.setValue(1.0, forKey: "inputRadius")
+        filter.setValue(0.0, forKey: "inputThreshold")
+        
+        return filter.outputImage
+    }
+    
+    /// ガウシアンブラーを適用
+    static func applyGaussianBlur(to image: CIImage, radius: CGFloat) -> CIImage? {
+        // 値が0の場合は変更なし - 処理コストを節約するため、早期リターン
+        if radius == 0 {
+            return image
+        }
+        
+        // 入力値を0.0〜10.0の範囲に制限（ロゴ制作に適した範囲）
+        let clampedRadius = max(0.0, min(10.0, radius))
+        
+        // 元の画像の範囲を保存
+        let originalExtent = image.extent
+        
+        // ガウシアンブラーフィルターを作成
+        guard let filter = CIFilter(name: "CIGaussianBlur") else {
+            print("DEBUG: CIGaussianBlurフィルターが使用できません")
+            return image
+        }
+        
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(clampedRadius, forKey: kCIInputRadiusKey)
+        
+        guard let blurredImage = filter.outputImage else {
+            return image
+        }
+        
+        // 元の画像サイズにクロップして範囲を復元
+        return blurredImage.cropped(to: originalExtent)
     }
     
     /// ティントカラーオーバーレイを適用

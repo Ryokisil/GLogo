@@ -280,6 +280,36 @@ struct ImageEditorPanel: View {
                             Text("\(imageElement.shadowsAdjustment, specifier: "%.2f")")
                                 .frame(width: 40, alignment: .trailing)
                         }
+                        
+                        HStack {
+                            Text("色相:")
+                            Slider(value: Binding(
+                                get: { imageElement.hueAdjustment },
+                                set: { viewModel.updateHue($0) }
+                            ), in: -180...180, step: 1)
+                            Text("\(Int(imageElement.hueAdjustment))°")
+                                .frame(width: 40, alignment: .trailing)
+                        }
+                        
+                        HStack {
+                            Text("シャープネス:")
+                            Slider(value: Binding(
+                                get: { imageElement.sharpnessAdjustment },
+                                set: { viewModel.updateSharpness($0) }
+                            ), in: 0...2, step: 0.01)
+                            Text("\(imageElement.sharpnessAdjustment, specifier: "%.2f")")
+                                .frame(width: 40, alignment: .trailing)
+                        }
+                        
+                        HStack {
+                            Text("ブラー:")
+                            Slider(value: Binding(
+                                get: { imageElement.gaussianBlurRadius },
+                                set: { viewModel.updateGaussianBlur($0) }
+                            ), in: 0...10, step: 0.1)
+                            Text("\(imageElement.gaussianBlurRadius, specifier: "%.1f")")
+                                .frame(width: 40, alignment: .trailing)
+                        }
                     }
                     
                     Divider()

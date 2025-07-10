@@ -412,7 +412,7 @@ struct EditorView: View {
             // 左側に保存ボタン
             ToolbarItem(placement: .navigationBarLeading) {
                 Button("Save") {
-                    saveProjectWithMetadata()
+                    saveProject()
                 }
                 .help("保存")
             }
@@ -441,7 +441,7 @@ struct EditorView: View {
     
     /// プロジェクトを保存
     private func saveProject() {
-        // 現在選択されている画像要素のメタデータを保存
+        // 【修正】選択中の画像要素のメタデータを先に保存
         if let imageElement = viewModel.selectedElement as? ImageElement,
            let identifier = imageElement.originalImageIdentifier {
             
@@ -455,12 +455,19 @@ struct EditorView: View {
                 }
             }
             
-            // 編集履歴も保存（既に自動的に保存されている場合もあります）
-            let history = ImageMetadataManager.shared.getEditHistory(for: identifier)
-            if !history.isEmpty {
-                print("DEBUG: 編集履歴があります - \(history.count)件")
-            } else {
-                print("DEBUG: 警告 - 編集履歴がありません")
+            // 【修正】元の写真にも保存
+            ImageMetadataManager.shared.saveMetadataToOriginalPhoto(for: identifier) { success, error in
+                if let error = error {
+                    if case MetadataError.readOnlyAsset = error {
+                        // 読み取り専用の場合はアプリ内保存のみで成功とする
+                        print("INFO: 読み取り専用アセット - アプリ内保存のみ")
+                    } else if case MetadataError.partialSuccess = error {
+                        // 部分的成功も許容
+                        print("INFO: 部分的成功 - アプリ内保存は完了")
+                    } else {
+                        print("ERROR: 写真への保存失敗: \(error.localizedDescription)")
+                    }
+                }
             }
         }
         

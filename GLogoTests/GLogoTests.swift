@@ -20,7 +20,7 @@ extension XCTestCase {
     }
 }
 
-/// ViewModelのメモリリーク検証テストクラス
+/// ViewModelのメモリリーク検証テストクラス 継承させるためにfinal
 final class ViewModelMemoryLeakTests: XCTestCase {
     /// 基本的なEditorViewModelのメモリリークがないことを検証
     /// EditorViewModelが単体で適切に解放されることを確認する

@@ -489,7 +489,16 @@ class ElementViewModel: ObservableObject {
         // 変更前の値を記録（メタデータ編集履歴用）
         let oldValue = imageElement.saturationAdjustment
         
-        // EditorViewModelの対応するメソッドを呼び出す
+        // 編集開始をマーク
+        imageElement.startEditing()
+        
+        // 即座に値を更新（UI即座反応のため）
+        imageElement.saturationAdjustment = saturation
+        
+        // 高品質更新をスケジュール
+        imageElement.scheduleHighQualityUpdate()
+        
+        // EditorViewModelの対応するメソッドを呼び出す（イベントソーシング用）
         editorViewModel?.updateImageSaturation(imageElement, newSaturation: saturation)
         
         // メタデータに編集を記録
@@ -518,6 +527,15 @@ class ElementViewModel: ObservableObject {
         
         let oldvalue = imageElement.brightnessAdjustment
         
+        // 編集開始をマーク
+        imageElement.startEditing()
+        
+        // 即座に値を更新（UI即座反応のため）
+        imageElement.brightnessAdjustment = brightness
+        
+        // 高品質更新をスケジュール
+        imageElement.scheduleHighQualityUpdate()
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageBrightness(imageElement, newBrightness: brightness)
         
@@ -544,6 +562,15 @@ class ElementViewModel: ObservableObject {
         }
         
         let oldvalue = imageElement.contrastAdjustment
+        
+        // 編集開始をマーク
+        imageElement.startEditing()
+        
+        // 即座に値を更新（UI即座反応のため）
+        imageElement.contrastAdjustment = contrast
+        
+        // 高品質更新をスケジュール
+        imageElement.scheduleHighQualityUpdate()
         
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageContrast(imageElement, newContrast: contrast)
@@ -572,6 +599,15 @@ class ElementViewModel: ObservableObject {
         
         let oldvalue = imageElement.highlightsAdjustment
         
+        // 編集開始をマーク
+        imageElement.startEditing()
+        
+        // 即座に値を更新（UI即座反応のため）
+        imageElement.highlightsAdjustment = highlights
+        
+        // 高品質更新をスケジュール
+        imageElement.scheduleHighQualityUpdate()
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageHighlights(imageElement, newHighlights: highlights)
         
@@ -599,6 +635,15 @@ class ElementViewModel: ObservableObject {
         
         let oldvalue = imageElement.shadowsAdjustment
         
+        // 編集開始をマーク
+        imageElement.startEditing()
+        
+        // 即座に値を更新（UI即座反応のため）
+        imageElement.shadowsAdjustment = shadows
+        
+        // 高品質更新をスケジュール
+        imageElement.scheduleHighQualityUpdate()
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageShadows(imageElement, newShadows: shadows)
         
@@ -607,6 +652,114 @@ class ElementViewModel: ObservableObject {
                 fieldKey: "shadowsAdjustment",
                 oldValue: oldvalue,
                 newValue: shadows)
+        }
+    }
+    
+    /// 色相の更新
+    func updateHue(_ hue: CGFloat) {
+        print("DEBUG: ElementViewModel - 色相更新開始")
+        guard let imageElement = imageElement else {
+            print("DEBUG: ElementViewModel - imageElementがnilのため更新できません")
+            return
+        }
+        
+        // 現在と同じ色相なら何もしない
+        if imageElement.hueAdjustment == hue {
+            print("DEBUG: ElementViewModel - 色相が同じなので変更をスキップします")
+            return
+        }
+        
+        let oldValue = imageElement.hueAdjustment
+        
+        // 編集開始をマーク
+        imageElement.startEditing()
+        
+        // 即座に値を更新（UI即座反応のため）
+        imageElement.hueAdjustment = hue
+        
+        // 高品質更新をスケジュール
+        imageElement.scheduleHighQualityUpdate()
+        
+        // EditorViewModelの対応するメソッドを呼び出す
+        editorViewModel?.updateImageHue(imageElement, newHue: hue)
+        
+        if imageElement.originalImageIdentifier != nil {
+            imageElement.recordMetadataEdit(
+                fieldKey: "hueAdjustment",
+                oldValue: oldValue,
+                newValue: hue)
+        }
+    }
+    
+    /// シャープネスの更新
+    func updateSharpness(_ sharpness: CGFloat) {
+        print("DEBUG: ElementViewModel - シャープネス更新開始")
+        guard let imageElement = imageElement else {
+            print("DEBUG: ElementViewModel - imageElementがnilのため更新できません")
+            return
+        }
+        
+        // 現在と同じシャープネスなら何もしない
+        if imageElement.sharpnessAdjustment == sharpness {
+            print("DEBUG: ElementViewModel - シャープネスが同じなので変更をスキップします")
+            return
+        }
+        
+        let oldValue = imageElement.sharpnessAdjustment
+        
+        // 編集開始をマーク
+        imageElement.startEditing()
+        
+        // 即座に値を更新（UI即座反応のため）
+        imageElement.sharpnessAdjustment = sharpness
+        
+        // 高品質更新をスケジュール
+        imageElement.scheduleHighQualityUpdate()
+        
+        // EditorViewModelの対応するメソッドを呼び出す
+        editorViewModel?.updateImageSharpness(imageElement, newSharpness: sharpness)
+        
+        if imageElement.originalImageIdentifier != nil {
+            imageElement.recordMetadataEdit(
+                fieldKey: "sharpnessAdjustment",
+                oldValue: oldValue,
+                newValue: sharpness)
+        }
+    }
+    
+    /// ガウシアンブラーの更新
+    func updateGaussianBlur(_ radius: CGFloat) {
+        print("DEBUG: ElementViewModel - ガウシアンブラー更新開始")
+        guard let imageElement = imageElement else {
+            print("DEBUG: ElementViewModel - imageElementがnilのため更新できません")
+            return
+        }
+        
+        // 現在と同じ半径なら何もしない
+        if imageElement.gaussianBlurRadius == radius {
+            print("DEBUG: ElementViewModel - ガウシアンブラー半径が同じなので変更をスキップします")
+            return
+        }
+        
+        let oldValue = imageElement.gaussianBlurRadius
+        
+        // 編集開始をマーク
+        imageElement.startEditing()
+        
+        // 即座に値を更新（UI即座反応のため）
+        imageElement.gaussianBlurRadius = radius
+        
+        // 高品質更新をスケジュール
+        imageElement.scheduleHighQualityUpdate()
+        
+        // EditorViewModelの対応するメソッドを呼び出す
+        editorViewModel?.updateImageGaussianBlur(imageElement, newRadius: radius)
+        
+        if imageElement.originalImageIdentifier != nil {
+            imageElement.recordMetadataEdit(
+                fieldKey: "gaussianBlurRadius",
+                oldValue: oldValue,
+                newValue: radius)
         }
     }
     
@@ -631,8 +784,18 @@ class ElementViewModel: ObservableObject {
         let oldColor = imageElement.tintColor
         let oldIntensity = imageElement.tintIntensity
         
+        // 編集開始をマーク
+        imageElement.startEditing()
+        
+        // 即座に値を更新（UI即座反応のため）
+        imageElement.tintColor = color
+        imageElement.tintIntensity = intensity
+        
+        // 高品質更新をスケジュール
+        imageElement.scheduleHighQualityUpdate()
+        
         // EditorViewModelの対応するメソッドを呼び出す
-        editorViewModel?.updateImageTintColor(imageElement, oldColor: imageElement.tintColor, newColor: color, oldIntensity: imageElement.tintIntensity, newIntensity: intensity)
+        editorViewModel?.updateImageTintColor(imageElement, oldColor: oldColor, newColor: color, oldIntensity: oldIntensity, newIntensity: intensity)
         
         // メタデータに編集を記録
         if imageElement.originalImageIdentifier != nil {
@@ -669,6 +832,15 @@ class ElementViewModel: ObservableObject {
         // 変更前の値を記録
         let oldValue = imageElement.showFrame
         
+        // 編集開始をマーク
+        imageElement.startEditing()
+        
+        // 即座に値を更新（UI即座反応のため）
+        imageElement.showFrame = showFrame
+        
+        // 高品質更新をスケジュール
+        imageElement.scheduleHighQualityUpdate()
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageShowFrame(imageElement, newValue: showFrame)
         
@@ -699,6 +871,15 @@ class ElementViewModel: ObservableObject {
         // 変更前の値を記録
         let oldColor = imageElement.frameColor
         
+        // 編集開始をマーク
+        imageElement.startEditing()
+        
+        // 即座に値を更新（UI即座反応のため）
+        imageElement.frameColor = color
+        
+        // 高品質更新をスケジュール
+        imageElement.scheduleHighQualityUpdate()
+        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageFrameColor(imageElement, newColor: color)
         
@@ -728,6 +909,15 @@ class ElementViewModel: ObservableObject {
         
         // 変更前の値を記録
         let oldWidth = imageElement.frameWidth
+        
+        // 編集開始をマーク
+        imageElement.startEditing()
+        
+        // 即座に値を更新（UI即座反応のため）
+        imageElement.frameWidth = width
+        
+        // 高品質更新をスケジュール
+        imageElement.scheduleHighQualityUpdate()
         
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageFrameWidth(imageElement, newWidth: width)
@@ -760,8 +950,18 @@ class ElementViewModel: ObservableObject {
         let wasRounded = imageElement.roundedCorners
         let oldRadius = imageElement.cornerRadius
         
+        // 編集開始をマーク
+        imageElement.startEditing()
+        
+        // 即座に値を更新（UI即座反応のため）
+        imageElement.roundedCorners = rounded
+        imageElement.cornerRadius = radius
+        
+        // 高品質更新をスケジュール
+        imageElement.scheduleHighQualityUpdate()
+        
         // EditorViewModelの対応するメソッドを呼び出す
-        editorViewModel?.updateImageRoundedCorners(imageElement, wasRounded: imageElement.roundedCorners, isRounded: rounded, oldRadius: imageElement.cornerRadius, newRadius: radius)
+        editorViewModel?.updateImageRoundedCorners(imageElement, wasRounded: wasRounded, isRounded: rounded, oldRadius: oldRadius, newRadius: radius)
         
         // メタデータに編集を記録
         if imageElement.originalImageIdentifier != nil {

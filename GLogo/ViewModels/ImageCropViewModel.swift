@@ -82,8 +82,7 @@ class ImageCropViewModel: ObservableObject {
     
     func resetCropRect() {
         if imageIsLoaded {
-            let margin: CGFloat = imageViewFrame.width * 0.1
-            self.cropRect = imageViewFrame.insetBy(dx: margin, dy: margin * (imageViewFrame.height / imageViewFrame.width))
+            self.cropRect = imageViewFrame
             self.hasCropped = false
             print("クロップ領域をリセット: \(cropRect)")
         }
@@ -122,9 +121,8 @@ class ImageCropViewModel: ObservableObject {
         self.imageViewFrame = frame
         
         if !imageIsLoaded {
-            // 初期クロップ領域を画像フレームの90%程度に設定
-            let margin: CGFloat = frame.width * 0.1 // 10%のマージン
-            self.cropRect = frame.insetBy(dx: margin, dy: margin * (frame.height / frame.width))
+            // 初期クロップ領域を画像フレーム全体に設定
+            self.cropRect = frame
             self.imageIsLoaded = true
             self.hasCropped = false
             

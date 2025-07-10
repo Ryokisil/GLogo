@@ -985,6 +985,81 @@ struct ImageShadowsChangedEvent: EditorEvent {
     }
 }
 
+/// 画像色相変更イベント
+struct ImageHueChangedEvent: EditorEvent {
+    var eventName = "ImageHueChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldHue: CGFloat
+    let newHue: CGFloat
+    
+    var description: String {
+        return "画像の色相を変更しました"
+    }
+    
+    func apply(to project: LogoProject) {
+        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+            element.hueAdjustment = newHue
+        }
+    }
+    
+    func revert(from project: LogoProject) {
+        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+            element.hueAdjustment = oldHue
+        }
+    }
+}
+
+/// 画像シャープネス変更イベント
+struct ImageSharpnessChangedEvent: EditorEvent {
+    var eventName = "ImageSharpnessChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldSharpness: CGFloat
+    let newSharpness: CGFloat
+    
+    var description: String {
+        return "画像のシャープネスを変更しました"
+    }
+    
+    func apply(to project: LogoProject) {
+        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+            element.sharpnessAdjustment = newSharpness
+        }
+    }
+    
+    func revert(from project: LogoProject) {
+        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+            element.sharpnessAdjustment = oldSharpness
+        }
+    }
+}
+
+/// 画像ガウシアンブラー変更イベント
+struct ImageGaussianBlurChangedEvent: EditorEvent {
+    var eventName = "ImageGaussianBlurChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldRadius: CGFloat
+    let newRadius: CGFloat
+    
+    var description: String {
+        return "画像のガウシアンブラーを変更しました"
+    }
+    
+    func apply(to project: LogoProject) {
+        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+            element.gaussianBlurRadius = newRadius
+        }
+    }
+    
+    func revert(from project: LogoProject) {
+        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+            element.gaussianBlurRadius = oldRadius
+        }
+    }
+}
+
 /// 画像ティントカラー変更イベント
 struct ImageTintColorChangedEvent: EditorEvent {
     let eventName = "ImageTintColorChanged"
