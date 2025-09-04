@@ -83,7 +83,7 @@ class ShadowEffect: TextEffect {
     }
     
     required init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
+        _ = try decoder.container(keyedBy: CodingKeys.self)
         try super.init(from: decoder)
         
         let shadowContainer = try decoder.container(keyedBy: ShadowCodingKeys.self)
@@ -143,7 +143,7 @@ class StrokeEffect: TextEffect {
     }
     
     required init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
+        _ = try decoder.container(keyedBy: CodingKeys.self)
         try super.init(from: decoder)
         
         let strokeContainer = try decoder.container(keyedBy: StrokeCodingKeys.self)
@@ -182,7 +182,7 @@ class StrokeEffect: TextEffect {
 /// テキスト要素クラス
 class TextElement: LogoElement {
     /// テキスト内容
-    var text: String = "テキストを入力"
+    var text: String = ""
     
     /// フォント名
     var fontName: String = "HelveticaNeue"
@@ -270,6 +270,9 @@ class TextElement: LogoElement {
         
         // デフォルトでシャドウ効果を追加
         effects.append(ShadowEffect())
+        
+        // デフォルトzIndexを設定
+        self.zIndex = ElementPriority.text.rawValue
     }
     
     /// テキストの属性付き文字列を生成
@@ -318,9 +321,10 @@ class TextElement: LogoElement {
         let attrString = attributedString()
         let rect = CGRect(origin: position, size: size)
         
+        print("DEBUG: テキスト描画 - rect: \(rect), 実際の位置: \(position), サイズ: \(size)")
+        
         // NSStringDrawingOptionsで中央揃えや行折り返しなどを設定
         attrString.draw(in: rect)
-        
         context.restoreGState()
     }
     

@@ -15,6 +15,24 @@ GLogo is an advanced iOS image editing application built with Swift 6.0 and Swif
 
 ## Development Commands
 
+### API Reference & Documentation
+**Primary Sources for Implementation**:
+- **Apple Developer Documentation**: Official API references and framework guides
+  - Core Image: Custom filter implementation and performance optimization
+  - Core Graphics: Advanced rendering and coordinate system management
+  - SwiftUI + UIKit: Hybrid architecture integration patterns
+  - Photos Framework: PHPhotoLibrary permission handling and asset management
+- **Swift Evolution**: Language feature updates and proposals for Swift 6.0+ compliance
+- **iOS Release Notes**: Version-specific API changes and deprecations
+- **WWDC Session Videos**: Advanced techniques for professional app development
+
+**Implementation Guidelines**:
+- Always verify API availability for target iOS 17.6+ deployment
+- Check framework compatibility across iOS versions before using new APIs
+- Reference official sample code for complex integrations (Core Image, Photos access)
+- Validate memory management patterns with official documentation
+- Use WebFetch tool to access current Apple documentation when needed
+
 ### Build and Test
 ```bash
 # Build the project
@@ -53,7 +71,7 @@ xcrun simctl launch booted com.yourcompany.GLogo
 - Open `GLogo.xcodeproj` in Xcode
 - Main target: GLogo
 - Test targets: GLogoTests, GLogoUITests
-- Deployment target: iOS 15.0+
+- Deployment target: iOS 17.6+
 - Swift version: 6.0
 
 ## Architecture

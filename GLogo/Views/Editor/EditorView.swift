@@ -36,7 +36,7 @@ struct EditorView: View {
     /// これにより循環参照を避けつつ、選択された要素の編集機能を提供。                    ||   EditorView → EditorViewModel（強参照）
     @StateObject private var elementViewModel: ElementViewModel
     
-    /// 以下State群はenumで列挙型としてまとめとくと整理になるかもなので検討
+    /// 以下State群をenumで列挙型としてまとめとくと整理になるかもなので検討
     /// ツールパネルの表示フラグ
     @State private var isShowingToolPanel = true
     
@@ -51,6 +51,9 @@ struct EditorView: View {
     
     /// 画像ピッカーやクロップビューの表示を切り替えるために使用
     @State private var activeSheet: ActiveSheet?
+    
+    /// 手動背景除去画面への遷移フラグ
+    @State private var isNavigatingToManualRemoval = false
     
     /// グリッド表示フラグ
     @State private var showGrid = true
@@ -76,6 +79,15 @@ struct EditorView: View {
     /// アラートのメッセージ
     @State private var alertMessage = ""
     
+    /// キャンバスのズーム比率
+    @State private var canvasZoomScale: CGFloat = 1.0
+    
+    /// キャンバスのパンオフセット
+    @State private var canvasPanOffset: CGPoint = .zero
+    
+    /// 保存オプションアクションシートの表示フラグ
+    @State private var isShowingSaveOptions = false
+    
     // MARK: - イニシャライザ
     
     init(viewModel: EditorViewModel) {
@@ -87,22 +99,31 @@ struct EditorView: View {
     // MARK: - ボディ
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                // キャンバスエリア（伸縮可能）
-                canvasArea
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                
-                bottomPropertyPanel
-                    .frame(height: 300)
+        NavigationStack {
+            GeometryReader { geometry in
+                VStack(spacing: 0) {
+                    // キャンバスエリア（固定サイズ）
+                    canvasArea
+                        .frame(
+                            width: geometry.size.width,
+                            height: max(200, geometry.size.height - 300)
+                        )
+                    
+                    // プロパティパネル（固定位置）
+                    bottomPropertyPanel
+                        .frame(
+                            width: geometry.size.width,
+                            height: 300
+                        )
+                }
             }
+            .ignoresSafeArea(.keyboard) // キーボードエリアを無視
             .navigationTitle(viewModel.project.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // ツールバーアイテム
                 toolbarItems
             }
-            // print("DEBUG: ImagePickerViewからの選択 - 識別子: \(imageInfo.assetIdentifier ?? "なし"), PHAsset: \(imageInfo.phAsset != nil)")
             // 画像ピッカー内でクロップ画面への遷移を追加
             .sheet(item: $activeSheet) { item in
                 switch item {
@@ -128,6 +149,28 @@ struct EditorView: View {
                         activeSheet = nil
                     }
                 }
+            }
+            // 手動背景除去画面への遷移
+            .navigationDestination(isPresented: $isNavigatingToManualRemoval) {
+                if let imageElement = viewModel.selectedElement as? ImageElement {
+                    ManualBackgroundRemovalView(imageElement: imageElement, editorViewModel: viewModel)
+                }
+            }
+            // 保存オプションアクションシート
+            .actionSheet(isPresented: $isShowingSaveOptions) {
+                ActionSheet(
+                    title: Text("保存オプション"),
+                    message: Text("保存方法を選択してください"),
+                    buttons: [
+                        .default(Text("通常保存（個別画像）")) {
+                            saveIndividualImages()
+                        },
+                        .default(Text("合成保存（1枚の画像）")) {
+                            saveCompositeImage()
+                        },
+                        .cancel()
+                    ]
+                )
             }
             .alert(isPresented: $isShowingAlert) {
                 Alert(
@@ -188,13 +231,7 @@ struct EditorView: View {
                 .padding(.leading)
             
             Spacer()
-            
-            Button(action: {
-            }) {
-                Text("エフェクト")
-                    .foregroundColor(.secondary)
-            }
-            .padding(.trailing)
+
         }
         .padding(.vertical, 8)
         .background(Color(UIColor.secondarySystemBackground))
@@ -212,8 +249,25 @@ struct EditorView: View {
             CanvasViewRepresentable(
                 viewModel: viewModel,
                 showGrid: showGrid,
-                snapToGrid: snapToGrid
+                snapToGrid: snapToGrid,
+                zoomScale: $canvasZoomScale,
+                panOffset: $canvasPanOffset
             )
+            
+            // テキスト編集オーバーレイ (InlineTextEditorからTextEditDialogに変更)
+            if viewModel.isEditingText,
+               let editingElement = viewModel.editingTextElement {
+                TextEditDialog(
+                    initialText: editingElement.text,
+                    onEditComplete: { newText in
+                        viewModel.updateTextContent(editingElement, newText: newText)
+                        viewModel.endTextEditing()
+                    },
+                    onCancel: {
+                        viewModel.endTextEditing()
+                    }
+                )
+            }
             
             // ツールバー
             VStack {
@@ -247,13 +301,6 @@ struct EditorView: View {
     
     private var modeSelector: some View {
         HStack(spacing: 12) {
-            // 選択モード
-            Button(action: { viewModel.editorMode = .select }) {
-                Image(systemName: "")
-                    .foregroundColor(viewModel.editorMode == .select ? .blue : .primary)
-            }
-            .help("選択ツール")
-            
             // テキスト作成モード
             Button(action: { viewModel.editorMode = .textCreate }) {
                 Image(systemName: "textformat")
@@ -314,7 +361,7 @@ struct EditorView: View {
             // 画像インポートモード
             Button(action: {
                 viewModel.editorMode = .imageImport
-                // activeSheetを使用する統一された方法に変更
+                // activeSheetを使用する方法に変更
                 activeSheet = .imagePicker
             }) {
                 Image(systemName: "photo")
@@ -342,6 +389,36 @@ struct EditorView: View {
                     .foregroundColor(viewModel.editorMode == .delete ? .red : .primary)
             }
             .help("削除ツール")
+            
+            // 手動背景除去
+            if let selectedElement = viewModel.selectedElement,
+               selectedElement is ImageElement {
+                Button(action: {
+                    // 手動背景除去画面への遷移
+                    isNavigatingToManualRemoval = true
+                }) {
+                    Image(systemName: "paintbrush.pointed")
+                        .foregroundColor(.orange)
+                }
+                .help("手動背景除去")
+            }
+            
+            // 画像役割切り替え（ベース/オーバーレイ）
+            if let selectedElement = viewModel.selectedElement,
+               let imageElement = selectedElement as? ImageElement {
+                Button(action: {
+                    // ベース画像でない場合のみ切り替え可能
+                    if !imageElement.isBaseImage {
+                        viewModel.toggleImageRole(imageElement)
+                    }
+                }) {
+                    Image(systemName: imageElement.isBaseImage ? "star.fill" : "star")
+                        .foregroundColor(imageElement.isBaseImage ? .yellow : .primary)
+                        .opacity(imageElement.isBaseImage ? 0.7 : 1.0) // ベース画像時は少し薄く表示
+                }
+                .disabled(imageElement.isBaseImage) // ベース画像時は無効化
+                .help(imageElement.isBaseImage ? "ベース画像（変更不可）" : "ベース画像に設定")
+            }
         }
     }
     
@@ -411,8 +488,8 @@ struct EditorView: View {
         Group {
             // 左側に保存ボタン
             ToolbarItem(placement: .navigationBarLeading) {
-                Button("Save") {
-                    saveProject()
+                Button("保存") {
+                    isShowingSaveOptions = true
                 }
                 .help("保存")
             }
@@ -439,58 +516,32 @@ struct EditorView: View {
     
     // MARK: - アクション処理
     
-    /// プロジェクトを保存
-    private func saveProject() {
-        // 【修正】選択中の画像要素のメタデータを先に保存
-        if let imageElement = viewModel.selectedElement as? ImageElement,
-           let identifier = imageElement.originalImageIdentifier {
-            
-            // 最新のメタデータを保存
-            if let metadata = imageElement.metadata {
-                let saved = ImageMetadataManager.shared.saveMetadata(metadata, for: identifier)
-                if saved {
-                    print("DEBUG: 画像メタデータを保存しました - ID: \(identifier)")
-                } else {
-                    print("DEBUG: 画像メタデータの保存に失敗しました")
-                }
-            }
-            
-            // 【修正】元の写真にも保存
-            ImageMetadataManager.shared.saveMetadataToOriginalPhoto(for: identifier) { success, error in
-                if let error = error {
-                    if case MetadataError.readOnlyAsset = error {
-                        // 読み取り専用の場合はアプリ内保存のみで成功とする
-                        print("INFO: 読み取り専用アセット - アプリ内保存のみ")
-                    } else if case MetadataError.partialSuccess = error {
-                        // 部分的成功も許容
-                        print("INFO: 部分的成功 - アプリ内保存は完了")
-                    } else {
-                        print("ERROR: 写真への保存失敗: \(error.localizedDescription)")
-                    }
-                }
-            }
-        }
-        
-        // 通常のプロジェクト保存処理
+    /// 個別画像保存（従来の機能）
+    private func saveIndividualImages() {
         viewModel.saveProject { success in
             if success {
-                showAlert(title: "保存完了", message: "プロジェクトが保存されました。")
+                showAlert(title: "保存完了", message: "写真が保存されました。")
             } else {
-                showAlert(title: "エラー", message: "プロジェクトの保存に失敗しました。")
+                showAlert(title: "保存エラー", message: "写真の保存に失敗しました。写真へのアクセス権限確認。または写真が選択されていません。")
             }
         }
     }
     
-    /// プロジェクトとメタデータを保存
-    private func saveProjectWithMetadata() {
-        viewModel.saveProjectWithMetadata { success, error in
+    /// 合成画像保存（新機能）
+    private func saveCompositeImage() {
+        viewModel.saveAsCompositeImage { success in
             if success {
-                showAlert(title: "保存完了", message: "プロジェクトとメタデータが保存されました。")
+                showAlert(title: "合成保存完了", message: "すべての要素が合成された1枚の画像が保存されました。")
             } else {
-                let errorMessage = error?.localizedDescription ?? "不明なエラー"
-                showAlert(title: "エラー", message: "保存に失敗しました: \(errorMessage)")
+                showAlert(title: "合成保存エラー", message: "合成画像の保存に失敗しました。写真へのアクセス権限確認。または写真が選択されていません。")
             }
         }
+    }
+    
+    /// 編集を保存（旧メソッド - 互換性のため残す）
+    private func saveImage() {
+        // 現在は保存オプションアクションシートを表示
+        isShowingSaveOptions = true
     }
     
     /// 画像選択後の処理
@@ -543,6 +594,8 @@ struct EditorView: View {
         }
     }
 }
+
+
 
 /// プレビュー
 struct EditorView_Previews: PreviewProvider {

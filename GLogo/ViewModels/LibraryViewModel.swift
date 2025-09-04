@@ -176,6 +176,7 @@ struct EffectItem: LibraryItem {
 }
 
 /// ライブラリビューモデル - 要素ライブラリを管理
+@MainActor
 class LibraryViewModel: ObservableObject {
     // MARK: - プロパティ
     
@@ -367,15 +368,6 @@ class LibraryViewModel: ObservableObject {
                 name: "ソリッド白",
                 thumbnailImage: UIImage(systemName: "circle"),
                 backgroundSettings: BackgroundSettings(color: .white)
-            ),
-            BackgroundItem(
-                name: "透明",
-                thumbnailImage: UIImage(systemName: "circle.dotted"),
-                backgroundSettings: {
-                    var settings = BackgroundSettings()
-                    settings.type = .transparent
-                    return settings
-                }()
             ),
             BackgroundItem(
                 name: "ブルーグラデーション",

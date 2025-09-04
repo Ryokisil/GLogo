@@ -363,34 +363,6 @@ func stopEditing() {
 }
 ```
 
-#### デバウンス機能付き高品質更新
-```swift
-/// 高品質更新をスケジュール（デバウンス付き）
-func scheduleHighQualityUpdate() {
-    // 既存のタスクをキャンセル
-    highQualityUpdateTask?.cancel()
-    
-    // 500ms後に高品質更新を実行
-    highQualityUpdateTask = Task {
-        do {
-            try await Task.sleep(nanoseconds: 500_000_000) // 500ms
-            
-            // キャンセルされていない場合のみ実行
-            if !Task.isCancelled {
-                await MainActor.run {
-                    // 編集終了をマーク
-                    isCurrentlyEditing = false
-                    // フルサイズの画像を更新
-                    cachedImage = nil  // キャッシュをクリアして再生成を促す
-                }
-            }
-        } catch {
-            // スリープがキャンセルされた場合の処理
-        }
-    }
-}
-```
-
 ### 4. 描画処理の最適化
 
 #### 動的品質切り替え
@@ -422,9 +394,6 @@ func updateSaturation(_ saturation: CGFloat) {
     
     // 即座に値を更新（UI即座反応のため）
     imageElement.saturationAdjustment = saturation
-    
-    // 高品質更新をスケジュール
-    imageElement.scheduleHighQualityUpdate()
     
     // EditorViewModelの対応するメソッドを呼び出す（イベントソーシング用）
     editorViewModel?.updateImageSaturation(imageElement, newSaturation: saturation)
@@ -512,3 +481,246 @@ previewImage = nil  // プレビューもリセット
 - **品質保証**: 最終出力は必ずフルサイズ高品質
 
 この2段階処理アーキテクチャにより、プロフェッショナルレベルの高解像度画像編集における快適なリアルタイム編集が可能になりました。
+
+# Z-Index順タッチ判定システム
+
+## 問題の概要
+複数の要素が重なっている状況で、テキストと画像が重なった場合にテキストが選択しにくい問題が発生していました。従来の実装では、配列順（追加順）でタッチ判定を行っていたため、後から追加された要素が前面に描画されていても、タッチ判定では意図しない要素が選択される場合がありました。
+
+## 根本原因
+- **描画順序とタッチ判定順序の不一致**: 描画はZ-Index順、タッチ判定は配列順
+- **配列順の限界**: 要素の追加順序と視覚的な前後関係が異なる
+- **直感的でない操作**: ユーザーが見ている前面の要素を選択できない
+
+## 解決策：Z-Index順タッチ判定
+
+### 1. システム設計
+```
+要素タイプ別のZ-Index優先度:
+- テキスト要素: 300〜（最前面）
+- 図形要素: 200〜（中間）
+- 画像要素: 100〜（背面）
+- 背景要素: 0〜（最背面）
+```
+
+### 2. 自動Z-Index設定
+```swift
+/// 要素の自動Z-Index設定
+private func setAutoZIndex(for element: LogoElement) {
+    let elementPriority = ElementPriority.defaultPriority(for: element.type)
+    let nextZIndex = elementPriority.nextAvailableZIndex(existingElements: project.elements)
+    element.zIndex = nextZIndex
+    
+    print("DEBUG: 要素タイプ: \(element.type), 優先度: \(elementPriority), 設定されたzIndex: \(nextZIndex)")
+}
+```
+
+### 3. 描画順序の統一
+```swift
+// Z-Index順でソートしてから描画（小さい値から大きい値へ、奥から手前へ）
+let sortedElements = project.elements
+    .filter { $0.isVisible }
+    .sorted { $0.zIndex < $1.zIndex }
+
+for element in sortedElements {
+    element.draw(in: context)
+}
+```
+
+### 4. タッチ判定の改善
+```swift
+/// 指定された位置にある要素を検索
+private func hitTestElement(at point: CGPoint) -> LogoElement? {
+    guard let project = project else { return nil }
+    
+    let testPoint = snapToGrid ? snapPointToGrid(point) : point
+    
+    // Z-Index順（大きい値から小さい値へ、前面から奥へ）でヒットテスト
+    let sortedElements = project.elements
+        .filter { !$0.isLocked && $0.isVisible }
+        .sorted { $0.zIndex > $1.zIndex }
+    
+    return sortedElements.first { $0.hitTest(testPoint) }
+}
+```
+
+### 5. イベントソーシング対応
+```swift
+/// 要素のZ-Index変更イベント
+struct ElementZIndexChangedEvent: EditorEvent {
+    var eventName = "ElementZIndexChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldZIndex: Int
+    let newZIndex: Int
+    
+    func apply(to project: LogoProject) {
+        guard let element = project.elements.first(where: { $0.id == elementId }) else { return }
+        element.zIndex = newZIndex
+    }
+    
+    func revert(from project: LogoProject) {
+        guard let element = project.elements.first(where: { $0.id == elementId }) else { return }
+        element.zIndex = oldZIndex
+    }
+}
+```
+
+### 6. 実装における技術的詳細
+
+#### 要素タイプ別優先度システム
+```swift
+/// 要素の描画優先度を表す列挙型
+enum ElementPriority: Int, CaseIterable {
+    case background = 0     // 背景要素
+    case image = 100        // 画像要素
+    case shape = 200        // 図形要素
+    case text = 300         // テキスト要素（最前面）
+    
+    /// 優先度の範囲内で次の利用可能なzIndexを取得
+    func nextAvailableZIndex(existingElements: [LogoElement]) -> Int {
+        let samePriorityElements = existingElements.filter { element in
+            let elementPriority = ElementPriority.priority(for: element.zIndex)
+            return elementPriority == self
+        }
+        
+        if samePriorityElements.isEmpty {
+            return self.rawValue
+        }
+        
+        let maxZIndex = samePriorityElements.map { $0.zIndex }.max() ?? self.rawValue
+        return maxZIndex + 1
+    }
+}
+```
+
+#### 初期化時の自動設定
+```swift
+// 各要素の初期化時にデフォルトzIndexを設定
+init(text: String, fontName: String = "HelveticaNeue", fontSize: CGFloat = 36.0, textColor: UIColor = .white) {
+    super.init(name: "Text")
+    // ... その他の初期化処理
+    
+    // デフォルトzIndexを設定
+    self.zIndex = ElementPriority.text.rawValue
+}
+```
+
+### 7. 改善効果
+
+#### 操作性の向上
+| 項目 | 改善前 | 改善後 | 効果 |
+|------|--------|--------|------|
+| **タッチ判定** | 配列順 | **Z-Index順** | 直感的操作 |
+| **選択精度** | 不安定 | **確実** | 前面要素を確実に選択 |
+| **一貫性** | 描画≠タッチ | **描画=タッチ** | 見た目通りの操作 |
+| **保守性** | 複雑 | **シンプル** | 統一されたロジック |
+
+#### 具体的な改善例
+- **テキスト＋画像**: テキスト（zIndex=300）が画像（zIndex=100）の前面に確実に選択される
+- **図形＋画像**: 図形（zIndex=200）が画像（zIndex=100）の前面に確実に選択される
+- **複数テキスト**: 後から追加されたテキスト（zIndex=301）が前面に選択される
+
+### 8. 将来的な拡張性
+
+#### 手動順序変更機能
+```swift
+// 将来的に実装可能な機能
+func bringToFront(_ element: LogoElement) {
+    // 最前面に移動
+}
+
+func sendToBack(_ element: LogoElement) {
+    // 背面に移動
+}
+```
+
+#### レイヤーパネル
+```swift
+// レイヤー管理UIとの連携
+struct LayerPanelView: View {
+    var sortedElements: [LogoElement] {
+        editorViewModel.project.elements.sorted { $0.zIndex > $1.zIndex }
+    }
+}
+```
+
+### 9. 実装の核心ポイント
+
+この実装の最も重要な点は、**既存のZ-Index描画システムを活用**して、**1つの関数を修正するだけ**で根本的な問題を解決したことです：
+
+```swift
+// 修正前（問題のあるコード）
+for element in project.elements.reversed() {
+    if element.hitTest(testPoint) {
+        return element
+        
+    }
+}
+
+// 修正後（Z-Index順）
+let sortedElements = project.elements
+    .filter { !$0.isLocked && $0.isVisible }
+    .sorted { $0.zIndex > $1.zIndex }
+
+return sortedElements.first { $0.hitTest(testPoint) }
+```
+
+この改善により、**ユーザーが見ている通りの順序で要素を選択**できるようになり、直感的で一貫性のある操作体験が実現されました。
+
+# 合成画像保存時の画像消失問題
+
+## 問題の概要
+複数の画像を組み合わせて合成画像として保存する際、特定の条件下でオーバーレイ画像（キャラクター等）が保存結果から消失する問題が発生していました。
+
+## 根本原因
+**解像度ベースの自動ベース画像選択**により、ユーザーの意図と異なる画像がベースとして選択されることが原因でした：
+
+- **従来ロジック**: 最高解像度の画像を自動的にベース画像として選択
+- **問題事例**: キャラクター画像（高解像度）がベースに選ばれ、学校背景（低解像度）がオーバーレイになる
+- **結果**: 座標変換時に`relativeX = -2.18`など範囲外座標が計算され、オーバーレイ要素が描画範囲外に配置される
+
+## 解決策：役割ベース画像管理システム
+
+### 1. 画像役割の導入
+```swift
+/// 画像の役割を定義
+enum ImageRole: String, Codable, CaseIterable {
+    case base = "base"           // ベース画像（保存時の基準画像）
+    case overlay = "overlay"     // オーバーレイ画像（ベース画像の上に重ねる画像）
+}
+```
+
+### 2. ユーザー制御可能なUI
+- **⭐️アイコン**: 画像選択時にツールバーに表示
+  - ベース画像：黄色の塗りつぶし星（⭐️）
+  - オーバーレイ画像：通常色の輪郭星（☆）
+- **直感的操作**: タップで役割を切り替え
+- **安全設計**: ベース画像は解除不可（必ず1つのベース画像を維持）
+
+### 3. 保存アルゴリズムの改善
+```swift
+// 1. まずベース役割の画像を探す
+baseImageElement = imageElements.first { $0.imageRole == .base }
+
+// 2. ベース役割がない場合は、最高解像度の画像を選択（既存ロジック）
+if baseImageElement == nil {
+    // フォールバック処理
+}
+```
+
+### 4. 視覚的レイヤー順序の自動調整
+- **ベース画像**: `ElementPriority.image.rawValue - 10` (背面配置)
+- **オーバーレイ画像**: `ElementPriority.image.rawValue + 10` (前面配置)
+- **自動ソート**: 役割変更時に`project.elements`をzIndex順で並び替え
+
+## 改善効果
+
+| 項目 | 改善前 | 改善後 | 効果 |
+|------|--------|--------|------|
+| **画像選択** | 解像度依存 | **ユーザー指定** | 意図通りの保存 |
+| **座標計算** | 範囲外エラー | **0.0-1.0範囲** | 正確な位置計算 |
+| **操作性** | 自動選択のみ | **⭐️で直感操作** | ユーザー制御 |
+| **安全性** | 不安定 | **必ずベース画像存在** | 保存失敗防止 |
+
+この実装により、ユーザーが明示的に指定したベース画像を基準とした正確な合成画像保存が可能になり、オーバーレイ要素の消失問題が解決。

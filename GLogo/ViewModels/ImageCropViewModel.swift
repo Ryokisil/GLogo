@@ -1,18 +1,20 @@
 //
 //  ImageCropViewModel.swift
-//  GameLogoMaker
+//  GLogo
 //
 //  概要:
-//  ImageCropView用のViewModel。クロップロジックとデータ管理を担当します。
+//  画像クロップ機能のビューモデルです。
+//  画像の表示、クロップ領域の管理、AI背景除去機能を提供します。
 //
 
-import SwiftUI
+import Foundation
 import UIKit
+import Vision
 
 class ImageCropViewModel: ObservableObject {
     // MARK: - プロパティ
     
-    @Published var cropRect: CGRect {
+    @Published var cropRect: CGRect = CGRect(x: 0, y: 0, width: 100, height: 100) {
         didSet {
             checkHasCropped()
         }
@@ -26,6 +28,13 @@ class ImageCropViewModel: ObservableObject {
     @Published var imageIsLoaded: Bool = false
     @Published var hasCropped: Bool = false
     
+    /// AI背景除去の処理状態
+    @Published var isProcessingBackgroundRemoval: Bool = false
+    
+    /// 背景除去済みの画像（nilの場合は未処理）
+    @Published var backgroundRemovedImage: UIImage?
+    
+    
     let originalImage: UIImage
     private let completion: (UIImage) -> Void
     
@@ -34,8 +43,93 @@ class ImageCropViewModel: ObservableObject {
     init(image: UIImage, completion: @escaping (UIImage) -> Void) {
         self.originalImage = image
         self.completion = completion
-        self.cropRect = CGRect(x: 0, y: 0, width: 100, height: 100)
     }
+    
+    // MARK: - AI背景除去
+    
+    /// AI背景除去を開始
+    @MainActor
+    func startBackgroundRemoval() {
+        guard !isProcessingBackgroundRemoval else { return }
+        
+        isProcessingBackgroundRemoval = true
+        
+        Task {
+            do {
+                let processedImage = try await removeBackground(from: originalImage)
+                await MainActor.run {
+                    self.backgroundRemovedImage = processedImage
+                    self.isProcessingBackgroundRemoval = false
+                }
+            } catch {
+                print("AI背景除去エラー: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.isProcessingBackgroundRemoval = false
+                }
+            }
+        }
+    }
+    
+    /// Vision フレームワークを使用した背景除去処理
+    private func removeBackground(from image: UIImage) async throws -> UIImage {
+    guard let cgImage = image.cgImage else {
+        throw NSError(domain: "ImageCropError", code: 1, userInfo: [NSLocalizedDescriptionKey: "CGImageの作成に失敗"])
+    }
+    
+    let request = VNGenerateForegroundInstanceMaskRequest()
+    
+    return try await withCheckedThrowingContinuation { continuation in
+        let handler = VNImageRequestHandler(cgImage: cgImage)
+        
+        do {
+            try handler.perform([request])
+            
+            guard let result = request.results?.first else {
+                continuation.resume(throwing: NSError(domain: "VisionError", code: 2, userInfo: [NSLocalizedDescriptionKey: "前景マスクの生成に失敗"]))
+                return
+            }
+            
+            // マスクを生成（AIの高精度を完全保持）
+            let mask = try result.generateScaledMaskForImage(forInstances: result.allInstances, from: handler)
+            let originalMaskImage = CIImage(cvPixelBuffer: mask)
+            
+            // 浸透効果用のソフトマスクを別途作成（元のマスクは触らない）
+            let featheredMask = self.createFeatheredMask(from: originalMaskImage)
+            
+            // Core Imageで浸透効果を適用
+            let originalCIImage = CIImage(cgImage: cgImage)
+            
+            guard let filter = CIFilter(name: "CIBlendWithMask") else {
+                continuation.resume(throwing: NSError(domain: "CoreImageError", code: 3, userInfo: [NSLocalizedDescriptionKey: "CIBlendWithMaskフィルターが利用不可"]))
+                return
+            }
+            
+            // フィルター設定（フェザーマスクを使用）
+            filter.setValue(originalCIImage, forKey: kCIInputImageKey)
+            filter.setValue(featheredMask, forKey: kCIInputMaskImageKey)
+            filter.setValue(CIImage.empty(), forKey: kCIInputBackgroundImageKey)
+            
+            guard let outputImage = filter.outputImage else {
+                continuation.resume(throwing: NSError(domain: "CoreImageError", code: 4, userInfo: [NSLocalizedDescriptionKey: "フィルター処理に失敗"]))
+                return
+            }
+            
+            // CIImage → UIImage変換
+            let context = CIContext()
+            guard let resultCGImage = context.createCGImage(outputImage, from: outputImage.extent) else {
+                continuation.resume(throwing: NSError(domain: "CoreImageError", code: 5, userInfo: [NSLocalizedDescriptionKey: "最終画像の生成に失敗"]))
+                return
+            }
+            
+            let resultImage = UIImage(cgImage: resultCGImage)
+            continuation.resume(returning: resultImage)
+            
+        } catch {
+            continuation.resume(throwing: error)
+        }
+    }
+}
+    
     
     // MARK: - コマンド
     
@@ -46,7 +140,10 @@ class ImageCropViewModel: ObservableObject {
         print("クロップ領域: \(cropRect)")
         print("クロップ実行の有無: \(hasCropped)")
         
-        if let croppedImage = cropImage() {
+        // AI背景除去済みの画像があればそれを使用、なければ通常のクロップ処理
+        let sourceImage = backgroundRemovedImage ?? originalImage
+        
+        if let croppedImage = cropImage(from: sourceImage) {
             print("クロップ完了 - 結果画像サイズ: \(croppedImage.size)")
             completion(croppedImage)
         } else {
@@ -146,23 +243,22 @@ class ImageCropViewModel: ObservableObject {
         }
     }
     
-    // ImageCropViewModel.swift
-    
-    private func cropImage() -> UIImage? {
+    private func cropImage(from sourceImage: UIImage? = nil) -> UIImage? {
+        let imageToProcess = sourceImage ?? originalImage
         guard imageViewFrame.width > 0 && imageViewFrame.height > 0 else {
             print("エラー: 画像表示フレームが無効です")
             return nil
         }
         
         print("=== クロップ処理デバッグ ===")
-        print("元画像サイズ: \(originalImage.size)")
+        print("処理画像サイズ: \(imageToProcess.size)")
         print("画像表示サイズ: \(imageViewFrame)")
         print("クロップ領域: \(cropRect)")
         print("クロップ実行済み: \(hasCropped)")
         
         if !hasCropped {
-            print("クロップなし: 元画像を返します")
-            return originalImage
+            print("クロップなし: 処理画像を返します")
+            return imageToProcess
         }
         
         // クロップ枠を画像フレーム内に制限
@@ -178,7 +274,7 @@ class ImageCropViewModel: ObservableObject {
         print("正規化座標: x=\(normalizedX), y=\(normalizedY), w=\(normalizedWidth), h=\(normalizedHeight)")
         
         // UIImage.sizeを使用してスケーリング
-        let imageSize = originalImage.size
+        let imageSize = imageToProcess.size
         let scaledX = normalizedX * imageSize.width
         let scaledY = normalizedY * imageSize.height
         let scaledWidth = normalizedWidth * imageSize.width
@@ -187,7 +283,7 @@ class ImageCropViewModel: ObservableObject {
         print("スケールされた浮動小数点値: x=\(scaledX), y=\(scaledY), w=\(scaledWidth), h=\(scaledHeight)")
         
         // 画像の向きを考慮してCGImageを取得
-        guard let orientedCGImage = createOrientedCGImage(from: originalImage) else {
+        guard let orientedCGImage = createOrientedCGImage(from: imageToProcess) else {
             print("エラー: orientedCGImageの作成に失敗")
             return nil
         }
@@ -220,6 +316,33 @@ class ImageCropViewModel: ObservableObject {
         print("クロップ完了 - 結果画像サイズ: \(resultImage.size)")
         
         return resultImage
+    }
+    
+    /// AIマスクに浸透効果を適用（高精度を保持しつつエッジを柔らかく）
+    private func createFeatheredMask(from originalMask: CIImage) -> CIImage {
+        // ガウシアンブラーでエッジを柔らかくして浸透効果を作成
+        guard let blurFilter = CIFilter(name: "CIGaussianBlur") else {
+            print("WARNING: CIGaussianBlur が利用できません - 元のマスクを使用")
+            return originalMask
+        }
+        
+        blurFilter.setValue(originalMask, forKey: kCIInputImageKey)
+        blurFilter.setValue(6.0, forKey: kCIInputRadiusKey) // 自然な浸透効果の最適値
+        
+        guard let blurredMask = blurFilter.outputImage else {
+            print("WARNING: ブラー処理に失敗 - 元のマスクを使用")
+            return originalMask
+        }
+        
+        // ガンマ調整で浸透の減衰カーブを調整
+        guard let gammaFilter = CIFilter(name: "CIGammaAdjust") else {
+            return blurredMask
+        }
+        
+        gammaFilter.setValue(blurredMask, forKey: kCIInputImageKey)
+        gammaFilter.setValue(0.8, forKey: "inputPower") // 柔らかな減衰カーブ
+        
+        return gammaFilter.outputImage ?? blurredMask
     }
     
     // MARK: - 画像の向きを考慮したCGImageを作成

@@ -15,6 +15,7 @@ import UIKit
 import Combine
 
 /// 要素編集ビューモデル - 選択された要素の編集機能を提供
+@MainActor
 class ElementViewModel: ObservableObject {
     // MARK: - プロパティ
     
@@ -495,9 +496,6 @@ class ElementViewModel: ObservableObject {
         // 即座に値を更新（UI即座反応のため）
         imageElement.saturationAdjustment = saturation
         
-        // 高品質更新をスケジュール
-        imageElement.scheduleHighQualityUpdate()
-        
         // EditorViewModelの対応するメソッドを呼び出す（イベントソーシング用）
         editorViewModel?.updateImageSaturation(imageElement, newSaturation: saturation)
         
@@ -533,9 +531,6 @@ class ElementViewModel: ObservableObject {
         // 即座に値を更新（UI即座反応のため）
         imageElement.brightnessAdjustment = brightness
         
-        // 高品質更新をスケジュール
-        imageElement.scheduleHighQualityUpdate()
-        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageBrightness(imageElement, newBrightness: brightness)
         
@@ -568,9 +563,6 @@ class ElementViewModel: ObservableObject {
         
         // 即座に値を更新（UI即座反応のため）
         imageElement.contrastAdjustment = contrast
-        
-        // 高品質更新をスケジュール
-        imageElement.scheduleHighQualityUpdate()
         
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageContrast(imageElement, newContrast: contrast)
@@ -605,9 +597,6 @@ class ElementViewModel: ObservableObject {
         // 即座に値を更新（UI即座反応のため）
         imageElement.highlightsAdjustment = highlights
         
-        // 高品質更新をスケジュール
-        imageElement.scheduleHighQualityUpdate()
-        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageHighlights(imageElement, newHighlights: highlights)
         
@@ -640,9 +629,6 @@ class ElementViewModel: ObservableObject {
         
         // 即座に値を更新（UI即座反応のため）
         imageElement.shadowsAdjustment = shadows
-        
-        // 高品質更新をスケジュール
-        imageElement.scheduleHighQualityUpdate()
         
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageShadows(imageElement, newShadows: shadows)
@@ -677,9 +663,6 @@ class ElementViewModel: ObservableObject {
         // 即座に値を更新（UI即座反応のため）
         imageElement.hueAdjustment = hue
         
-        // 高品質更新をスケジュール
-        imageElement.scheduleHighQualityUpdate()
-        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageHue(imageElement, newHue: hue)
         
@@ -713,9 +696,6 @@ class ElementViewModel: ObservableObject {
         // 即座に値を更新（UI即座反応のため）
         imageElement.sharpnessAdjustment = sharpness
         
-        // 高品質更新をスケジュール
-        imageElement.scheduleHighQualityUpdate()
-        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageSharpness(imageElement, newSharpness: sharpness)
         
@@ -748,9 +728,6 @@ class ElementViewModel: ObservableObject {
         
         // 即座に値を更新（UI即座反応のため）
         imageElement.gaussianBlurRadius = radius
-        
-        // 高品質更新をスケジュール
-        imageElement.scheduleHighQualityUpdate()
         
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageGaussianBlur(imageElement, newRadius: radius)
@@ -790,9 +767,6 @@ class ElementViewModel: ObservableObject {
         // 即座に値を更新（UI即座反応のため）
         imageElement.tintColor = color
         imageElement.tintIntensity = intensity
-        
-        // 高品質更新をスケジュール
-        imageElement.scheduleHighQualityUpdate()
         
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageTintColor(imageElement, oldColor: oldColor, newColor: color, oldIntensity: oldIntensity, newIntensity: intensity)
@@ -838,9 +812,6 @@ class ElementViewModel: ObservableObject {
         // 即座に値を更新（UI即座反応のため）
         imageElement.showFrame = showFrame
         
-        // 高品質更新をスケジュール
-        imageElement.scheduleHighQualityUpdate()
-        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageShowFrame(imageElement, newValue: showFrame)
         
@@ -877,9 +848,6 @@ class ElementViewModel: ObservableObject {
         // 即座に値を更新（UI即座反応のため）
         imageElement.frameColor = color
         
-        // 高品質更新をスケジュール
-        imageElement.scheduleHighQualityUpdate()
-        
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageFrameColor(imageElement, newColor: color)
         
@@ -915,9 +883,6 @@ class ElementViewModel: ObservableObject {
         
         // 即座に値を更新（UI即座反応のため）
         imageElement.frameWidth = width
-        
-        // 高品質更新をスケジュール
-        imageElement.scheduleHighQualityUpdate()
         
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageFrameWidth(imageElement, newWidth: width)
@@ -956,9 +921,6 @@ class ElementViewModel: ObservableObject {
         // 即座に値を更新（UI即座反応のため）
         imageElement.roundedCorners = rounded
         imageElement.cornerRadius = radius
-        
-        // 高品質更新をスケジュール
-        imageElement.scheduleHighQualityUpdate()
         
         // EditorViewModelの対応するメソッドを呼び出す
         editorViewModel?.updateImageRoundedCorners(imageElement, wasRounded: wasRounded, isRounded: rounded, oldRadius: oldRadius, newRadius: radius)

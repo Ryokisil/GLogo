@@ -42,7 +42,6 @@ struct BackgroundEditorPanel: View {
                     Picker("", selection: $backgroundSettings.type) {
                         Text("単色").tag(BackgroundType.solid)
                         Text("グラデーション").tag(BackgroundType.gradient)
-                        Text("透明").tag(BackgroundType.transparent)
                     }
                     .pickerStyle(SegmentedPickerStyle())
                     .onChange(of: backgroundSettings.type) { _ in
@@ -59,8 +58,6 @@ struct BackgroundEditorPanel: View {
                         gradientProperties
                     case .image:
                         EmptyView()
-                    case .transparent:
-                        transparentProperties
                     }
                 }
             }
@@ -186,19 +183,6 @@ struct BackgroundEditorPanel: View {
         }
     }
     
-    // MARK: - 透明背景プロパティ
-    
-    private var transparentProperties: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("透明背景が有効になっています。")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            Text("プロジェクトを PNG 形式でエクスポートする場合、背景は透明になります。")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-    }
     
     // MARK: - ヘルパーメソッド
     

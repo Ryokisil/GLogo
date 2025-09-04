@@ -35,10 +35,11 @@ struct ImageCropView: View {
                             
                             // 画像表示用ビュー
                             ImagePreviewView(
-                                image: viewModel.originalImage,
+                                image: viewModel.backgroundRemovedImage ?? viewModel.originalImage,
                                 viewModel: viewModel,
                                 geometry: geometry
                             )
+                            
                             
                             if viewModel.imageIsLoaded {
                                 CropOverlay(
@@ -50,11 +51,50 @@ struct ImageCropView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     
-                    HStack(spacing: 20) {
-                        AspectRatioButton(title: "フリー", action: { viewModel.resetCropRect() })
-                        AspectRatioButton(title: "1:1", action: { viewModel.setCropAspectRatio(1) })
-                        AspectRatioButton(title: "4:3", action: { viewModel.setCropAspectRatio(4/3) })
-                        AspectRatioButton(title: "16:9", action: { viewModel.setCropAspectRatio(16/9) })
+                    VStack(spacing: 16) {
+                        // アスペクト比ボタン
+                        HStack(spacing: 20) {
+                            AspectRatioButton(title: "フリー", action: { viewModel.resetCropRect() })
+                            AspectRatioButton(title: "1:1", action: { viewModel.setCropAspectRatio(1) })
+                            AspectRatioButton(title: "4:3", action: { viewModel.setCropAspectRatio(4/3) })
+                            AspectRatioButton(title: "16:9", action: { viewModel.setCropAspectRatio(16/9) })
+                        }
+                        
+                        // AI背景除去ボタンとプログレス
+                        VStack(spacing: 8) {
+                            Button(action: {
+                                viewModel.startBackgroundRemoval()
+                            }) {
+                                HStack {
+                                    if viewModel.isProcessingBackgroundRemoval {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                            .scaleEffect(0.8)
+                                    } else {
+                                        Image(systemName: "wand.and.stars")
+                                    }
+                                    Text(viewModel.isProcessingBackgroundRemoval ? "処理中..." : "AI背景除去")
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 10)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(viewModel.backgroundRemovedImage != nil ? Color.green : Color.blue)
+                                )
+                            }
+                            .disabled(viewModel.isProcessingBackgroundRemoval)
+                            
+                            if viewModel.isProcessingBackgroundRemoval {
+                                Text("背景を除去中...")
+                                    .font(.caption)
+                                    .foregroundColor(.white)
+                            } else if viewModel.backgroundRemovedImage != nil {
+                                Text("背景除去完了")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                            }
+                        }
                     }
                     .padding()
                 }

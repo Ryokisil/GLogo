@@ -246,7 +246,7 @@ struct ImageEditorPanel: View {
                             Slider(value: Binding(
                                 get: { imageElement.brightnessAdjustment },
                                 set: { viewModel.updateBrightness($0) }
-                            ), in: -1...1, step: 0.01)
+                            ), in: -0.5...0.5, step: 0.01)
                             Text("\(imageElement.brightnessAdjustment, specifier: "%.2f")")
                                 .frame(width: 40, alignment: .trailing)
                         }

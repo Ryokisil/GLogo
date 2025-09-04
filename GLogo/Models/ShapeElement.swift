@@ -169,6 +169,9 @@ class ShapeElement: LogoElement {
         super.init(name: "\(shapeType.rawValue.capitalized) Shape")
         self.shapeType = shapeType
         self.fillColor = fillColor
+        
+        // デフォルトzIndexを設定
+        self.zIndex = ElementPriority.shape.rawValue
     }
     
     /// パスを作成

@@ -1020,7 +1020,7 @@ class ImageMetadataManager {
         case "frameWidth":
             if let doubleValue = value as? Double {
                 metadata.additionalMetadata["frameWidth"] = String(doubleValue)
-            } else if let floatValue = value as? CGFloat {
+            } else if value is CGFloat {
                 metadata.additionalMetadata["frameWidth"] = String(describing: value)
             }
         case "roundedCorners":

@@ -19,6 +19,55 @@ enum LogoElementType: String, Codable {
     case image
 }
 
+/// 要素の描画優先度を表す列挙型
+/// 値が大きいほど前面に描画される
+enum ElementPriority: Int, CaseIterable {
+    case background = 0     // 背景要素
+    case image = 100        // 画像要素
+    case shape = 200        // 図形要素
+    case text = 300         // テキスト要素（最前面）
+    
+    /// 要素タイプに対応するデフォルト優先度を取得
+    static func defaultPriority(for elementType: LogoElementType) -> ElementPriority {
+        switch elementType {
+        case .text:
+            return .text
+        case .shape:
+            return .shape
+        case .image:
+            return .image
+        }
+    }
+    
+    /// 優先度の範囲内で次の利用可能なzIndexを取得
+    func nextAvailableZIndex(existingElements: [LogoElement]) -> Int {
+        let samePriorityElements = existingElements.filter { element in
+            let elementPriority = ElementPriority.priority(for: element.zIndex)
+            return elementPriority == self
+        }
+        
+        if samePriorityElements.isEmpty {
+            return self.rawValue
+        }
+        
+        let maxZIndex = samePriorityElements.map { $0.zIndex }.max() ?? self.rawValue
+        return maxZIndex + 1
+    }
+    
+    /// zIndexから対応する優先度を取得
+    static func priority(for zIndex: Int) -> ElementPriority {
+        if zIndex >= ElementPriority.text.rawValue {
+            return .text
+        } else if zIndex >= ElementPriority.shape.rawValue {
+            return .shape
+        } else if zIndex >= ElementPriority.image.rawValue {
+            return .image
+        } else {
+            return .background
+        }
+    }
+}
+
 /// ロゴ要素の基本クラス
 class LogoElement: Codable {
     /// 要素のユニークID
@@ -45,6 +94,9 @@ class LogoElement: Codable {
     /// 要素がロックされているか（編集不可）
     var isLocked: Bool = false
     
+    /// 描画順序（大きい値ほど前面に描画）
+    var zIndex: Int = 0
+    
     /// 要素の種類
     var type: LogoElementType {
         fatalError("Subclasses must override this property")
@@ -62,7 +114,7 @@ class LogoElement: Codable {
     
     /// エンコード用のコーディングキー
     enum CodingKeys: String, CodingKey {
-        case id, name, isVisible, isLocked
+        case id, name, isVisible, isLocked, zIndex
         case positionX, positionY, width, height, rotation, opacity
     }
     
@@ -73,6 +125,7 @@ class LogoElement: Codable {
         try container.encode(name, forKey: .name)
         try container.encode(isVisible, forKey: .isVisible)
         try container.encode(isLocked, forKey: .isLocked)
+        try container.encode(zIndex, forKey: .zIndex)
         
         // CGPoint, CGSizeのエンコード
         try container.encode(position.x, forKey: .positionX)
@@ -90,6 +143,7 @@ class LogoElement: Codable {
         name = try container.decode(String.self, forKey: .name)
         isVisible = try container.decode(Bool.self, forKey: .isVisible)
         isLocked = try container.decode(Bool.self, forKey: .isLocked)
+        zIndex = try container.decodeIfPresent(Int.self, forKey: .zIndex) ?? 0
         
         // CGPoint, CGSizeのデコード
         let x = try container.decode(CGFloat.self, forKey: .positionX)
@@ -141,6 +195,7 @@ class LogoElement: Codable {
         copy.opacity = self.opacity
         copy.isVisible = self.isVisible
         copy.isLocked = self.isLocked
+        copy.zIndex = self.zIndex
         
         return copy
     }

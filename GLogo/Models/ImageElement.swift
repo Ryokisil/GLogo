@@ -21,6 +21,22 @@ enum ImageFitMode: String, Codable {
     case tile       // タイル状に繰り返し表示
 }
 
+/// 画像の役割定義
+enum ImageRole: String, Codable, CaseIterable {
+    case base = "base"           // ベース画像（保存時の基準画像）
+    case overlay = "overlay"     // オーバーレイ画像（ベース画像の上に重ねる画像）
+    
+    /// 表示用の名称
+    var displayName: String {
+        switch self {
+        case .base:
+            return "ベース画像"
+        case .overlay:
+            return "オーバーレイ画像"
+        }
+    }
+}
+
 /// 画像要素クラス
 class ImageElement: LogoElement {
     /// 画像ファイル名
@@ -37,6 +53,19 @@ class ImageElement: LogoElement {
     
     /// 元画像の識別子（UUIDなど）
     var originalImageIdentifier: String?
+    
+    // MARK: - インポート順番管理
+    
+    /// 元々のインポート順序（変更不可、履歴・デバッグ用）
+    var originalImportOrder: Int
+    
+    /// 画像の役割（ユーザーが変更可能）
+    var imageRole: ImageRole = .overlay
+    
+    /// ベース画像かどうか
+    var isBaseImage: Bool {
+        return imageRole == .base
+    }
     
     /// キャンバスサイズを保持（表示サイズ計算用）
     private var canvasSize: CGSize = CGSize(width: 3840, height: 2160)
@@ -61,9 +90,6 @@ class ImageElement: LogoElement {
     
     /// プレビュー用サイズ（最大512px）
     private let previewMaxSize: CGFloat = 512
-    
-    /// 高品質更新用のデバウンスタスク
-    private var highQualityUpdateTask: Task<Void, Never>?
     
     /// 編集中かどうかのフラグ（プレビュー/高品質の切り替え用）
     private var isCurrentlyEditing: Bool = false
@@ -170,6 +196,29 @@ class ImageElement: LogoElement {
         return processedImage
     }
     
+    /// フィルター適用済み画像を強制的に生成（キャッシュを無視）
+    func getFilteredImageForce() -> UIImage? {
+        guard let originalImage = self.originalImage else {
+            return nil
+        }
+        
+        // DEBUG: フィルター設定確認用（必要に応じてコメントアウト解除）
+        // print("DEBUG: getFilteredImageForce - フィルター設定:")
+        // print("DEBUG: - saturation: \(saturationAdjustment)")
+        // print("DEBUG: - brightness: \(brightnessAdjustment)")
+        // print("DEBUG: - contrast: \(contrastAdjustment)")
+        // print("DEBUG: - highlights: \(highlightsAdjustment)")
+        // print("DEBUG: - shadows: \(shadowsAdjustment)")
+        // print("DEBUG: - hue: \(hueAdjustment)")
+        // print("DEBUG: - sharpness: \(sharpnessAdjustment)")
+        // print("DEBUG: - blur: \(gaussianBlurRadius)")
+        // print("DEBUG: - tintColor: \(String(describing: tintColor))")
+        // print("DEBUG: - tintIntensity: \(tintIntensity)")
+        
+        // キャッシュを無視して常に最新のフィルターを適用
+        return applyFilters(to: originalImage)
+    }
+    
     /// 非同期で画像を取得（彩度調整用）
     @MainActor
     func getImageAsync() async -> UIImage? {
@@ -201,6 +250,8 @@ class ImageElement: LogoElement {
         case editHistory
         case metadata
         case metadataEditHistory
+        // インポート順番管理用のプロパティ
+        case originalImportOrder, imageRole
     }
     
     /// カスタムエンコーダー
@@ -246,13 +297,21 @@ class ImageElement: LogoElement {
         
         let frameColorData = try NSKeyedArchiver.archivedData(withRootObject: frameColor, requiringSecureCoding: false)
         try container.encode(frameColorData, forKey: .frameColorData)
+        
+        // インポート順番管理用のプロパティをエンコード
+        try container.encode(originalImportOrder, forKey: .originalImportOrder)
+        try container.encode(imageRole, forKey: .imageRole)
     }
     
     /// カスタムデコーダー
     required init(from decoder: Decoder) throws {
-        try super.init(from: decoder)
-        
         let container = try decoder.container(keyedBy: ImageCodingKeys.self)
+        
+        // インポート順番管理用のプロパティをデコード（後方互換性のためデフォルト値を提供）
+        originalImportOrder = try container.decodeIfPresent(Int.self, forKey: .originalImportOrder) ?? 0
+        imageRole = try container.decodeIfPresent(ImageRole.self, forKey: .imageRole) ?? .overlay
+        
+        try super.init(from: decoder)
         imageFileName = try container.decodeIfPresent(String.self, forKey: .imageFileName)
         imageData = try container.decodeIfPresent(Data.self, forKey: .imageData)
         originalImageURL = try container.decodeIfPresent(URL.self, forKey: .originalImageURL)
@@ -293,12 +352,23 @@ class ImageElement: LogoElement {
     }
     
     /// 画像とメタデータから初期化
-    init(imageData: Data, metadata: ImageMetadata?, fitMode: ImageFitMode = .aspectFit) {
+    init(imageData: Data, metadata: ImageMetadata?, fitMode: ImageFitMode = .aspectFit, importOrder: Int = 0) {
+        // インポート順番を設定
+        self.originalImportOrder = importOrder
+        
         super.init(name: "Image")
         self.imageData = imageData
         self.metadata = metadata
         self.originalImageIdentifier = UUID().uuidString
         self.fitMode = fitMode
+        
+        // 1番目の画像は自動的にベース画像に設定
+        if importOrder == 1 {
+            self.imageRole = .base
+        }
+        
+        // デフォルトzIndexを設定
+        self.zIndex = ElementPriority.image.rawValue
         
         // 画像のサイズに合わせて要素のサイズを調整
         if let image = UIImage(data: imageData) {
@@ -312,11 +382,22 @@ class ImageElement: LogoElement {
     }
     
     /// ファイル名から画像要素を初期化
-    init(fileName: String, fitMode: ImageFitMode = .aspectFit) {
+    init(fileName: String, fitMode: ImageFitMode = .aspectFit, importOrder: Int = 0) {
+        // インポート順番を設定
+        self.originalImportOrder = importOrder
+        
         super.init(name: "Image")
         self.imageFileName = fileName
         self.originalImageIdentifier = UUID().uuidString
         self.fitMode = fitMode
+        
+        // 1番目の画像は自動的にベース画像に設定
+        if importOrder == 1 {
+            self.imageRole = .base
+        }
+        
+        // デフォルトzIndexを設定
+        self.zIndex = ElementPriority.image.rawValue
         
         // 画像のサイズに合わせて要素のサイズを調整
         if let image = UIImage(named: fileName) {
@@ -325,11 +406,22 @@ class ImageElement: LogoElement {
     }
     
     /// URLから初期化（メタデータの抽出を含む）
-    init(url: URL, fitMode: ImageFitMode = .aspectFit) {
+    init(url: URL, fitMode: ImageFitMode = .aspectFit, importOrder: Int = 0) {
+        // インポート順番を設定
+        self.originalImportOrder = importOrder
+        
         super.init(name: "Image")
         self.originalImageURL = url
         self.originalImageIdentifier = UUID().uuidString
         self.fitMode = fitMode
+        
+        // 1番目の画像は自動的にベース画像に設定
+        if importOrder == 1 {
+            self.imageRole = .base
+        }
+        
+        // デフォルトzIndexを設定
+        self.zIndex = ElementPriority.image.rawValue
         
         do {
             // URLから画像データを読み込む
@@ -349,11 +441,22 @@ class ImageElement: LogoElement {
     }
     
     /// パスから画像要素を初期化
-    init(path: String, fitMode: ImageFitMode = .aspectFit) {
+    init(path: String, fitMode: ImageFitMode = .aspectFit, importOrder: Int = 0) {
+        // インポート順番を設定
+        self.originalImportOrder = importOrder
+        
         super.init(name: "Image")
         self.originalImagePath = path
         self.originalImageIdentifier = UUID().uuidString
         self.fitMode = fitMode
+        
+        // 1番目の画像は自動的にベース画像に設定
+        if importOrder == 1 {
+            self.imageRole = .base
+        }
+        
+        // デフォルトzIndexを設定
+        self.zIndex = ElementPriority.image.rawValue
         
         // 画像をロードしてサイズを調整
         if let image = UIImage(contentsOfFile: path) {
@@ -362,11 +465,22 @@ class ImageElement: LogoElement {
     }
     
     /// データから画像要素を初期化（動的サイズ調整フラグ付き）
-    init(imageData: Data, fitMode: ImageFitMode = .aspectFit, isDynamicSizing: Bool = true) {
+    init(imageData: Data, fitMode: ImageFitMode = .aspectFit, isDynamicSizing: Bool = true, importOrder: Int = 0) {
+        // インポート順番を設定
+        self.originalImportOrder = importOrder
+        
         super.init(name: "Image")
         self.imageData = imageData
         self.originalImageIdentifier = UUID().uuidString
         self.fitMode = fitMode
+        
+        // 1番目の画像は自動的にベース画像に設定
+        if importOrder == 1 {
+            self.imageRole = .base
+        }
+        
+        // デフォルトzIndexを設定
+        self.zIndex = ElementPriority.image.rawValue
         
         // isDynamicSizingフラグによってサイズ調整の実行を制御
         if let image = UIImage(data: imageData) {
@@ -386,12 +500,23 @@ class ImageElement: LogoElement {
     }
     
     /// データから画像要素を初期化（キャンバスサイズ付き）
-    init(imageData: Data, fitMode: ImageFitMode = .aspectFit, canvasSize: CGSize = CGSize(width: 3840, height: 2160)) {
+    init(imageData: Data, fitMode: ImageFitMode = .aspectFit, canvasSize: CGSize = CGSize(width: 3840, height: 2160), importOrder: Int = 0) {
+        // インポート順番を設定
+        self.originalImportOrder = importOrder
+        
         super.init(name: "Image")
         self.imageData = imageData
         self.originalImageIdentifier = UUID().uuidString
         self.fitMode = fitMode
         self.canvasSize = canvasSize
+        
+        // 1番目の画像は自動的にベース画像に設定
+        if importOrder == 1 {
+            self.imageRole = .base
+        }
+        
+        // デフォルトzIndexを設定
+        self.zIndex = ElementPriority.image.rawValue
         
         // 画像のサイズに合わせて要素のサイズを調整
         if let image = UIImage(data: imageData) {
@@ -403,11 +528,22 @@ class ImageElement: LogoElement {
     }
     
     /// データから画像要素を初期化
-    init(imageData: Data, fitMode: ImageFitMode = .aspectFit) {
+    init(imageData: Data, fitMode: ImageFitMode = .aspectFit, importOrder: Int = 0) {
+        // インポート順番を設定
+        self.originalImportOrder = importOrder
+        
         super.init(name: "Image")
         self.imageData = imageData
         self.originalImageIdentifier = UUID().uuidString
         self.fitMode = fitMode
+        
+        // 1番目の画像は自動的にベース画像に設定
+        if importOrder == 1 {
+            self.imageRole = .base
+        }
+        
+        // デフォルトzIndexを設定
+        self.zIndex = ElementPriority.image.rawValue
         
         // 画像のサイズに合わせて要素のサイズを調整
         if let image = UIImage(data: imageData) {
@@ -521,36 +657,10 @@ class ImageElement: LogoElement {
     func startEditing() {
         isCurrentlyEditing = true
     }
-    
+
     /// 編集終了をマーク
-    func stopEditing() {
+    func endEditing() {
         isCurrentlyEditing = false
-        scheduleHighQualityUpdate()
-    }
-    
-    /// 高品質更新をスケジュール（デバウンス付き）
-    func scheduleHighQualityUpdate() {
-        // 既存のタスクをキャンセル
-        highQualityUpdateTask?.cancel()
-        
-        // 500ms後に高品質更新を実行
-        highQualityUpdateTask = Task {
-            do {
-                try await Task.sleep(nanoseconds: 500_000_000) // 500ms
-                
-                // キャンセルされていない場合のみ実行
-                if !Task.isCancelled {
-                    await MainActor.run {
-                        // 編集終了をマーク
-                        isCurrentlyEditing = false
-                        // フルサイズの画像を更新
-                        cachedImage = nil  // キャッシュをクリアして再生成を促す
-                    }
-                }
-            } catch {
-                // スリープがキャンセルされた場合の処理
-            }
-        }
     }
     
     /// 画像にフィルターを適用
@@ -561,7 +671,7 @@ class ImageElement: LogoElement {
         var ciImage = CIImage(cgImage: cgImage)
         
         // 彩度のみを非同期で処理するかどうかのフラグ
-        let useAsyncSaturation = true
+        let useAsyncSaturation = false
         
         if useAsyncSaturation {
             // 彩度のみ個別に適用（非同期処理用に分離）

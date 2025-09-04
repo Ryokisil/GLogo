@@ -17,7 +17,6 @@ enum BackgroundType: String, Codable {
     case solid      // 単色
     case gradient   // グラデーション
     case image      // 画像
-    case transparent // 透明
 }
 
 /// グラデーションの種類
@@ -159,9 +158,6 @@ struct BackgroundSettings: Codable {
             // 画像背景
             drawBackgroundImage(in: context, rect: rect)
             
-        case .transparent:
-            // 透明背景の場合は何も描画しない
-            break
         }
         
         context.restoreGState()

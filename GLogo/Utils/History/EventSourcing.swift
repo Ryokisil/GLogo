@@ -1426,3 +1426,26 @@ struct ElementTransformedEvent: EditorEvent {
         }
     }
 }
+
+/// 要素のZ-Index変更イベント
+struct ElementZIndexChangedEvent: EditorEvent {
+    var eventName = "ElementZIndexChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldZIndex: Int
+    let newZIndex: Int
+    
+    var description: String {
+        return "要素の描画順序を変更しました"
+    }
+    
+    func apply(to project: LogoProject) {
+        guard let element = project.elements.first(where: { $0.id == elementId }) else { return }
+        element.zIndex = newZIndex
+    }
+    
+    func revert(from project: LogoProject) {
+        guard let element = project.elements.first(where: { $0.id == elementId }) else { return }
+        element.zIndex = oldZIndex
+    }
+}

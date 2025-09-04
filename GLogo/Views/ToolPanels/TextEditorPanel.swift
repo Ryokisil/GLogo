@@ -42,8 +42,7 @@ struct TextEditorPanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // テキスト内容編集
-                textContentSection
+
                 
                 Divider()
                 
@@ -74,22 +73,7 @@ struct TextEditorPanel: View {
     
     // MARK: - テキスト内容セクション
     
-    private var textContentSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("テキスト")
-                .font(.headline)
-            
-            TextEditor(text: $textContent)
-                .frame(minHeight: 100)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                )
-                .onChange(of: textContent) { newValue in
-                    viewModel.updateText(newValue)
-                }
-        }
-    }
+
     
     // MARK: - フォントセクション
     
@@ -418,24 +402,8 @@ struct TextEditorPanel: View {
 }
 
 /// プレビュー
-//struct TextEditorPanel_Previews: PreviewProvider {
-//    static var previews: some View {
-//        // エディタビューモデルを作成
-//        let editorViewModel = EditorViewModel()
-//        
-//        // TextElementを追加
-//        let textElement = TextElement(text: "サンプルテキスト")
-//        editorViewModel.addElement(textElement)
-//        
-//        // 要素を選択
-//        editorViewModel.selectElement(at: CGPoint(x: 0, y: 0))
-//        
-//        // 要素編集ビューモデルを作成
-//        let elementViewModel = ElementViewModel(editorViewModel: editorViewModel)
-//        
-//        // プレビューを返す
-//        TextEditorPanel(viewModel: elementViewModel)
-//            .frame(width: 300)
-//            .previewLayout(.sizeThatFits)
-//    }
-//}
+struct TextEditorPanel_Previews: PreviewProvider {
+    static var previews: some View {
+        EditorView(viewModel: EditorViewModel())
+    }
+}

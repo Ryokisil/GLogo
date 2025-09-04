@@ -44,6 +44,12 @@ class CanvasView: UIView {
     /// 現在の操作タイプ
     private var currentManipulationType: ElementManipulationType = .none
     
+    /// 操作中に品質を下げるかのフラグ（4K+画像対応）
+    var isReducingQualityDuringManipulation = false
+    
+    /// 4K超え解像度の閾値（8.3メガピクセル）
+    let highResolutionThreshold: CGFloat = 8300000
+    
     /// 要素を選択したときのコールバック
     var onElementSelected: ((LogoElement?) -> Void)?
     
@@ -61,6 +67,13 @@ class CanvasView: UIView {
     
     /// 要素の削除を実行するときのコールバック
     var onElementDelete: (() -> Void)?
+    
+    /// テキスト要素の編集を開始するときのコールバック
+    var onTextEditStarted: ((TextElement) -> Void)?
+    
+    /// 編集中のテキスト要素のID
+    var editingTextElementId: UUID?
+    
     
     /// ズーム比率
     var zoomScale: CGFloat = 1.0 {
@@ -147,8 +160,30 @@ class CanvasView: UIView {
     
     // MARK: - 描画
     
+    /// 高解像度画像が含まれているかチェック
+    func shouldReduceQualityDuringManipulation() -> Bool {
+        guard let project = project else { return false }
+        
+        // 画像要素の中に4K超えがあるかチェック
+        for element in project.elements {
+            if let imageElement = element as? ImageElement,
+               let image = imageElement.image {
+                let pixelCount = image.size.width * image.size.height * image.scale * image.scale
+                if pixelCount > highResolutionThreshold {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+    
     override func draw(_ rect: CGRect) {
         guard let context = UIGraphicsGetCurrentContext() else { return }
+        
+        // 4K+画像の操作中品質低下の設定
+        if isReducingQualityDuringManipulation {
+            context.interpolationQuality = .low
+        }
         
         // 背景の描画
         drawBackground(in: context)
@@ -172,8 +207,19 @@ class CanvasView: UIView {
         // 背景設定の描画
         project.backgroundSettings.draw(in: context, rect: canvasRect)
         
-        // すべての要素を描画
-        for element in project.elements where element.isVisible {
+        // すべての要素を描画（編集中のテキスト要素は除く）
+        // zIndexでソートしてから描画（小さい値から大きい値へ、奥から手前へ）
+        let sortedElements = project.elements
+            .filter { $0.isVisible }
+            .sorted { $0.zIndex < $1.zIndex }
+        
+        for element in sortedElements {
+            // 編集中のテキスト要素は描画しない
+            if let editingId = editingTextElementId, 
+               let textElement = element as? TextElement,
+               textElement.id == editingId {
+                continue
+            }
             element.draw(in: context)
         }
         
@@ -486,7 +532,7 @@ class CanvasView: UIView {
         }
     }
     
-    // MARK: - ヒットテスト
+    // MARK: - ヒットテスト　ユーザーのタッチが要素に当たったかを判定
     
     /// 指定された位置にある要素を検索
     private func hitTestElement(at point: CGPoint) -> LogoElement? {
@@ -495,13 +541,12 @@ class CanvasView: UIView {
         // グリッドスナップが有効な場合は座標を補正
         let testPoint = snapToGrid ? snapPointToGrid(point) : point
         
-        // 逆順（前面の要素から）にチェック
-        for element in project.elements.reversed() {
-            if !element.isLocked && element.isVisible && element.hitTest(testPoint) {
-                return element
-            }
-        }
-        return nil
+        // Z-Index順（大きい値から小さい値へ、前面から奥へ）でヒットテスト
+        let sortedElements = project.elements
+            .filter { !$0.isLocked && $0.isVisible }
+            .sorted { $0.zIndex > $1.zIndex }
+        
+        return sortedElements.first { $0.hitTest(testPoint) }
     }
     
     /// 選択中の要素のハンドルのヒットテスト
@@ -536,10 +581,10 @@ class CanvasView: UIView {
             return .move
         }
         
-        return .none
+        return .none // 何もしない
     }
     
-    /// 点がハンドル内にあるかチェック
+    /// 当たり判定チェック
     private func pointInHandle(_ point: CGPoint, handlePosition: CGPoint) -> Bool {
         let handleRect = CGRect(
             x: handlePosition.x - handleRadius,
@@ -547,7 +592,7 @@ class CanvasView: UIView {
             width: handleRadius * 2,
             height: handleRadius * 2
         )
-        return handleRect.contains(point)
+        return handleRect.contains(point) // 当たり判定返す　※contains(point) は 「pointが矩形の中にあるか？」
     }
     
     // MARK: - ジェスチャーハンドラ
@@ -594,7 +639,19 @@ class CanvasView: UIView {
     
     /// ダブルタップジェスチャー処理（ズームリセット）
     @objc private func handleDoubleTapGesture(_ gesture: UITapGestureRecognizer) {
-        // ズームとパンをリセット
+        let touchPoint = gesture.location(in: self)
+        let canvasPoint = convertPointToCanvas(touchPoint)
+        
+        // タップされた要素を検索
+        if let tappedElement = hitTestElement(at: canvasPoint) {
+            // テキスト要素の場合は編集モードに入る
+            if let textElement = tappedElement as? TextElement {
+                onTextEditStarted?(textElement)
+                return
+            }
+        }
+        
+        // テキスト要素でない場合はズームリセット
         resetViewTransform()
     }
     
@@ -670,6 +727,12 @@ struct CanvasViewRepresentable: UIViewRepresentable {
     /// グリッドスナップフラグ
     var snapToGrid: Bool = false
     
+    /// ズーム比率のバインディング
+    @Binding var zoomScale: CGFloat
+    
+    /// パンオフセットのバインディング
+    @Binding var panOffset: CGPoint
+    
     /// コーディネータークラス - UIKitの委託パターンをSwiftUIに橋渡し
     class Coordinator: NSObject {
         var parent: CanvasViewRepresentable
@@ -682,44 +745,95 @@ struct CanvasViewRepresentable: UIViewRepresentable {
         func setupCallbacks(canvasView: CanvasView) {
             // 要素選択時のコールバック
             canvasView.onElementSelected = { [viewModel = parent.viewModel] element in
-                // 要素が選択された場合は明示的に設定
-                if let element = element {
-                    viewModel.selectElement(element)
-                } else {
-                    viewModel.clearSelection()
+                DispatchQueue.main.async {
+                    // 要素が選択された場合は明示的に設定
+                    if let element = element {
+                        viewModel.selectElement(element)
+                    } else {
+                        viewModel.clearSelection()
+                    }
                 }
             }
             
             // 操作開始時のコールバック
-            canvasView.onManipulationStarted = { [viewModel = parent.viewModel] type, point in
-                viewModel.startManipulation(type, at: point)
+            canvasView.onManipulationStarted = { [weak canvasView, weak self] type, point in
+                DispatchQueue.main.async {
+                    // 4K+画像の操作中品質低下判定と設定
+                    if let canvasView = canvasView {
+                        canvasView.isReducingQualityDuringManipulation = canvasView.shouldReduceQualityDuringManipulation()
+                        
+                        // 高解像度画像要素の編集開始フラグを設定
+                        if let project = canvasView.project {
+                            for element in project.elements {
+                                if let imageElement = element as? ImageElement,
+                                   let image = imageElement.originalImage {
+                                    let pixelCount = image.size.width * image.size.height * image.scale * image.scale
+                                    if pixelCount > canvasView.highResolutionThreshold {
+                                        imageElement.startEditing()
+                                    }
+                                }
+                            }
+                        }
+                        
+                        canvasView.setNeedsDisplay()
+                    }
+                    
+                    self?.parent.viewModel.startManipulation(type, at: point)
+                }
             }
             
             // 操作中のコールバック
             canvasView.onManipulationChanged = { [viewModel = parent.viewModel] point in
-                viewModel.continueManipulation(at: point)
+                DispatchQueue.main.async {
+                    viewModel.continueManipulation(at: point)
+                }
             }
             
             // 操作終了時のコールバック
-            canvasView.onManipulationEnded = { [viewModel = parent.viewModel] in
-                viewModel.endManipulation()
+            canvasView.onManipulationEnded = { [weak canvasView, weak self] in
+                DispatchQueue.main.async {
+                    // 4K+画像の操作中品質低下を解除
+                    if let canvasView = canvasView {
+                        canvasView.isReducingQualityDuringManipulation = false
+                        
+                        // 高解像度画像要素の編集終了フラグを設定
+                        if let project = canvasView.project {
+                            for element in project.elements {
+                                if let imageElement = element as? ImageElement {
+                                    imageElement.endEditing()
+                                }
+                            }
+                        }
+                        
+                        canvasView.setNeedsDisplay()
+                    }
+                    
+                    self?.parent.viewModel.endManipulation()
+                }
             }
             
             // 要素作成時のコールバック
             canvasView.onCreateElement = { [viewModel = parent.viewModel] point in
+                print("DEBUG: onCreateElementコールバック開始 - 位置: \(point)")
+                print("DEBUG: 現在のモード: \(viewModel.editorMode)")
                 switch viewModel.editorMode {
                 case .textCreate:
-                    viewModel.addTextElement(text: "テキストを入力", position: point)
+                    print("DEBUG: テキスト要素作成中...")
+                    viewModel.addTextElement(text: "Double tap here to change text", position: point)
                 case .shapeCreate:
+                    print("DEBUG: 図形要素作成中... 図形タイプ: \(viewModel.nextShapeType)")
                     viewModel.addShapeElement(type: viewModel.nextShapeType, position: point)
                 case .imageImport:
+                    print("DEBUG: 画像インポート処理")
                     // 画像インポートは別処理（ファイル選択ダイアログ等）
                     break
                 default:
+                    print("DEBUG: 未対応のエディタモード: \(viewModel.editorMode)")
                     break
                 }
                 
                 // 要素を作成したら選択モードに戻る
+                print("DEBUG: 選択モードに戻る")
                 viewModel.editorMode = .select
             }
             
@@ -727,6 +841,14 @@ struct CanvasViewRepresentable: UIViewRepresentable {
             canvasView.onElementDelete = { [viewModel = parent.viewModel] in
                 viewModel.deleteSelectedElement()
             }
+            
+            // テキスト編集開始時のコールバック
+            canvasView.onTextEditStarted = { [viewModel = parent.viewModel] textElement in
+                DispatchQueue.main.async {
+                    viewModel.startTextEditing(for: textElement)
+                }
+            }
+            
         }
     }
     
@@ -767,6 +889,23 @@ struct CanvasViewRepresentable: UIViewRepresentable {
         canvasView.editorMode = viewModel.editorMode
         canvasView.showGrid = showGrid
         canvasView.snapToGrid = snapToGrid
+        
+        // ズーム・パンの値を同期
+        canvasView.zoomScale = zoomScale
+        canvasView.panOffset = panOffset
+        
+        // 編集中のテキスト要素IDを同期
+        canvasView.editingTextElementId = viewModel.editingTextElement?.id
+        
+        // CanvasViewからの変更をバインディングに反映するコールバックを設定
+        DispatchQueue.main.async {
+            if self.zoomScale != canvasView.zoomScale {
+                self.zoomScale = canvasView.zoomScale
+            }
+            if self.panOffset != canvasView.panOffset {
+                self.panOffset = canvasView.panOffset
+            }
+        }
     }
     
     /// コーディネーターの作成
