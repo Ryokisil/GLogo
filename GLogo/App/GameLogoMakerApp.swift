@@ -124,9 +124,9 @@ struct GameLogoMakerApp: App {
         var body: some View {
             EditorView(viewModel: editorViewModel)
             // 通知リスナーの設定
-                .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SaveCurrentProject"))) { _ in
-                    saveProject()
-                }
+//                .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SaveCurrentProject"))) { _ in
+//                    saveProject()
+//                }
                 .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ImportImage"))) { _ in
                     importImage()
                 }
@@ -137,11 +137,11 @@ struct GameLogoMakerApp: App {
         }
         
         /// プロジェクトを保存
-        private func saveProject() {
-            editorViewModel.saveProject { success in
-                print("Project saved: \(success)")
-            }
-        }
+//        private func saveProject() {
+//            editorViewModel.saveProject { success in
+//                print("Project saved: \(success)")
+//            }
+//        }
         
         /// 画像をインポート
         private func importImage() {

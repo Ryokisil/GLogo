@@ -323,8 +323,40 @@ class TextElement: LogoElement {
         
         print("DEBUG: テキスト描画 - rect: \(rect), 実際の位置: \(position), サイズ: \(size)")
         
-        // NSStringDrawingOptionsで中央揃えや行折り返しなどを設定
-        attrString.draw(in: rect)
+        // NSStringDrawingOptionsで描画方法を明示的に制御
+        let options: NSStringDrawingOptions = [
+            .usesLineFragmentOrigin,    // 行の断片化を使用（複数行対応）
+            .usesFontLeading           // フォントのリーディングを使用
+        ]
+        
+        // boundingRectForDrawingOptionsを使用してテキストサイズを正確に計算
+        let boundingRect = attrString.boundingRect(
+            with: CGSize(width: rect.width, height: CGFloat.greatestFiniteMagnitude),
+            options: options,
+            context: nil
+        )
+        
+        print("DEBUG: 計算されたテキスト境界: \(boundingRect)")
+        
+        // 描画領域を調整（マージンを追加して切り欠けを防ぐ）
+        var drawRect = rect
+        
+        // テキストサイズがrectより小さい場合のみ中央揃え調整
+        if boundingRect.height < rect.height {
+            let yOffset = (rect.height - boundingRect.height) / 2
+            drawRect = CGRect(
+                x: rect.origin.x,
+                y: rect.origin.y + yOffset,
+                width: rect.width,
+                height: max(boundingRect.height + 4, rect.height) // 4pxのマージンを追加
+            )
+        }
+        
+        print("DEBUG: 最終描画領域: \(drawRect)")
+        
+        // テキストを描画
+        attrString.draw(with: drawRect, options: options, context: nil)
+        
         context.restoreGState()
     }
     

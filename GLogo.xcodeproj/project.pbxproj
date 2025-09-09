@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		5374D5942DC4BFE5003F5F23 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 5374D5932DC4BFE5003F5F23 /* README.md */; };
+		53CAFAE22E6D145D001E7CA4 /* OhisamaFont11.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 53CAFAE12E6D145D001E7CA4 /* OhisamaFont11.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -29,10 +30,21 @@
 
 /* Begin PBXFileReference section */
 		5374D5932DC4BFE5003F5F23 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		53CAFAE12E6D145D001E7CA4 /* OhisamaFont11.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = OhisamaFont11.ttf; sourceTree = "<group>"; };
 		53FC07A42D7200B40049A129 /* GLogo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GLogo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		53FC07B42D7200B50049A129 /* GLogoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GLogoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		53FC07BE2D7200B50049A129 /* GLogoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GLogoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		53CAFAE42E6D1741001E7CA4 /* Exceptions for "GLogo" folder in "GLogo" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 53FC07A32D7200B40049A129 /* GLogo */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5374D5962DC4CD8C003F5F23 /* images */ = {
@@ -42,6 +54,9 @@
 		};
 		53FC07A62D7200B40049A129 /* GLogo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				53CAFAE42E6D1741001E7CA4 /* Exceptions for "GLogo" folder in "GLogo" target */,
+			);
 			path = GLogo;
 			sourceTree = "<group>";
 		};
@@ -82,9 +97,18 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		53CAFAE02E6D1300001E7CA4 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				53CAFAE12E6D145D001E7CA4 /* OhisamaFont11.ttf */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
 		53FC079B2D7200B40049A129 = {
 			isa = PBXGroup;
 			children = (
+				53CAFAE02E6D1300001E7CA4 /* Fonts */,
 				5374D5962DC4CD8C003F5F23 /* images */,
 				5374D5932DC4BFE5003F5F23 /* README.md */,
 				53FC07A62D7200B40049A129 /* GLogo */,
@@ -225,6 +249,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				53CAFAE22E6D145D001E7CA4 /* OhisamaFont11.ttf in Resources */,
 				5374D5942DC4BFE5003F5F23 /* README.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -413,6 +438,7 @@
 				DEVELOPMENT_TEAM = 5GA3WVKYZ6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GLogo/Info.plist;
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "編集した写真を保存するために必要です";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "アプリで写真のデータを編集するために必要です";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -448,6 +474,7 @@
 				DEVELOPMENT_TEAM = 5GA3WVKYZ6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GLogo/Info.plist;
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "編集した写真を保存するために必要です";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "アプリで写真のデータを編集するために必要です";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

@@ -33,6 +33,12 @@ struct TextEditorPanel: View {
     /// エフェクト編集メニューの表示フラグ
     @State private var isEditingShadow = false
     
+    /// フォント選択時の一時保存用（キャンセル時の復元用）
+    @State private var temporaryFontName: String = ""
+    
+    /// 元のフォント名（キャンセル時の復元用）
+    @State private var originalFontName: String = ""
+    
     /// 初期化
     init(viewModel: ElementViewModel) {
         self.viewModel = viewModel
@@ -65,15 +71,16 @@ struct TextEditorPanel: View {
                 effectsSection
             }
             .padding()
-            .sheet(isPresented: $isShowingFontPicker) {
+            .sheet(isPresented: $isShowingFontPicker, onDismiss: {
+                // シート閉じた時のクリーンアップ
+                fontSearchText = ""
+            }) {
                 fontPickerSheet
+                    .presentationDetents([.fraction(0.5)])
+                    .presentationDragIndicator(.visible)
             }
         }
     }
-    
-    // MARK: - テキスト内容セクション
-    
-
     
     // MARK: - フォントセクション
     
@@ -84,6 +91,9 @@ struct TextEditorPanel: View {
             
             // 現在のフォント表示と選択ボタン
             Button(action: {
+                // フォント選択開始時に現在のフォントを保存
+                originalFontName = textElement?.fontName ?? "HelveticaNeue"
+                temporaryFontName = originalFontName
                 isShowingFontPicker = true
             }) {
                 HStack {
@@ -172,10 +182,11 @@ struct TextEditorPanel: View {
                 List {
                     ForEach(filteredFontNames, id: \.self) { fontName in
                         Button(action: {
+                            // リアルタイムプレビュー - シートは閉じない
                             if let fontSize = textElement?.fontSize {
+                                temporaryFontName = fontName
                                 viewModel.updateFont(name: fontName, size: fontSize)
                             }
-                            isShowingFontPicker = false
                         }) {
                             HStack {
                                 Text(fontName)
@@ -184,7 +195,7 @@ struct TextEditorPanel: View {
                                 Spacer()
                                 
                                 // 現在選択中のフォントにチェックマーク
-                                if fontName == textElement?.fontName {
+                                if fontName == temporaryFontName {
                                     Image(systemName: "checkmark")
                                         .foregroundColor(.blue)
                                 }
@@ -197,8 +208,19 @@ struct TextEditorPanel: View {
             .navigationTitle("フォントを選択")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("完了") {
+                        // 選択を確定してシートを閉じる
+                        isShowingFontPicker = false
+                    }
+                }
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("キャンセル") {
+                        // 元のフォントに復元してシートを閉じる
+                        if let fontSize = textElement?.fontSize {
+                            viewModel.updateFont(name: originalFontName, size: fontSize)
+                        }
                         isShowingFontPicker = false
                     }
                 }

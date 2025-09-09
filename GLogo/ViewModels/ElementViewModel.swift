@@ -144,6 +144,7 @@ class ElementViewModel: ObservableObject {
         
         updateElement(to: element)
     }
+
     
     // MARK: - テキスト要素の更新
     
