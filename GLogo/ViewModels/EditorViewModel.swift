@@ -912,7 +912,29 @@ class EditorViewModel: ObservableObject {
         isProjectModified = true
         print("DEBUG: 画像ガウシアンブラー変更完了")
     }
-    
+
+    /// 画像のトーンカーブを更新
+    func updateImageToneCurve(_ imageElement: ImageElement, newPoints: [CGPoint]) {
+        print("DEBUG: 画像トーンカーブ変更開始 - 要素ID: \(imageElement.id)")
+
+        let event = ImageToneCurveChangedEvent(
+            elementId: imageElement.id,
+            oldPoints: imageElement.toneCurvePoints,
+            newPoints: newPoints
+        )
+
+        history.recordAndApply(event)
+
+        if selectedElement?.id == imageElement.id {
+            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
+                selectedElement = updatedElement
+            }
+        }
+
+        isProjectModified = true
+        print("DEBUG: 画像トーンカーブ変更完了")
+    }
+
     /// 画像のティントカラーを更新
     func updateImageTintColor(_ imageElement: ImageElement, oldColor: UIColor?, newColor: UIColor?, oldIntensity: CGFloat, newIntensity: CGFloat) {
         print("DEBUG: 画像ティントカラー変更開始 - 要素ID: \(imageElement.id)")

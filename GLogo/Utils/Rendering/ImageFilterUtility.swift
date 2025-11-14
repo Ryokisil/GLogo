@@ -290,7 +290,44 @@ class ImageFilterUtility {
         // 元の画像サイズにクロップして範囲を復元
         return blurredImage.cropped(to: originalExtent)
     }
-    
+
+    /// トーンカーブを適用
+    static func applyToneCurve(to image: CIImage, points: [CGPoint]) -> CIImage? {
+        // 5点未満の場合はスキップ
+        guard points.count >= 5 else {
+            print("DEBUG: トーンカーブの制御点が不足しています（最低5点必要）")
+            return image
+        }
+
+        // デフォルトの対角線と同じ場合はスキップ（最適化）
+        let isDefault = points[0] == CGPoint(x: 0.0, y: 0.0) &&
+                       points[1] == CGPoint(x: 0.25, y: 0.25) &&
+                       points[2] == CGPoint(x: 0.5, y: 0.5) &&
+                       points[3] == CGPoint(x: 0.75, y: 0.75) &&
+                       points[4] == CGPoint(x: 1.0, y: 1.0)
+
+        if isDefault {
+            return image
+        }
+
+        // CIToneCurveフィルターを作成
+        guard let filter = CIFilter(name: "CIToneCurve") else {
+            print("DEBUG: CIToneCurveフィルターが使用できません")
+            return image
+        }
+
+        filter.setValue(image, forKey: kCIInputImageKey)
+
+        // 5つの制御点をCIVectorとして設定
+        filter.setValue(CIVector(x: points[0].x, y: points[0].y), forKey: "inputPoint0")
+        filter.setValue(CIVector(x: points[1].x, y: points[1].y), forKey: "inputPoint1")
+        filter.setValue(CIVector(x: points[2].x, y: points[2].y), forKey: "inputPoint2")
+        filter.setValue(CIVector(x: points[3].x, y: points[3].y), forKey: "inputPoint3")
+        filter.setValue(CIVector(x: points[4].x, y: points[4].y), forKey: "inputPoint4")
+
+        return filter.outputImage
+    }
+
     /// ティントカラーオーバーレイを適用
     static func applyTintOverlay(to image: UIImage, color: UIColor, intensity: CGFloat) -> UIImage? {
         UIGraphicsBeginImageContextWithOptions(image.size, false, image.scale)

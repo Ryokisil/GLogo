@@ -740,7 +740,45 @@ class ElementViewModel: ObservableObject {
                 newValue: radius)
         }
     }
-    
+
+    /// トーンカーブの更新
+    func updateToneCurve(_ points: [CGPoint]) {
+        print("DEBUG: ElementViewModel - トーンカーブ更新開始")
+        guard let imageElement = imageElement else {
+            print("DEBUG: ElementViewModel - imageElementがnilのため更新できません")
+            return
+        }
+
+        // 現在と同じポイントなら何もしない
+        if imageElement.toneCurvePoints == points {
+            print("DEBUG: ElementViewModel - トーンカーブが同じなので変更をスキップします")
+            return
+        }
+
+        let oldPoints = imageElement.toneCurvePoints
+
+        // 編集開始をマーク
+        imageElement.startEditing()
+
+        // 即座に値を更新（UI即座反応のため）
+        imageElement.toneCurvePoints = points
+
+        // EditorViewModelの対応するメソッドを呼び出す（イベントソーシング用）
+        editorViewModel?.updateImageToneCurve(imageElement, newPoints: points)
+
+        // メタデータに編集を記録
+        if imageElement.originalImageIdentifier != nil {
+            // トーンカーブポイントは文字列化して記録
+            let oldValue = oldPoints.map { "(\($0.x),\($0.y))" }.joined(separator: ";")
+            let newValue = points.map { "(\($0.x),\($0.y))" }.joined(separator: ";")
+            imageElement.recordMetadataEdit(
+                fieldKey: "toneCurvePoints",
+                oldValue: oldValue,
+                newValue: newValue
+            )
+        }
+    }
+
     /// ティントカラーの更新
     func updateTintColor(_ color: UIColor?, intensity: CGFloat) {
         print("DEBUG: ElementViewModel - ティントカラー更新開始")

@@ -183,10 +183,66 @@ struct ToolPanelView: View {
 /// ImageEditorPanel - 画像要素の編集用パネル
 struct ImageEditorPanel: View {
     @ObservedObject var viewModel: ElementViewModel
-    
+
+    /// 選択されたタブ
+    @State private var selectedTab: ImageEditorTab = .basic
+
+    /// タブ定義
+    enum ImageEditorTab: String, CaseIterable {
+        case basic = "基本調整"
+        case curve = "カーブ"
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 0) {
+            // タブセレクター
+            tabSelector
+
+            // タブの内容
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if selectedTab == .basic {
+                        basicAdjustmentContent
+                    } else {
+                        toneCurveContent
+                    }
+                }
+                .padding()
+            }
+        }
+    }
+
+    // MARK: - タブセレクター
+
+    private var tabSelector: some View {
+        HStack(spacing: 0) {
+            ForEach(ImageEditorTab.allCases, id: \.self) { tab in
+                Button(action: {
+                    selectedTab = tab
+                }) {
+                    Text(tab.rawValue)
+                        .font(.subheadline)
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity)
+                        .background(selectedTab == tab ? Color(UIColor.secondarySystemBackground) : Color.clear)
+                        .foregroundColor(selectedTab == tab ? .primary : .secondary)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .background(Color(UIColor.systemBackground))
+        .overlay(
+            Rectangle()
+                .frame(height: 1)
+                .foregroundColor(Color.gray.opacity(0.3)),
+            alignment: .bottom
+        )
+    }
+
+    // MARK: - 基本調整タブ
+
+    private var basicAdjustmentContent: some View {
+        Group {
                 // 画像プレビュー
                 if let imageElement = viewModel.imageElement, let image = imageElement.image {
                     VStack(alignment: .leading, spacing: 8) {
@@ -423,7 +479,31 @@ struct ImageEditorPanel: View {
                     }
                 }
             }
-            .padding()
+        }
+    }
+
+    // MARK: - トーンカーブタブ
+
+    private var toneCurveContent: some View {
+        Group {
+            if let imageElement = viewModel.imageElement {
+                ToneCurveView(
+                    curvePoints: Binding(
+                        get: { imageElement.toneCurvePoints },
+                        set: { viewModel.updateToneCurve($0) }
+                    ),
+                    onChange: {
+                        // キャッシュをクリアして再描画を促す
+                        imageElement.cachedImage = nil
+                    }
+                )
+            } else {
+                Text("画像要素が選択されていません")
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 40)
+            }
         }
     }
 }
+

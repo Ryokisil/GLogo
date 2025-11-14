@@ -1060,6 +1060,85 @@ struct ImageGaussianBlurChangedEvent: EditorEvent {
     }
 }
 
+/// 画像トーンカーブ変更イベント
+struct ImageToneCurveChangedEvent: EditorEvent {
+    var eventName = "ImageToneCurveChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldPoints: [CGPoint]
+    let newPoints: [CGPoint]
+
+    var description: String {
+        return "画像のトーンカーブを変更しました"
+    }
+
+    func apply(to project: LogoProject) {
+        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+            element.toneCurvePoints = newPoints
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+            element.toneCurvePoints = oldPoints
+        }
+    }
+
+    // MARK: - Codable
+
+    private enum CodingKeys: String, CodingKey {
+        case eventName, timestamp, elementId, oldPointsData, newPointsData
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(eventName, forKey: .eventName)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(elementId, forKey: .elementId)
+
+        // CGPointの配列をNSValueの配列に変換してエンコード
+        let oldPointsData = try NSKeyedArchiver.archivedData(
+            withRootObject: oldPoints.map { NSValue(cgPoint: $0) },
+            requiringSecureCoding: false
+        )
+        try container.encode(oldPointsData, forKey: .oldPointsData)
+
+        let newPointsData = try NSKeyedArchiver.archivedData(
+            withRootObject: newPoints.map { NSValue(cgPoint: $0) },
+            requiringSecureCoding: false
+        )
+        try container.encode(newPointsData, forKey: .newPointsData)
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        eventName = try container.decode(String.self, forKey: .eventName)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        elementId = try container.decode(UUID.self, forKey: .elementId)
+
+        // データからCGPointの配列を復元
+        let oldPointsData = try container.decode(Data.self, forKey: .oldPointsData)
+        if let nsValues = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: [NSArray.self, NSValue.self], from: oldPointsData) as? [NSValue] {
+            oldPoints = nsValues.map { $0.cgPointValue }
+        } else {
+            oldPoints = []
+        }
+
+        let newPointsData = try container.decode(Data.self, forKey: .newPointsData)
+        if let nsValues = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: [NSArray.self, NSValue.self], from: newPointsData) as? [NSValue] {
+            newPoints = nsValues.map { $0.cgPointValue }
+        } else {
+            newPoints = []
+        }
+    }
+
+    init(elementId: UUID, oldPoints: [CGPoint], newPoints: [CGPoint]) {
+        self.elementId = elementId
+        self.oldPoints = oldPoints
+        self.newPoints = newPoints
+    }
+}
+
 /// 画像ティントカラー変更イベント
 struct ImageTintColorChangedEvent: EditorEvent {
     let eventName = "ImageTintColorChanged"

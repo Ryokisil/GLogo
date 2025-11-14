@@ -120,7 +120,17 @@ class ImageElement: LogoElement {
     
     /// ガウシアンブラー半径
     var gaussianBlurRadius: CGFloat = 0.0
-    
+
+    /// トーンカーブ制御点（5点: シャドウ、1/4、中間、3/4、ハイライト）
+    /// デフォルトは対角線: [(0,0), (0.25,0.25), (0.5,0.5), (0.75,0.75), (1,1)]
+    var toneCurvePoints: [CGPoint] = [
+        CGPoint(x: 0.0, y: 0.0),     // シャドウ
+        CGPoint(x: 0.25, y: 0.25),   // 1/4
+        CGPoint(x: 0.5, y: 0.5),     // 中間
+        CGPoint(x: 0.75, y: 0.75),   // 3/4
+        CGPoint(x: 1.0, y: 1.0)      // ハイライト
+    ]
+
     /// カラーフィルター
     var tintColor: UIColor?
     
@@ -244,6 +254,7 @@ class ImageElement: LogoElement {
         case originalImageURL, originalImagePath, originalImageIdentifier
         case saturationAdjustment, brightnessAdjustment, contrastAdjustment
         case highlightsAdjustment, shadowsAdjustment, hueAdjustment, sharpnessAdjustment, gaussianBlurRadius
+        case toneCurvePoints
         case tintColorData, tintIntensity
         case showFrame, frameColorData, frameWidth
         case roundedCorners, cornerRadius
@@ -273,6 +284,14 @@ class ImageElement: LogoElement {
         try container.encode(hueAdjustment, forKey: .hueAdjustment)
         try container.encode(sharpnessAdjustment, forKey: .sharpnessAdjustment)
         try container.encode(gaussianBlurRadius, forKey: .gaussianBlurRadius)
+
+        // トーンカーブポイントをエンコード（CGPointの配列をNSValueの配列に変換）
+        let toneCurvePointsData = try NSKeyedArchiver.archivedData(
+            withRootObject: toneCurvePoints.map { NSValue(cgPoint: $0) },
+            requiringSecureCoding: false
+        )
+        try container.encode(toneCurvePointsData, forKey: .toneCurvePoints)
+
         try container.encode(tintIntensity, forKey: .tintIntensity)
         try container.encode(showFrame, forKey: .showFrame)
         try container.encode(frameWidth, forKey: .frameWidth)
@@ -326,6 +345,22 @@ class ImageElement: LogoElement {
         hueAdjustment = try container.decode(CGFloat.self, forKey: .hueAdjustment)
         sharpnessAdjustment = try container.decode(CGFloat.self, forKey: .sharpnessAdjustment)
         gaussianBlurRadius = try container.decode(CGFloat.self, forKey: .gaussianBlurRadius)
+
+        // トーンカーブポイントをデコード（後方互換性のためデフォルト値を提供）
+        if let toneCurvePointsData = try? container.decode(Data.self, forKey: .toneCurvePoints),
+           let nsValues = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: [NSArray.self, NSValue.self], from: toneCurvePointsData) as? [NSValue] {
+            toneCurvePoints = nsValues.map { $0.cgPointValue }
+        } else {
+            // デフォルトは対角線
+            toneCurvePoints = [
+                CGPoint(x: 0.0, y: 0.0),
+                CGPoint(x: 0.25, y: 0.25),
+                CGPoint(x: 0.5, y: 0.5),
+                CGPoint(x: 0.75, y: 0.75),
+                CGPoint(x: 1.0, y: 1.0)
+            ]
+        }
+
         tintIntensity = try container.decode(CGFloat.self, forKey: .tintIntensity)
         showFrame = try container.decode(Bool.self, forKey: .showFrame)
         frameWidth = try container.decode(CGFloat.self, forKey: .frameWidth)
@@ -571,10 +606,17 @@ class ImageElement: LogoElement {
         hueAdjustment = 0.0
         sharpnessAdjustment = 0.0
         gaussianBlurRadius = 0.0
+        toneCurvePoints = [
+            CGPoint(x: 0.0, y: 0.0),
+            CGPoint(x: 0.25, y: 0.25),
+            CGPoint(x: 0.5, y: 0.5),
+            CGPoint(x: 0.75, y: 0.75),
+            CGPoint(x: 1.0, y: 1.0)
+        ]
         tintColor = nil
         tintIntensity = 0.0
         editHistory.removeAll()
-        
+
         // キャッシュをクリアして再描画を促す
         cachedImage = nil
         previewImage = nil  // プレビューもリセット
@@ -755,7 +797,15 @@ class ImageElement: LogoElement {
            ) {
             ciImage = adjusted
         }
-        
+
+        // トーンカーブを適用
+        if let adjusted = ImageFilterUtility.applyToneCurve(
+            to: ciImage,
+            points: toneCurvePoints
+        ) {
+            ciImage = adjusted
+        }
+
         // CIImageをUIImageに変換
         var filteredImage = ImageFilterUtility.convertToUIImage(
             ciImage,
@@ -854,7 +904,15 @@ class ImageElement: LogoElement {
                ) {
                 ciImage = adjusted
             }
-            
+
+            // トーンカーブを適用
+            if let adjusted = ImageFilterUtility.applyToneCurve(
+                to: ciImage,
+                points: self.toneCurvePoints
+            ) {
+                ciImage = adjusted
+            }
+
             // CIImageをUIImageに変換
             var filteredImage = ImageFilterUtility.convertToUIImage(
                 ciImage,
@@ -1041,6 +1099,7 @@ class ImageElement: LogoElement {
         copy.hueAdjustment = hueAdjustment
         copy.sharpnessAdjustment = sharpnessAdjustment
         copy.gaussianBlurRadius = gaussianBlurRadius
+        copy.toneCurvePoints = toneCurvePoints
         copy.tintColor = tintColor
         copy.tintIntensity = tintIntensity
         
