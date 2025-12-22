@@ -1,1 +1,7 @@
 .DS_Store
+AGENTS.md
+.serena/
+.claude/
+GLogo.xcodeproj/**/xcuserdata/
+GLogo.xcodeproj/xcshareddata/
+*.xcuserstate
