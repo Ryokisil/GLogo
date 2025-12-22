@@ -11,15 +11,7 @@
 
 import Foundation
 import UIKit
-
-/// 画像フィッティングモード
-enum ImageFitMode: String, Codable {
-    case fill       // 画像を引き伸ばして要素全体を埋める
-    case aspectFit  // アスペクト比を維持して要素内に収める
-    case aspectFill // アスペクト比を維持して要素全体を埋める（はみ出す部分はクリップ）
-    case center     // 中央に配置（サイズはそのまま）
-    case tile       // タイル状に繰り返し表示
-}
+import CoreImage
 
 /// 画像の役割定義
 enum ImageRole: String, Codable, CaseIterable {
@@ -39,6 +31,8 @@ enum ImageRole: String, Codable, CaseIterable {
 
 /// 画像要素クラス
 class ImageElement: LogoElement {
+    /// 画像アセット解決リポジトリ（VMから差し替え可能）
+    static var assetRepository: ImageAssetRepositoryProtocol = ImageAssetRepository.shared
     /// 画像ファイル名
     var imageFileName: String?
     
@@ -76,26 +70,27 @@ class ImageElement: LogoElement {
     /// 画像メタデータ
     var metadata: ImageMetadata?
     
-    /// メタデータの編集履歴
-    private var metadataEditHistory: [String: Any] = [:]
-    
     /// キャッシュされた画像
     var cachedImage: UIImage?
-    
+
     /// キャッシュされた元画像
     private var cachedOriginalImage: UIImage?
-    
+
+    /// 編集用の低解像度プロキシ画像（高解像度時のみ生成・注入）
+    private var proxyImage: UIImage?
+    /// プロキシ生成時の長辺目安（約2MP相当）
+    private let proxyTargetLongSide: CGFloat = 1920
+    /// 高解像度判定の閾値（MP）
+    private let highResThresholdMP: CGFloat = 18.0
+
     /// プレビュー用低解像度画像キャッシュ
     private var previewImage: UIImage?
     
-    /// プレビュー用サイズ（最大512px）
-    private let previewMaxSize: CGFloat = 512
+    /// プレビュー・フィルタサービス（差し替え可能）
+    static var previewService: ImagePreviewing = ImagePreviewService()
     
     /// 編集中かどうかのフラグ（プレビュー/高品質の切り替え用）
     private var isCurrentlyEditing: Bool = false
-    
-    /// 画像のフィッティングモード
-    var fitMode: ImageFitMode = .aspectFit
     
     /// 色調補正（彩度調整）
     var saturationAdjustment: CGFloat = 1.0
@@ -120,7 +115,10 @@ class ImageElement: LogoElement {
     
     /// ガウシアンブラー半径
     var gaussianBlurRadius: CGFloat = 0.0
-    
+
+    /// トーンカーブデータ
+    var toneCurveData: ToneCurveData = ToneCurveData()
+
     /// カラーフィルター
     var tintColor: UIColor?
     
@@ -177,9 +175,33 @@ class ImageElement: LogoElement {
         cachedOriginalImage = loadedImage
         return loadedImage
     }
+
+    /// 編集用プロキシ画像（外部リポジトリで生成・解決）
+    private var editingImage: UIImage? {
+        if let proxy = proxyImage {
+            return proxy
+        }
+        if let resolved = ImageElement.assetRepository.loadEditingImage(
+            identifier: originalImageIdentifier,
+            fileName: imageFileName,
+            originalPath: originalImagePath,
+            originalImageProvider: { self.originalImage },
+            proxyTargetLongSide: proxyTargetLongSide,
+            highResThresholdMP: highResThresholdMP
+        ) {
+            proxyImage = resolved
+            return resolved
+        }
+        return originalImage
+    }
     
     /// 画像を取得
     var image: UIImage? {
+        // 編集中はプレビュー品質のみ返してメインスレッド負荷を抑える
+        if isCurrentlyEditing {
+            return getInstantPreview() ?? editingImage ?? originalImage
+        }
+
         if let cachedImage = cachedImage {
             return cachedImage
         }
@@ -188,8 +210,9 @@ class ImageElement: LogoElement {
             return nil
         }
         
-        // 編集操作を適用した画像を返す
-        let processedImage = applyFilters(to: originalImage)
+        // 編集操作を適用した画像を返す（非編集時はフル品質）
+        let source = originalImage
+        let processedImage = applyFilters(to: source, quality: .full)
         
         // 編集後の画像をキャッシュ
         cachedImage = processedImage
@@ -201,19 +224,6 @@ class ImageElement: LogoElement {
         guard let originalImage = self.originalImage else {
             return nil
         }
-        
-        // DEBUG: フィルター設定確認用（必要に応じてコメントアウト解除）
-        // print("DEBUG: getFilteredImageForce - フィルター設定:")
-        // print("DEBUG: - saturation: \(saturationAdjustment)")
-        // print("DEBUG: - brightness: \(brightnessAdjustment)")
-        // print("DEBUG: - contrast: \(contrastAdjustment)")
-        // print("DEBUG: - highlights: \(highlightsAdjustment)")
-        // print("DEBUG: - shadows: \(shadowsAdjustment)")
-        // print("DEBUG: - hue: \(hueAdjustment)")
-        // print("DEBUG: - sharpness: \(sharpnessAdjustment)")
-        // print("DEBUG: - blur: \(gaussianBlurRadius)")
-        // print("DEBUG: - tintColor: \(String(describing: tintColor))")
-        // print("DEBUG: - tintIntensity: \(tintIntensity)")
         
         // キャッシュを無視して常に最新のフィルターを適用
         return applyFilters(to: originalImage)
@@ -230,27 +240,32 @@ class ImageElement: LogoElement {
             return nil
         }
         
-        // 非同期で彩度処理を実行
-        let processedImage = await applyFiltersAsync(to: originalImage)
+        // 非同期でフィルターをフル品質適用
+        let processedImage = await applyFiltersAsync(to: originalImage, quality: .full)
         
         // 編集後の画像をキャッシュ
         cachedImage = processedImage
         return processedImage
     }
     
-    /// エンコード用のコーディングキー
+    /// ローカル保存用Imageのエンコードキー
+    /// - Note: 新規キー追加時は旧データとの互換性を確認すること
     private enum ImageCodingKeys: String, CodingKey {
-        case imageFileName, imageData, fitMode
+        // 基本情報
+        case imageFileName, imageData
+        // 元画像参照
         case originalImageURL, originalImagePath, originalImageIdentifier
+        // 色・トーン調整
         case saturationAdjustment, brightnessAdjustment, contrastAdjustment
         case highlightsAdjustment, shadowsAdjustment, hueAdjustment, sharpnessAdjustment, gaussianBlurRadius
+        case toneCurveData
+        // 効果・フレーム
         case tintColorData, tintIntensity
         case showFrame, frameColorData, frameWidth
         case roundedCorners, cornerRadius
-        case editHistory
-        case metadata
-        case metadataEditHistory
-        // インポート順番管理用のプロパティ
+        // 履歴・メタデータ
+        case editHistory, metadata
+        // インポート順
         case originalImportOrder, imageRole
     }
     
@@ -264,7 +279,6 @@ class ImageElement: LogoElement {
         try container.encodeIfPresent(originalImageURL, forKey: .originalImageURL)
         try container.encodeIfPresent(originalImagePath, forKey: .originalImagePath)
         try container.encodeIfPresent(originalImageIdentifier, forKey: .originalImageIdentifier)
-        try container.encode(fitMode, forKey: .fitMode)
         try container.encode(saturationAdjustment, forKey: .saturationAdjustment)
         try container.encode(brightnessAdjustment, forKey: .brightnessAdjustment)
         try container.encode(contrastAdjustment, forKey: .contrastAdjustment)
@@ -273,6 +287,7 @@ class ImageElement: LogoElement {
         try container.encode(hueAdjustment, forKey: .hueAdjustment)
         try container.encode(sharpnessAdjustment, forKey: .sharpnessAdjustment)
         try container.encode(gaussianBlurRadius, forKey: .gaussianBlurRadius)
+        try container.encode(toneCurveData, forKey: .toneCurveData)
         try container.encode(tintIntensity, forKey: .tintIntensity)
         try container.encode(showFrame, forKey: .showFrame)
         try container.encode(frameWidth, forKey: .frameWidth)
@@ -280,14 +295,6 @@ class ImageElement: LogoElement {
         try container.encode(cornerRadius, forKey: .cornerRadius)
         try container.encode(editHistory, forKey: .editHistory)
         try container.encodeIfPresent(metadata, forKey: .metadata)
-        
-        // メタデータ編集履歴をエンコード（Dictionary型は直接Codableに準拠していないため変換が必要）
-        if !metadataEditHistory.isEmpty {
-            let encodableHistory = metadataEditHistory.compactMapValues { value in
-                return (value as? String) ?? String(describing: value)
-            }
-            try container.encode(encodableHistory, forKey: .metadataEditHistory)
-        }
         
         // UIColorのエンコード
         if let tintColor = tintColor {
@@ -317,7 +324,7 @@ class ImageElement: LogoElement {
         originalImageURL = try container.decodeIfPresent(URL.self, forKey: .originalImageURL)
         originalImagePath = try container.decodeIfPresent(String.self, forKey: .originalImagePath)
         originalImageIdentifier = try container.decodeIfPresent(String.self, forKey: .originalImageIdentifier)
-        fitMode = try container.decode(ImageFitMode.self, forKey: .fitMode)
+        // fitMode は廃止。旧データがあれば無視し、キャンバスに収まる初期スケールを維持する。
         saturationAdjustment = try container.decode(CGFloat.self, forKey: .saturationAdjustment)
         brightnessAdjustment = try container.decode(CGFloat.self, forKey: .brightnessAdjustment)
         contrastAdjustment = try container.decode(CGFloat.self, forKey: .contrastAdjustment)
@@ -326,6 +333,7 @@ class ImageElement: LogoElement {
         hueAdjustment = try container.decode(CGFloat.self, forKey: .hueAdjustment)
         sharpnessAdjustment = try container.decode(CGFloat.self, forKey: .sharpnessAdjustment)
         gaussianBlurRadius = try container.decode(CGFloat.self, forKey: .gaussianBlurRadius)
+        toneCurveData = try container.decodeIfPresent(ToneCurveData.self, forKey: .toneCurveData) ?? ToneCurveData()
         tintIntensity = try container.decode(CGFloat.self, forKey: .tintIntensity)
         showFrame = try container.decode(Bool.self, forKey: .showFrame)
         frameWidth = try container.decode(CGFloat.self, forKey: .frameWidth)
@@ -333,11 +341,6 @@ class ImageElement: LogoElement {
         cornerRadius = try container.decode(CGFloat.self, forKey: .cornerRadius)
         editHistory = try container.decodeIfPresent([ImageEditOperation].self, forKey: .editHistory) ?? []
         metadata = try container.decodeIfPresent(ImageMetadata.self, forKey: .metadata)
-        
-        // メタデータ編集履歴をデコード
-        if let history = try container.decodeIfPresent([String: String].self, forKey: .metadataEditHistory) {
-            metadataEditHistory = history
-        }
         
         // UIColorのデコード
         if let tintColorData = try? container.decode(Data.self, forKey: .tintColorData),
@@ -352,7 +355,7 @@ class ImageElement: LogoElement {
     }
     
     /// 画像とメタデータから初期化
-    init(imageData: Data, metadata: ImageMetadata?, fitMode: ImageFitMode = .aspectFit, importOrder: Int = 0) {
+    init(imageData: Data, metadata: ImageMetadata?, importOrder: Int = 0) {
         // インポート順番を設定
         self.originalImportOrder = importOrder
         
@@ -360,7 +363,6 @@ class ImageElement: LogoElement {
         self.imageData = imageData
         self.metadata = metadata
         self.originalImageIdentifier = UUID().uuidString
-        self.fitMode = fitMode
         
         // 1番目の画像は自動的にベース画像に設定
         if importOrder == 1 {
@@ -382,14 +384,13 @@ class ImageElement: LogoElement {
     }
     
     /// ファイル名から画像要素を初期化
-    init(fileName: String, fitMode: ImageFitMode = .aspectFit, importOrder: Int = 0) {
+    init(fileName: String, importOrder: Int = 0) {
         // インポート順番を設定
         self.originalImportOrder = importOrder
         
         super.init(name: "Image")
         self.imageFileName = fileName
         self.originalImageIdentifier = UUID().uuidString
-        self.fitMode = fitMode
         
         // 1番目の画像は自動的にベース画像に設定
         if importOrder == 1 {
@@ -399,21 +400,20 @@ class ImageElement: LogoElement {
         // デフォルトzIndexを設定
         self.zIndex = ElementPriority.image.rawValue
         
-        // 画像のサイズに合わせて要素のサイズを調整
+        // 画像のサイズに合わせて要素のサイズを調整（必要なら外部でプロキシ生成）
         if let image = UIImage(named: fileName) {
             updateSizeFromImage(image)
         }
     }
     
     /// URLから初期化（メタデータの抽出を含む）
-    init(url: URL, fitMode: ImageFitMode = .aspectFit, importOrder: Int = 0) {
+    init(url: URL, importOrder: Int = 0) {
         // インポート順番を設定
         self.originalImportOrder = importOrder
         
         super.init(name: "Image")
         self.originalImageURL = url
         self.originalImageIdentifier = UUID().uuidString
-        self.fitMode = fitMode
         
         // 1番目の画像は自動的にベース画像に設定
         if importOrder == 1 {
@@ -428,7 +428,7 @@ class ImageElement: LogoElement {
             let data = try Data(contentsOf: url)
             self.imageData = data
             
-            // 画像サイズを調整
+            // 画像サイズを調整（必要なら外部でプロキシ生成）
             if let image = UIImage(data: data) {
                 updateSizeFromImage(image)
             }
@@ -441,14 +441,13 @@ class ImageElement: LogoElement {
     }
     
     /// パスから画像要素を初期化
-    init(path: String, fitMode: ImageFitMode = .aspectFit, importOrder: Int = 0) {
+    init(path: String, importOrder: Int = 0) {
         // インポート順番を設定
         self.originalImportOrder = importOrder
         
         super.init(name: "Image")
         self.originalImagePath = path
         self.originalImageIdentifier = UUID().uuidString
-        self.fitMode = fitMode
         
         // 1番目の画像は自動的にベース画像に設定
         if importOrder == 1 {
@@ -458,21 +457,20 @@ class ImageElement: LogoElement {
         // デフォルトzIndexを設定
         self.zIndex = ElementPriority.image.rawValue
         
-        // 画像をロードしてサイズを調整
+        // 画像をロードしてサイズを調整（必要なら外部でプロキシ生成）
         if let image = UIImage(contentsOfFile: path) {
             updateSizeFromImage(image)
         }
     }
     
     /// データから画像要素を初期化（動的サイズ調整フラグ付き）
-    init(imageData: Data, fitMode: ImageFitMode = .aspectFit, isDynamicSizing: Bool = true, importOrder: Int = 0) {
+    init(imageData: Data, isDynamicSizing: Bool = true, importOrder: Int = 0) {
         // インポート順番を設定
         self.originalImportOrder = importOrder
         
         super.init(name: "Image")
         self.imageData = imageData
         self.originalImageIdentifier = UUID().uuidString
-        self.fitMode = fitMode
         
         // 1番目の画像は自動的にベース画像に設定
         if importOrder == 1 {
@@ -500,14 +498,13 @@ class ImageElement: LogoElement {
     }
     
     /// データから画像要素を初期化（キャンバスサイズ付き）
-    init(imageData: Data, fitMode: ImageFitMode = .aspectFit, canvasSize: CGSize = CGSize(width: 3840, height: 2160), importOrder: Int = 0) {
+    init(imageData: Data, canvasSize: CGSize = CGSize(width: 3840, height: 2160), importOrder: Int = 0) {
         // インポート順番を設定
         self.originalImportOrder = importOrder
         
         super.init(name: "Image")
         self.imageData = imageData
         self.originalImageIdentifier = UUID().uuidString
-        self.fitMode = fitMode
         self.canvasSize = canvasSize
         
         // 1番目の画像は自動的にベース画像に設定
@@ -518,7 +515,7 @@ class ImageElement: LogoElement {
         // デフォルトzIndexを設定
         self.zIndex = ElementPriority.image.rawValue
         
-        // 画像のサイズに合わせて要素のサイズを調整
+        // 画像のサイズに合わせて要素のサイズを調整（必要なら外部でプロキシ生成）
         if let image = UIImage(data: imageData) {
             print("DEBUG: 初期化時の画像サイズ: \(image.size)")
             updateSizeFromImage(image)
@@ -528,14 +525,13 @@ class ImageElement: LogoElement {
     }
     
     /// データから画像要素を初期化
-    init(imageData: Data, fitMode: ImageFitMode = .aspectFit, importOrder: Int = 0) {
+    init(imageData: Data, importOrder: Int = 0) {
         // インポート順番を設定
         self.originalImportOrder = importOrder
         
         super.init(name: "Image")
         self.imageData = imageData
         self.originalImageIdentifier = UUID().uuidString
-        self.fitMode = fitMode
         
         // 1番目の画像は自動的にベース画像に設定
         if importOrder == 1 {
@@ -571,6 +567,7 @@ class ImageElement: LogoElement {
         hueAdjustment = 0.0
         sharpnessAdjustment = 0.0
         gaussianBlurRadius = 0.0
+        toneCurveData = ToneCurveData()
         tintColor = nil
         tintIntensity = 0.0
         editHistory.removeAll()
@@ -616,46 +613,32 @@ class ImageElement: LogoElement {
     
     /// プレビュー用低解像度画像を生成
     private func generatePreviewImage() -> UIImage? {
-        guard let originalImage = self.originalImage else { return nil }
-        
-        // 既にプレビューサイズ以下の場合はそのまま使用
-        let originalSize = originalImage.size
-        let maxDimension = max(originalSize.width, originalSize.height)
-        
-        if maxDimension <= previewMaxSize {
-            return originalImage
-        }
-        
-        // アスペクト比を維持してリサイズ
-        let scale = previewMaxSize / maxDimension
-        let newSize = CGSize(
-            width: originalSize.width * scale,
-            height: originalSize.height * scale
+        ImageElement.previewService.generatePreviewImage(
+            editingImage: editingImage,
+            originalImage: originalImage
         )
-        
-        UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
-        defer { UIGraphicsEndImageContext() }
-        
-        originalImage.draw(in: CGRect(origin: .zero, size: newSize))
-        return UIGraphicsGetImageFromCurrentImageContext()
     }
     
     /// 即座プレビュー用の画像を取得（低解像度、高速処理）
     func getInstantPreview() -> UIImage? {
-        // プレビュー画像が未生成の場合は生成
         if previewImage == nil {
             previewImage = generatePreviewImage()
         }
-        
+
         guard let preview = previewImage else { return nil }
-        
-        // プレビューサイズでフィルターを適用
-        return applyFilters(to: preview) ?? preview
+
+        let params = currentFilterParams()
+        return ImageElement.previewService.instantPreview(
+            baseImage: preview,
+            params: params,
+            quality: .preview
+        )
     }
-    
+
     /// 編集開始をマーク
     func startEditing() {
         isCurrentlyEditing = true
+        cachedImage = nil
     }
 
     /// 編集終了をマーク
@@ -664,353 +647,52 @@ class ImageElement: LogoElement {
     }
     
     /// 画像にフィルターを適用
-    private func applyFilters(to image: UIImage) -> UIImage? {
-        guard let cgImage = image.cgImage else { return image }
-        
-        // 元のCIImageを作成
-        var ciImage = CIImage(cgImage: cgImage)
-        
-        // 彩度のみを非同期で処理するかどうかのフラグ
-        let useAsyncSaturation = false
-        
-        if useAsyncSaturation {
-            // 彩度のみ個別に適用（非同期処理用に分離）
-            if saturationAdjustment != 1.0,
-               let saturationFilter = CIFilter(name: "CIColorControls") {
-                saturationFilter.setValue(ciImage, forKey: kCIInputImageKey)
-                saturationFilter.setValue(saturationAdjustment, forKey: kCIInputSaturationKey)
-                saturationFilter.setValue(0.0, forKey: kCIInputBrightnessKey) // 彩度のみ
-                saturationFilter.setValue(1.0, forKey: kCIInputContrastKey)   // 彩度のみ
-                
-                if let output = saturationFilter.outputImage {
-                    ciImage = output
-                }
-            }
-            
-            // 明度とコントラストを別途適用
-            if brightnessAdjustment != 0.0 || contrastAdjustment != 1.0,
-               let bcFilter = CIFilter(name: "CIColorControls") {
-                bcFilter.setValue(ciImage, forKey: kCIInputImageKey)
-                bcFilter.setValue(1.0, forKey: kCIInputSaturationKey)        // 彩度は既に適用済み
-                bcFilter.setValue(brightnessAdjustment, forKey: kCIInputBrightnessKey)
-                bcFilter.setValue(contrastAdjustment, forKey: kCIInputContrastKey)
-                
-                if let output = bcFilter.outputImage {
-                    ciImage = output
-                }
-            }
-        } else {
-            // 従来の一括処理
-            if let adjusted = ImageFilterUtility.applyBasicColorAdjustment(
-                to: ciImage,
-                saturation: saturationAdjustment,
-                brightness: brightnessAdjustment,
-                contrast: contrastAdjustment
-            ) {
-                ciImage = adjusted
-            }
-        }
-        
-        // ハイライトの調整を適用（値が0でない場合のみ）
-        if highlightsAdjustment != 0,
-           let adjusted = ImageFilterUtility.applyHighlightAdjustment(
-            to: ciImage,
-            amount: highlightsAdjustment
-           ) {
-            ciImage = adjusted
-        }
-        
-        // シャドウの調整を適用（値が0でない場合のみ）
-        if shadowsAdjustment != 0,
-           let adjusted = ImageFilterUtility.applyShadowAdjustment(
-            to: ciImage,
-            amount: shadowsAdjustment
-           ) {
-            ciImage = adjusted
-        }
-        
-        // 色相調整を適用（値が0でない場合のみ）
-        if hueAdjustment != 0,
-           let adjusted = ImageFilterUtility.applyHueAdjustment(
-            to: ciImage,
-            angle: hueAdjustment
-           ) {
-            ciImage = adjusted
-        }
-        
-        // シャープネス調整を適用（値が0でない場合のみ）
-        if sharpnessAdjustment != 0,
-           let adjusted = ImageFilterUtility.applySharpness(
-            to: ciImage,
-            intensity: sharpnessAdjustment
-           ) {
-            ciImage = adjusted
-        }
-        
-        // ガウシアンブラーを適用（値が0でない場合のみ）
-        if gaussianBlurRadius != 0,
-           let adjusted = ImageFilterUtility.applyGaussianBlur(
-            to: ciImage,
-            radius: gaussianBlurRadius
-           ) {
-            ciImage = adjusted
-        }
-        
-        // CIImageをUIImageに変換
-        var filteredImage = ImageFilterUtility.convertToUIImage(
-            ciImage,
-            scale: image.scale,
-            orientation: image.imageOrientation
-        ) ?? image
-        
-        // ティントカラーを適用
-        if let tintColor = tintColor, tintIntensity > 0,
-           let tinted = ImageFilterUtility.applyTintOverlay(
-            to: filteredImage,
-            color: tintColor,
-            intensity: tintIntensity
-           ) {
-            filteredImage = tinted
-        }
-        
-        return filteredImage
+    private func applyFilters(to image: UIImage, quality: ToneCurveFilter.Quality = .full) -> UIImage? {
+        ImageElement.previewService.applyFilters(
+            to: image,
+            params: currentFilterParams(),
+            quality: quality
+        )
     }
     
     /// 画像にフィルターを非同期で適用（彩度調整特化）
-    private func applyFiltersAsync(to image: UIImage) async -> UIImage? {
-        return await Task.detached(priority: .userInitiated) {
-            guard let cgImage = image.cgImage else { return image }
-            
-            // 元のCIImageを作成
-            var ciImage = CIImage(cgImage: cgImage)
-            
-            // 彩度調整を非同期で実行
-            if self.saturationAdjustment != 1.0,
-               let saturationFilter = CIFilter(name: "CIColorControls") {
-                saturationFilter.setValue(ciImage, forKey: kCIInputImageKey)
-                saturationFilter.setValue(self.saturationAdjustment, forKey: kCIInputSaturationKey)
-                saturationFilter.setValue(0.0, forKey: kCIInputBrightnessKey)
-                saturationFilter.setValue(1.0, forKey: kCIInputContrastKey)
-                
-                if let output = saturationFilter.outputImage {
-                    ciImage = output
-                }
-            }
-            
-            // 明度とコントラストを適用
-            if self.brightnessAdjustment != 0.0 || self.contrastAdjustment != 1.0,
-               let bcFilter = CIFilter(name: "CIColorControls") {
-                bcFilter.setValue(ciImage, forKey: kCIInputImageKey)
-                bcFilter.setValue(1.0, forKey: kCIInputSaturationKey)
-                bcFilter.setValue(self.brightnessAdjustment, forKey: kCIInputBrightnessKey)
-                bcFilter.setValue(self.contrastAdjustment, forKey: kCIInputContrastKey)
-                
-                if let output = bcFilter.outputImage {
-                    ciImage = output
-                }
-            }
-            
-            // ハイライトの調整を適用
-            if self.highlightsAdjustment != 0,
-               let adjusted = ImageFilterUtility.applyHighlightAdjustment(
-                to: ciImage,
-                amount: self.highlightsAdjustment
-               ) {
-                ciImage = adjusted
-            }
-            
-            // シャドウの調整を適用
-            if self.shadowsAdjustment != 0,
-               let adjusted = ImageFilterUtility.applyShadowAdjustment(
-                to: ciImage,
-                amount: self.shadowsAdjustment
-               ) {
-                ciImage = adjusted
-            }
-            
-            // 色相調整を適用
-            if self.hueAdjustment != 0,
-               let adjusted = ImageFilterUtility.applyHueAdjustment(
-                to: ciImage,
-                angle: self.hueAdjustment
-               ) {
-                ciImage = adjusted
-            }
-            
-            // シャープネス調整を適用
-            if self.sharpnessAdjustment != 0,
-               let adjusted = ImageFilterUtility.applySharpness(
-                to: ciImage,
-                intensity: self.sharpnessAdjustment
-               ) {
-                ciImage = adjusted
-            }
-            
-            // ガウシアンブラーを適用
-            if self.gaussianBlurRadius != 0,
-               let adjusted = ImageFilterUtility.applyGaussianBlur(
-                to: ciImage,
-                radius: self.gaussianBlurRadius
-               ) {
-                ciImage = adjusted
-            }
-            
-            // CIImageをUIImageに変換
-            var filteredImage = ImageFilterUtility.convertToUIImage(
-                ciImage,
-                scale: image.scale,
-                orientation: image.imageOrientation
-            ) ?? image
-            
-            // ティントカラーを適用
-            if let tintColor = self.tintColor, self.tintIntensity > 0,
-               let tinted = ImageFilterUtility.applyTintOverlay(
-                to: filteredImage,
-                color: tintColor,
-                intensity: self.tintIntensity
-               ) {
-                filteredImage = tinted
-            }
-            
-            return filteredImage
-        }.value
+    private func applyFiltersAsync(to image: UIImage, quality: ToneCurveFilter.Quality = .full) async -> UIImage? {
+        await ImageElement.previewService.applyFiltersAsync(
+            to: image,
+            params: currentFilterParams(),
+            quality: quality
+        )
     }
-    
-    /// フィッティングモードに応じた描画矩形を計算
-    private func calculateDrawRect(imageSize: CGSize, boundingRect: CGRect) -> CGRect {
-        switch fitMode {
-        case .fill:
-            // 要素全体を埋める
-            return boundingRect
-            
-        case .aspectFit:
-            // アスペクト比を維持して要素内に収める
-            let widthRatio = boundingRect.width / imageSize.width
-            let heightRatio = boundingRect.height / imageSize.height
-            let scale = min(widthRatio, heightRatio)
-            
-            let newWidth = imageSize.width * scale
-            let newHeight = imageSize.height * scale
-            
-            return CGRect(
-                x: boundingRect.midX - newWidth / 2,
-                y: boundingRect.midY - newHeight / 2,
-                width: newWidth,
-                height: newHeight
-            )
-            
-        case .aspectFill:
-            // アスペクト比を維持して要素全体を埋める
-            let widthRatio = boundingRect.width / imageSize.width
-            let heightRatio = boundingRect.height / imageSize.height
-            let scale = max(widthRatio, heightRatio)
-            
-            let newWidth = imageSize.width * scale
-            let newHeight = imageSize.height * scale
-            
-            return CGRect(
-                x: boundingRect.midX - newWidth / 2,
-                y: boundingRect.midY - newHeight / 2,
-                width: newWidth,
-                height: newHeight
-            )
-            
-        case .center:
-            // 中央に配置
-            return CGRect(
-                x: boundingRect.midX - imageSize.width / 2,
-                y: boundingRect.midY - imageSize.height / 2,
-                width: imageSize.width,
-                height: imageSize.height
-            )
-            
-        case .tile:
-            // タイル状に表示（元のサイズ）
-            return boundingRect
-        }
+
+    /// 現在のフィルタ設定をまとめてサービスに渡す
+    private func currentFilterParams() -> ImageFilterParams {
+        ImageFilterParams(
+            toneCurveData: toneCurveData,
+            saturation: saturationAdjustment,
+            brightness: brightnessAdjustment,
+            contrast: contrastAdjustment,
+            highlights: highlightsAdjustment,
+            shadows: shadowsAdjustment,
+            hue: hueAdjustment,
+            sharpness: sharpnessAdjustment,
+            gaussianBlurRadius: gaussianBlurRadius,
+            tintColor: tintColor,
+            tintIntensity: tintIntensity
+        )
     }
-    
+
     /// 画像を描画
     override func draw(in context: CGContext) {
-        guard isVisible, let image = self.image else { return }
-        
-        context.saveGState()
-        
-        // 透明度の設定
-        context.setAlpha(opacity)
-        
-        // 中心点を計算
-        let centerX = position.x + size.width / 2
-        let centerY = position.y + size.height / 2
-        
-        // 変換行列を適用（回転と位置）
-        context.translateBy(x: centerX, y: centerY)
-        context.rotate(by: rotation)
-        context.translateBy(x: -size.width / 2, y: -size.height / 2)
-        
-        // 描画領域
-        let rect = CGRect(origin: .zero, size: size)
-        
-        // 角丸クリッピングパスの設定
-        if roundedCorners && cornerRadius > 0 {
-            let path = UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
-            context.addPath(path.cgPath)
-            context.clip()
-        }
-        
-        // 編集中は即座プレビュー、それ以外は高品質画像を使用
-        let filteredImage: UIImage
-        if isCurrentlyEditing {
-            filteredImage = getInstantPreview() ?? image
-        } else {
-            filteredImage = applyFilters(to: image) ?? image
-        }
-        
-        // フィットモードに応じた描画矩形を計算
-        let drawRect = calculateDrawRect(imageSize: filteredImage.size, boundingRect: rect)
-        
-        if fitMode == .tile {
-            // タイルパターンで描画
-            context.saveGState()
-            context.clip(to: rect)
-            
-            let tileSize = filteredImage.size
-            let horizontalTiles = ceil(size.width / tileSize.width)
-            let verticalTiles = ceil(size.height / tileSize.height)
-            
-            for y in 0..<Int(verticalTiles) {
-                for x in 0..<Int(horizontalTiles) {
-                    let tileRect = CGRect(
-                        x: CGFloat(x) * tileSize.width,
-                        y: CGFloat(y) * tileSize.height,
-                        width: tileSize.width,
-                        height: tileSize.height
-                    )
-                    filteredImage.draw(in: tileRect)
-                }
-            }
-            
-            context.restoreGState()
-        } else {
-            // 通常描画
-            filteredImage.draw(in: drawRect)
-        }
-        
-        // フレーム描画
-        if showFrame && frameWidth > 0 {
-            context.setStrokeColor(frameColor.cgColor)
-            context.setLineWidth(frameWidth)
-            
-            if roundedCorners && cornerRadius > 0 {
-                let frameRect = rect.insetBy(dx: frameWidth / 2, dy: frameWidth / 2)
-                let path = UIBezierPath(roundedRect: frameRect, cornerRadius: cornerRadius)
-                context.addPath(path.cgPath)
+        let filteredImage: UIImage? = {
+            guard let image = self.image else { return nil }
+            if isCurrentlyEditing {
+                return getInstantPreview() ?? applyFilters(to: image, quality: .preview) ?? image
             } else {
-                context.stroke(rect.insetBy(dx: frameWidth / 2, dy: frameWidth / 2))
+                return image
             }
-        }
-        
-        context.restoreGState()
+        }()
+
+        ImageElementRenderer.draw(self, in: context, image: filteredImage)
     }
     
     /// 要素のコピーを作成
@@ -1018,11 +700,11 @@ class ImageElement: LogoElement {
         let copy: ImageElement
         
         if let imageFileName = imageFileName {
-            copy = ImageElement(fileName: imageFileName, fitMode: fitMode)
+            copy = ImageElement(fileName: imageFileName)
         } else if let imageData = imageData {
-            copy = ImageElement(imageData: imageData, fitMode: fitMode)
+            copy = ImageElement(imageData: imageData)
         } else {
-            copy = ImageElement(fileName: "", fitMode: fitMode)
+            copy = ImageElement(fileName: "")
         }
         
         copy.position = position
@@ -1041,6 +723,7 @@ class ImageElement: LogoElement {
         copy.hueAdjustment = hueAdjustment
         copy.sharpnessAdjustment = sharpnessAdjustment
         copy.gaussianBlurRadius = gaussianBlurRadius
+        copy.toneCurveData = toneCurveData
         copy.tintColor = tintColor
         copy.tintIntensity = tintIntensity
         

@@ -14,7 +14,7 @@ import SwiftUI
 
 enum ActiveSheet: Identifiable {
     case imagePicker
-    case imageCrop(UIImage)
+    case imageCrop(UIImage, String?)
     
     var id: String {  // ビルド時にInt型だとクラッシュしたのでString型に変更
         switch self {
@@ -75,18 +75,17 @@ struct EditorView: View {
     
     /// アラートのタイトル
     @State private var alertTitle = ""
-    
+
     /// アラートのメッセージ
+
+    /// 画像要素の選択タブ（0=プロパティ、1=カーブ）
+    @State private var selectedImageTab: Int = 0
     @State private var alertMessage = ""
-    
-    /// キャンバスのズーム比率
-    @State private var canvasZoomScale: CGFloat = 1.0
-    
-    /// キャンバスのパンオフセット
-    @State private var canvasPanOffset: CGPoint = .zero
-    
-    /// 保存オプションアクションシートの表示フラグ
-    @State private var isShowingSaveOptions = false
+
+
+    /// ダブルタップ判定用の最終タップ情報（同一要素・短時間のみ編集開始とみなす）
+    @State private var lastTapElementId: UUID?
+    @State private var lastTapTimestamp: TimeInterval?
     
     // MARK: - イニシャライザ
     
@@ -137,14 +136,14 @@ struct EditorView: View {
                                 // UIの更新を待つ
                                 try? await Task.sleep(nanoseconds: 100_000_000) // 0.1秒待機
                                 // クロップ画面を表示
-                                activeSheet = .imageCrop(image)
+                                activeSheet = .imageCrop(image, imageInfo.assetIdentifier)
                             }
                         }
                     }
                     
-                case .imageCrop(let image):
+                case .imageCrop(let image, let assetIdentifier):
                     ImageCropView(image: image) { croppedImage in
-                        viewModel.addCroppedImageElement(image: croppedImage)
+                        viewModel.addCroppedImageElement(image: croppedImage, assetIdentifier: assetIdentifier)
                         viewModel.editorMode = .select
                         activeSheet = nil
                     }
@@ -156,22 +155,7 @@ struct EditorView: View {
                     ManualBackgroundRemovalView(imageElement: imageElement, editorViewModel: viewModel)
                 }
             }
-            // 保存オプションアクションシート
-            .actionSheet(isPresented: $isShowingSaveOptions) {
-                ActionSheet(
-                    title: Text("保存オプション"),
-                    message: Text("保存方法を選択してください"),
-                    buttons: [
-                        .default(Text("通常保存（個別画像）")) {
-                            saveIndividualImages()
-                        },
-                        .default(Text("合成保存（1枚の画像）")) {
-                            saveCompositeImage()
-                        },
-                        .cancel()
-                    ]
-                )
-            }
+            // 保存オプション（iOS16+はconfirmationDialogに統一）
             .alert(isPresented: $isShowingAlert) {
                 Alert(
                     title: Text(alertTitle),
@@ -213,7 +197,26 @@ struct EditorView: View {
                     case .shape:
                         ShapeEditorPanel(viewModel: elementViewModel)
                     case .image:
-                        ImageEditorPanel(viewModel: elementViewModel)
+                        if selectedImageTab == 0 {
+                            ImageEditorPanel(viewModel: elementViewModel)
+                        } else {
+                            // カーブタブ
+                            if let imageElement = elementViewModel.imageElement {
+                                ScrollView {
+                                    ToneCurveView(curveData: Binding(
+                                        get: { imageElement.toneCurveData },
+                                        set: { newValue in
+                                            elementViewModel.updateToneCurveData(newValue)
+                                        }
+                                    ))
+                                    .padding()
+                                }
+                            } else {
+                                Text("画像要素が選択されていません")
+                                    .foregroundColor(.secondary)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
+                        }
                     }
                 }
             } else {
@@ -225,15 +228,31 @@ struct EditorView: View {
     }
     
     private var tabSelector: some View {
-        HStack {
-            Text("プロパティ")
-                .font(.headline)
-                .padding(.leading)
-            
-            Spacer()
+        HStack(spacing: 0) {
+            Button(action: {
+                selectedImageTab = 0
+            }) {
+                Text("プロパティ")
+                    .font(.headline)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(selectedImageTab == 0 ? Color(UIColor.tertiarySystemBackground) : Color.clear)
+                    .foregroundColor(selectedImageTab == 0 ? .primary : .secondary)
+            }
+            .buttonStyle(PlainButtonStyle())
 
+            Button(action: {
+                selectedImageTab = 1
+            }) {
+                Text("カーブ")
+                    .font(.headline)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(selectedImageTab == 1 ? Color(UIColor.tertiarySystemBackground) : Color.clear)
+                    .foregroundColor(selectedImageTab == 1 ? .primary : .secondary)
+            }
+            .buttonStyle(PlainButtonStyle())
         }
-        .padding(.vertical, 8)
         .background(Color(UIColor.secondarySystemBackground))
     }
     
@@ -249,12 +268,100 @@ struct EditorView: View {
             CanvasViewRepresentable(
                 viewModel: viewModel,
                 showGrid: showGrid,
-                snapToGrid: snapToGrid,
-                zoomScale: $canvasZoomScale,
-                panOffset: $canvasPanOffset
+                snapToGrid: snapToGrid
             )
             
-            // テキスト編集オーバーレイ (InlineTextEditorからTextEditDialogに変更)
+            if viewModel.editorMode == .select {
+                Color.clear
+                    .contentShape(Rectangle())
+                    // ダブルタップ優先でテキスト編集を開始（他ジェスチャーより優先度を高くする）
+                    .highPriorityGesture(
+                        SpatialTapGesture(count: 2)
+                            .onEnded { value in
+                                let point = value.location
+                                print("DEBUG: Canvas double tap at \(point)")
+                                if let textElement = hitTestElement(at: point, in: viewModel.project.elements) as? TextElement {
+                                    viewModel.selectElement(textElement)
+                                    viewModel.startTextEditing(for: textElement)
+                                }
+                            }
+                    )
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 0, coordinateSpace: .named("canvas"))
+                            .onEnded { value in
+                                print("DEBUG: Color.clear tap at \(value.startLocation)")
+                                let hit = hitTestElement(at: value.startLocation, in: viewModel.project.elements)
+                                if let element = hit {
+                                    print("DEBUG: Hit element: \(type(of: element))")
+                                    viewModel.selectElement(element)
+                                } else {
+                                    print("DEBUG: Hit element: nil")
+                                    viewModel.clearSelection()
+                                }
+                            }
+                    )
+            }
+            
+            // オーバーレイは選択モードのみ表示（作成モードでは入力を塞がない）
+            if viewModel.editorMode == .select,
+               let selected = viewModel.selectedElement {
+                ElementSelectionView(
+                    element: selected,
+                    onManipulationStarted: nil,
+                    onManipulationChanged: nil,
+                    onManipulationEnded: nil,
+                    onMagnifyChanged: { scale in
+                        elementViewModel.applyGestureTransform(translation: nil, scale: scale, rotation: nil, ended: false)
+                    },
+                    onMagnifyEnded: {
+                        elementViewModel.applyGestureTransform(translation: nil, scale: nil, rotation: nil, ended: true)
+                    },
+                    onRotateGestureChanged: { angle in
+                        elementViewModel.applyGestureTransform(translation: nil, scale: nil, rotation: angle, ended: false)
+                    },
+                    onRotateGestureEnded: {
+                        elementViewModel.applyGestureTransform(translation: nil, scale: nil, rotation: nil, ended: true)
+                    },
+                    onMoveChanged: { translation in
+                        elementViewModel.applyGestureTransform(translation: translation, scale: nil, rotation: nil, ended: false)
+                    },
+                    onMoveEnded: {
+                        elementViewModel.applyGestureTransform(translation: nil, scale: nil, rotation: nil, ended: true)
+                    },
+                    onTapSelect: { globalPoint in
+                        DispatchQueue.main.async {
+                            print("DEBUG: ElementSelectionView onTapSelect at \(globalPoint)")
+                            // まず最前面をヒットテスト
+                            if let primary = hitTestElement(at: globalPoint, in: viewModel.project.elements) {
+                                print("DEBUG: Primary hit: \(type(of: primary)), id: \(primary.id)")
+                                if handleTextDoubleTapIfNeeded(for: primary) {
+                                    return
+                                }
+                                if let selected = viewModel.selectedElement {
+                                    print("DEBUG: Currently selected: \(type(of: selected)), id: \(selected.id)")
+                                    if primary.id == selected.id {
+                                        print("DEBUG: Same element tapped; keeping current selection")
+                                        return // 同じ要素なら切り替えない
+                                    }
+                                }
+                                print("DEBUG: Selecting primary element")
+                                viewModel.selectElement(primary)
+                            } else {
+                                viewModel.clearSelection()
+                            }
+                        }
+                    },
+                    onDoubleTap: {
+                        print("DEBUG: EditorView - ダブルタップコールバック")
+                        // テキスト要素の場合は編集を開始
+                        if let textElement = selected as? TextElement {
+                            print("DEBUG: テキスト要素のダブルタップ - 編集開始")
+                            viewModel.startTextEditing(for: textElement)
+                        }
+                    }
+                )
+            }
+
             if viewModel.isEditingText,
                let editingElement = viewModel.editingTextElement {
                 TextEditDialog(
@@ -268,7 +375,8 @@ struct EditorView: View {
                     }
                 )
             }
-            
+
+
             // ツールバー
             VStack {
                 toolbarOverlay
@@ -277,6 +385,7 @@ struct EditorView: View {
             .padding()
         }
         .frame(maxHeight: .infinity)
+        .coordinateSpace(name: "canvas")
     }
     
     // MARK: - オーバーレイツールバー
@@ -489,7 +598,7 @@ struct EditorView: View {
             // 左側に保存ボタン
             ToolbarItem(placement: .navigationBarLeading) {
                 Button("保存") {
-                    isShowingSaveOptions = true
+                    saveProjectAuto()
                 }
                 .help("保存")
             }
@@ -516,8 +625,8 @@ struct EditorView: View {
     
     // MARK: - アクション処理
     
-    /// 個別画像保存（従来の機能）
-    private func saveIndividualImages() {
+    /// 編集内容を自動判定で保存
+    private func saveProjectAuto() {
         viewModel.saveProject { success in
             if success {
                 showAlert(title: "保存完了", message: "写真が保存されました。")
@@ -525,23 +634,6 @@ struct EditorView: View {
                 showAlert(title: "保存エラー", message: "写真の保存に失敗しました。写真へのアクセス権限確認。または写真が選択されていません。")
             }
         }
-    }
-    
-    /// 合成画像保存（新機能）
-    private func saveCompositeImage() {
-        viewModel.saveAsCompositeImage { success in
-            if success {
-                showAlert(title: "合成保存完了", message: "すべての要素が合成された1枚の画像が保存されました。")
-            } else {
-                showAlert(title: "合成保存エラー", message: "合成画像の保存に失敗しました。写真へのアクセス権限確認。または写真が選択されていません。")
-            }
-        }
-    }
-    
-    /// 編集を保存（旧メソッド - 互換性のため残す）
-    private func saveImage() {
-        // 現在は保存オプションアクションシートを表示
-        isShowingSaveOptions = true
     }
     
     /// 画像選択後の処理
@@ -592,6 +684,38 @@ struct EditorView: View {
             // キャンバスの再描画を促す
             viewModel.updateSelectedElement(imageElement)
         }
+    }
+
+    /// 同一要素に対する短時間の連続タップのみをダブルタップとみなし、テキスト編集を開始する
+    /// - Returns: ダブルタップとして処理した場合は true
+    private func handleTextDoubleTapIfNeeded(for element: LogoElement) -> Bool {
+        let now = Date().timeIntervalSinceReferenceDate
+
+        if let lastId = lastTapElementId,
+           let lastTime = lastTapTimestamp,
+           lastId == element.id,
+           now - lastTime < 0.35,
+           let textElement = element as? TextElement {
+            print("DEBUG: Manual double tap detected for TextElement")
+            viewModel.startTextEditing(for: textElement)
+            lastTapElementId = nil
+            lastTapTimestamp = nil
+            return true
+        }
+
+        lastTapElementId = element.id
+        lastTapTimestamp = now
+        return false
+    }
+
+    /// zIndex降順でヒットテスト
+    private func hitTestElement(at location: CGPoint, in elements: [LogoElement], excluding excludeId: UUID? = nil) -> LogoElement? {
+        elements
+            .sorted { $0.zIndex > $1.zIndex }
+            .first { element in
+                if let excludeId = excludeId, element.id == excludeId { return false }
+                return element.hitTest(location)
+            }
     }
 }
 

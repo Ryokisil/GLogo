@@ -1,6 +1,5 @@
 //
 //  CanvasRenderer.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはロゴプロジェクトのキャンバスレンダリング機能を提供します。

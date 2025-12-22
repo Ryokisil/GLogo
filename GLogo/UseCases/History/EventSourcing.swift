@@ -835,30 +835,7 @@ struct ShapeGradientAngleChangedEvent: EditorEvent {
 
 // MARK: - 画像要素に関するイベントの実装
 
-/// 画像フィットモード変更イベント
-struct ImageFitModeChangedEvent: EditorEvent {
-    var eventName = "ImageFitModeChanged"
-    var timestamp = Date()
-    let elementId: UUID
-    let oldMode: ImageFitMode
-    let newMode: ImageFitMode
-    
-    var description: String {
-        return "画像のフィットモードを変更しました"
-    }
-    
-    func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
-            element.fitMode = newMode
-        }
-    }
-    
-    func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
-            element.fitMode = oldMode
-        }
-    }
-}
+// fitMode 廃止: ImageFitModeChangedEvent 削除
 
 /// 画像彩度変更イベント
 struct ImageSaturationChangedEvent: EditorEvent {

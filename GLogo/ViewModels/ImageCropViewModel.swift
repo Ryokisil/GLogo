@@ -9,7 +9,6 @@
 
 import Foundation
 import UIKit
-import Vision
 
 class ImageCropViewModel: ObservableObject {
     // MARK: - プロパティ
@@ -37,15 +36,32 @@ class ImageCropViewModel: ObservableObject {
     
     let originalImage: UIImage
     private let completion: (UIImage) -> Void
+    private let cropHandleUseCase: CropHandleInteractionUseCase
+    private let backgroundRemovalUseCase: BackgroundRemovalUseCase
+    private var activeHandle: CropHandleType?
+    private var dragStart: CGPoint = .zero
+    private var initialRect: CGRect = .zero
     
     // MARK: - イニシャライザ
     
-    init(image: UIImage, completion: @escaping (UIImage) -> Void) {
+    init(
+        image: UIImage,
+        completion: @escaping (UIImage) -> Void,
+        cropHandleUseCase: CropHandleInteractionUseCase = CropHandleInteractionUseCase(),
+        backgroundRemovalUseCase: BackgroundRemovalUseCase = BackgroundRemovalUseCase()
+    ) {
         self.originalImage = image
         self.completion = completion
+        self.cropHandleUseCase = cropHandleUseCase
+        self.backgroundRemovalUseCase = backgroundRemovalUseCase
     }
     
-    // MARK: - AI背景除去
+    // MARK: - AI背景除去（UIエントリーポイント）
+    //
+    // フロー概要:
+    //  - UIの「AI背景除去」ボタンが startBackgroundRemoval を呼ぶ。
+    //  - ViewModelは処理状態を更新し、UseCaseに背景除去処理を委譲する。
+    //  - 成功時は backgroundRemovedImage を更新し、表示/クロップ対象に反映する。
     
     /// AI背景除去を開始
     @MainActor
@@ -56,7 +72,7 @@ class ImageCropViewModel: ObservableObject {
         
         Task {
             do {
-                let processedImage = try await removeBackground(from: originalImage)
+                let processedImage = try await backgroundRemovalUseCase.removeBackground(from: originalImage)
                 await MainActor.run {
                     self.backgroundRemovedImage = processedImage
                     self.isProcessingBackgroundRemoval = false
@@ -70,81 +86,14 @@ class ImageCropViewModel: ObservableObject {
         }
     }
     
-    /// Vision フレームワークを使用した背景除去処理（解像度保持版）
-    private func removeBackground(from image: UIImage) async throws -> UIImage {
-    guard let cgImage = image.cgImage else {
-        throw NSError(domain: "ImageCropError", code: 1, userInfo: [NSLocalizedDescriptionKey: "CGImageの作成に失敗"])
-    }
-    
-    let request = VNGenerateForegroundInstanceMaskRequest()
-    
-    return try await withCheckedThrowingContinuation { continuation in
-        let handler = VNImageRequestHandler(cgImage: cgImage)
-        
-        do {
-            try handler.perform([request])
-            
-            guard let result = request.results?.first else {
-                continuation.resume(throwing: NSError(domain: "VisionError", code: 2, userInfo: [NSLocalizedDescriptionKey: "前景マスクの生成に失敗"]))
-                return
-            }
-            
-            // AI分析結果から低解像度マスクを取得（精度はそのまま保持）
-            let lowResMask = try result.generateScaledMaskForImage(forInstances: result.allInstances, from: handler)
-            let lowResMaskImage = CIImage(cvPixelBuffer: lowResMask)
-            
-            // 元画像の実解像度を取得
-            let originalSize = image.size
-            let originalScale = image.scale
-            let pixelSize = CGSize(
-                width: originalSize.width * originalScale,
-                height: originalSize.height * originalScale
-            )
-            
-            // 低解像度マスクを元画像解像度にアップスケール
-            let highResMaskImage = self.upscaleMask(lowResMaskImage, to: pixelSize)
-            
-            // 浸透効果用のソフトマスクを高解像度マスクから作成
-            let featheredMask = self.createFeatheredMask(from: highResMaskImage)
-            
-            // 元画像のCIImage（フル解像度）
-            let originalCIImage = CIImage(cgImage: cgImage)
-            
-            guard let filter = CIFilter(name: "CIBlendWithMask") else {
-                continuation.resume(throwing: NSError(domain: "CoreImageError", code: 3, userInfo: [NSLocalizedDescriptionKey: "CIBlendWithMaskフィルターが利用不可"]))
-                return
-            }
-            
-            // フィルター設定（高解像度フェザーマスクを使用）
-            filter.setValue(originalCIImage, forKey: kCIInputImageKey)
-            filter.setValue(featheredMask, forKey: kCIInputMaskImageKey)
-            filter.setValue(CIImage.empty(), forKey: kCIInputBackgroundImageKey)
-            
-            guard let outputImage = filter.outputImage else {
-                continuation.resume(throwing: NSError(domain: "CoreImageError", code: 4, userInfo: [NSLocalizedDescriptionKey: "フィルター処理に失敗"]))
-                return
-            }
-            
-            // CIImage → UIImage変換（フル解像度）
-            let context = CIContext()
-            guard let resultCGImage = context.createCGImage(outputImage, from: outputImage.extent) else {
-                continuation.resume(throwing: NSError(domain: "CoreImageError", code: 5, userInfo: [NSLocalizedDescriptionKey: "最終画像の生成に失敗"]))
-                return
-            }
-            
-            // 元画像のスケールを保持して最終UIImageを作成
-            let resultImage = UIImage(cgImage: resultCGImage, scale: originalScale, orientation: image.imageOrientation)
-            continuation.resume(returning: resultImage)
-            
-        } catch {
-            continuation.resume(throwing: error)
-        }
-    }
-}
-    
-    
-    // MARK: - コマンド
-    
+    // MARK: - クロップ（UIエントリーポイント）
+    //
+    // フロー概要:
+    //  - ImagePreviewView が updateImageFrame を呼び、初期の cropRect を画像フレームに合わせる。
+    //  - CropHandles が start/update/end を呼び、UseCase で矩形更新して cropRect を反映する。
+    //  - UIの比率/リセット操作は setCropAspectRatio / resetCropRect を呼ぶ。
+    //  - 完了ボタンは onComplete を呼び、クロップ処理して completion に返す。
+
     func onComplete() {
         print("===完了時点でのデバッグ情報===")
         print("元画像サイズ: \(originalImage.size)")
@@ -165,15 +114,31 @@ class ImageCropViewModel: ObservableObject {
         }
     }
     
-    func onCropRectChanged() {
-        let tolerance: CGFloat = 1.0
-        let isEqual = abs(cropRect.minX - imageViewFrame.minX) < tolerance &&
-        abs(cropRect.minY - imageViewFrame.minY) < tolerance &&
-        abs(cropRect.width - imageViewFrame.width) < tolerance &&
-        abs(cropRect.height - imageViewFrame.height) < tolerance
-        
-        hasCropped = !isEqual
-        print("DEBUG: クロップ領域変更: hasCropped = \(hasCropped)")
+    // MARK: - クロップハンドル操作
+
+    func cropHandlePosition(for type: CropHandleType) -> CGPoint {
+        cropHandleUseCase.handlePosition(for: type, cropRect: cropRect)
+    }
+
+    func startCropHandleDrag(_ type: CropHandleType, at point: CGPoint) {
+        activeHandle = type
+        dragStart = point
+        initialRect = cropRect
+    }
+
+    func updateCropHandleDrag(at point: CGPoint) {
+        guard let activeHandle = activeHandle else { return }
+        cropRect = cropHandleUseCase.updatedCropRect(
+            for: activeHandle,
+            dragStart: dragStart,
+            currentPoint: point,
+            initialRect: initialRect,
+            imageFrame: imageViewFrame
+        )
+    }
+
+    func endCropHandleDrag() {
+        activeHandle = nil
     }
     
     private func checkHasCropped() {
@@ -330,78 +295,6 @@ class ImageCropViewModel: ObservableObject {
         return resultImage
     }
     
-    /// AI生成マスクを高解像度にアップスケール（キャラクター検出精度を保持）
-    private func upscaleMask(_ lowResMask: CIImage, to targetSize: CGSize) -> CIImage {
-        // 現在のマスクサイズを取得
-        let currentExtent = lowResMask.extent
-        let currentSize = currentExtent.size
-        
-        // スケール比率を計算
-        let scaleX = targetSize.width / currentSize.width
-        let scaleY = targetSize.height / currentSize.height
-        
-        print("DEBUG: マスクアップスケール - 元: \(currentSize) → 目標: \(targetSize)")
-        print("DEBUG: スケール比率 - X: \(scaleX), Y: \(scaleY)")
-        
-        // Lanczosスケーリングで高品質アップスケール
-        guard let scaleFilter = CIFilter(name: "CILanczosScaleTransform") else {
-            print("WARNING: CILanczosScaleTransform が利用不可 - バイリニア補間を使用")
-            return lowResMask.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
-        }
-        
-        scaleFilter.setValue(lowResMask, forKey: kCIInputImageKey)
-        scaleFilter.setValue(scaleX, forKey: kCIInputScaleKey)
-        scaleFilter.setValue(1.0, forKey: kCIInputAspectRatioKey) // アスペクト比を保持
-        
-        guard let scaledMask = scaleFilter.outputImage else {
-            print("WARNING: Lanczosスケーリングに失敗 - アフィン変換を使用")
-            return lowResMask.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
-        }
-        
-        // Y軸方向の調整が必要な場合
-        if abs(scaleX - scaleY) > 0.01 {
-            let additionalScaleY = scaleY / scaleX
-            let finalMask = scaledMask.transformed(by: CGAffineTransform(scaleX: 1.0, y: additionalScaleY))
-            return finalMask
-        }
-        
-        return scaledMask
-    }
-    
-    /// AIマスクに浸透効果を適用（高精度を保持しつつエッジを柔らかく）
-    private func createFeatheredMask(from originalMask: CIImage) -> CIImage {
-        // ガウシアンブラーでエッジを柔らかくして浸透効果を作成
-        guard let blurFilter = CIFilter(name: "CIGaussianBlur") else {
-            print("WARNING: CIGaussianBlur が利用できません - 元のマスクを使用")
-            return originalMask
-        }
-        
-        // 高解像度マスクに対応したブラー半径調整
-        let maskSize = originalMask.extent.size
-        let baseRadius: CGFloat = 6.0
-        let scaleFactor = max(maskSize.width, maskSize.height) / 1024.0 // 1024pxを基準とした補正
-        let adjustedRadius = baseRadius * max(1.0, scaleFactor)
-        
-        blurFilter.setValue(originalMask, forKey: kCIInputImageKey)
-        blurFilter.setValue(6.0, forKey: kCIInputRadiusKey)
-        //blurFilter.setValue(adjustedRadius, forKey: kCIInputRadiusKey)
-        
-        guard let blurredMask = blurFilter.outputImage else {
-            print("WARNING: ブラー処理に失敗 - 元のマスクを使用")
-            return originalMask
-        }
-        
-        // ガンマ調整で浸透の減衰カーブを調整
-        guard let gammaFilter = CIFilter(name: "CIGammaAdjust") else {
-            return blurredMask
-        }
-        
-        gammaFilter.setValue(blurredMask, forKey: kCIInputImageKey)
-        gammaFilter.setValue(0.8, forKey: "inputPower") // 柔らかな減衰カーブ
-        
-        return gammaFilter.outputImage ?? blurredMask
-    }
-    
     // MARK: - 画像の向きを考慮したCGImageを作成
     
     private func createOrientedCGImage(from uiImage: UIImage) -> CGImage? {
@@ -417,7 +310,7 @@ class ImageCropViewModel: ObservableObject {
             // CGContextで画像を描画（向きが自動的に考慮される）
             uiImage.draw(in: CGRect(origin: .zero, size: size))
         }
-        
+
         return renderedImage.cgImage
     }
 }

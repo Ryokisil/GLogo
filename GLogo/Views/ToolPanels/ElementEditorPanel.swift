@@ -24,6 +24,7 @@ struct ElementEditorPanel: View {
         case properties = "プロパティ"
         case effects = "エフェクト"
         case transform = "変形"
+        case curves = "カーブ"
     }
     
     var body: some View {
@@ -44,6 +45,9 @@ struct ElementEditorPanel: View {
                         } else if selectedTab == .transform {
                             // 変形タブの内容
                             transformTabContent
+                        } else if selectedTab == .curves {
+                            // カーブタブの内容
+                            curvesTabContent(for: elementType)
                         }
                     }
                     .padding()
@@ -57,21 +61,23 @@ struct ElementEditorPanel: View {
     }
     
     // MARK: - タブセレクタ
-    
+
     private var tabSelector: some View {
-        HStack(spacing: 0) {
-            ForEach(EditorTab.allCases, id: \.self) { tab in
-                Button(action: {
-                    selectedTab = tab
-                }) {
-                    Text(tab.rawValue)
-                        .font(.subheadline)
-                        .padding(.vertical, 12)
-                        .frame(maxWidth: .infinity)
-                        .background(selectedTab == tab ? Color(UIColor.secondarySystemBackground) : Color.clear)
-                        .foregroundColor(selectedTab == tab ? .primary : .secondary)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 0) {
+                ForEach(EditorTab.allCases, id: \.self) { tab in
+                    Button(action: {
+                        selectedTab = tab
+                    }) {
+                        Text(tab.rawValue)
+                            .font(.subheadline)
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 16)
+                            .background(selectedTab == tab ? Color(UIColor.secondarySystemBackground) : Color.clear)
+                            .foregroundColor(selectedTab == tab ? .primary : .secondary)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
-                .buttonStyle(PlainButtonStyle())
             }
         }
         .background(Color(UIColor.systemBackground))
@@ -346,26 +352,6 @@ struct ElementEditorPanel: View {
                     
                     Divider()
                 }
-                
-                // フィッティングモード
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("フィッティング")
-                        .font(.headline)
-                    
-                    Picker("", selection: Binding(
-                        get: { imageElement.fitMode },
-                        set: { viewModel.updateFitMode($0) }
-                    )) {
-                        Text("Fill").tag(ImageFitMode.fill)
-                        Text("Aspect Fit").tag(ImageFitMode.aspectFit)
-                        Text("Aspect Fill").tag(ImageFitMode.aspectFill)
-                        Text("Center").tag(ImageFitMode.center)
-                        Text("Tile").tag(ImageFitMode.tile)
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
-                }
-                
-                Divider()
                 
                 // 色調補正
 //                VStack(alignment: .leading, spacing: 8) {
@@ -789,7 +775,50 @@ struct ElementEditorPanel: View {
             }
         }
     }
-    
+
+    // MARK: - カーブタブ
+
+    /// 要素タイプに応じたカーブタブの内容を返す
+    private func curvesTabContent(for elementType: LogoElementType) -> some View {
+        Group {
+            switch elementType {
+            case .image:
+                imageCurvesContent
+            default:
+                // 画像以外はカーブ機能なし
+                Text("カーブ調整は画像要素専用です")
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 40)
+            }
+        }
+    }
+
+    /// 画像要素のカーブ調整
+    private var imageCurvesContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("トーンカーブ")
+                .font(.headline)
+
+            // トーンカーブ調整UI
+            if let imageElement = viewModel.imageElement {
+                ToneCurveView(curveData: Binding(
+                    get: {
+                        imageElement.toneCurveData
+                    },
+                    set: { newData in
+                        viewModel.updateToneCurveData(newData)
+                    }
+                ), layout: .compact)
+            } else {
+                Text("画像要素が選択されていません")
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 60)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+    }
+
     // MARK: - 要素未選択ビュー
     
     private var noElementSelectedView: some View {

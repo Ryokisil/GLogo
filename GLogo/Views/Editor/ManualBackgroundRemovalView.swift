@@ -265,7 +265,7 @@ class ManualRemovalCanvasUIView: UIView {
 struct ManualBackgroundRemovalView_Previews: PreviewProvider {
     static var previews: some View {
         let sampleImageData = UIImage(systemName: "photo")?.pngData() ?? Data()
-        let imageElement = ImageElement(imageData: sampleImageData, fitMode: .aspectFit)
+        let imageElement = ImageElement(imageData: sampleImageData)
         
         ManualBackgroundRemovalView(
             imageElement: imageElement,

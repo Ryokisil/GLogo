@@ -205,28 +205,8 @@ struct ImageEditorPanel: View {
                     Divider()
                 }
                 
-                // フィッティングモード
+                // 色調補正
                 if let imageElement = viewModel.imageElement {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("フィッティング")
-                            .font(.headline)
-                        
-                        Picker("", selection: Binding(
-                            get: { imageElement.fitMode },
-                            set: { viewModel.updateFitMode($0) }
-                        )) {
-                            Text("Fill").tag(ImageFitMode.fill)
-                            Text("Aspect Fit").tag(ImageFitMode.aspectFit)
-                            Text("Aspect Fill").tag(ImageFitMode.aspectFill)
-                            Text("Center").tag(ImageFitMode.center)
-                            Text("Tile").tag(ImageFitMode.tile)
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-                    }
-                    
-                    Divider()
-                    
-                    // 色調補正
                     VStack(alignment: .leading, spacing: 8) {
                         Text("色調補正")
                             .font(.headline)

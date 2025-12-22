@@ -9,8 +9,7 @@
 import SwiftUI
 
 struct CropOverlay: View {
-    @Binding var cropRect: CGRect
-    @Binding var imageFrame: CGRect
+    @ObservedObject var viewModel: ImageCropViewModel
     
     var body: some View {
         GeometryReader { geometry in
@@ -21,23 +20,23 @@ struct CropOverlay: View {
                 
                 Rectangle()
                     .fill(Color.clear)
-                    .frame(width: cropRect.width, height: cropRect.height)
-                    .position(x: cropRect.midX, y: cropRect.midY)
+                    .frame(width: viewModel.cropRect.width, height: viewModel.cropRect.height)
+                    .position(x: viewModel.cropRect.midX, y: viewModel.cropRect.midY)
                     .blendMode(.destinationOut)
                 
                 Rectangle()
                     .stroke(Color.white, lineWidth: 2)
-                    .frame(width: cropRect.width, height: cropRect.height)
-                    .position(x: cropRect.midX, y: cropRect.midY)
+                    .frame(width: viewModel.cropRect.width, height: viewModel.cropRect.height)
+                    .position(x: viewModel.cropRect.midX, y: viewModel.cropRect.midY)
                 
-                CropHandles(cropRect: $cropRect, imageFrame: $imageFrame)
+                CropHandles(viewModel: viewModel)
             }
             .compositingGroup()
         }
         // 【デバッグのために追加】
         .onAppear {
-            print("CropOverlay - imageFrame: \(imageFrame)")
-            print("CropOverlay - cropRect: \(cropRect)")
+            print("CropOverlay - imageFrame: \(viewModel.imageViewFrame)")
+            print("CropOverlay - cropRect: \(viewModel.cropRect)")
         }
     }
 }

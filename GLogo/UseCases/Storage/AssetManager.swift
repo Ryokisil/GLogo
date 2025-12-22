@@ -77,13 +77,24 @@ class AssetManager {
     // MARK: - 画像アセット管理
     
     /// 画像アセットを保存
-    func saveImage(_ image: UIImage, name: String, type: AssetType = .image) -> Bool {
+    func saveImage(_ image: UIImage, name: String, type: AssetType = .image, alsoSaveProxy: Bool = true) -> Bool {
         guard let data = image.pngData() else { return false }
         
         let fileURL = directoryURL(for: type).appendingPathComponent("\(name).png")
         
         do {
             try data.write(to: fileURL)
+            
+            // 高解像度の場合はプロキシも保存（長辺を約1920pxに縮小）
+            if alsoSaveProxy {
+                let mp = (image.size.width * image.size.height) / 1_000_000.0
+                if mp > 18.0, let proxy = resizeImage(image, targetLongSide: 1920) {
+                    let proxyURL = directoryURL(for: type).appendingPathComponent("\(name)_proxy.png")
+                    if let proxyData = proxy.pngData() {
+                        try? proxyData.write(to: proxyURL)
+                    }
+                }
+            }
             
             // キャッシュに追加
             cacheImage(image, for: name, type: type)
@@ -118,6 +129,29 @@ class AssetManager {
         }
         
         return nil
+    }
+
+    /// プロキシ画像を読み込み（存在しない場合はnil）
+    func loadProxyImage(named name: String, type: AssetType = .image) -> UIImage? {
+        let proxyURL = directoryURL(for: type).appendingPathComponent("\(name)_proxy.png")
+        if let image = UIImage(contentsOfFile: proxyURL.path) {
+            return image
+        }
+        return nil
+    }
+
+    /// リサイズヘルパー
+    private func resizeImage(_ image: UIImage, targetLongSide: CGFloat) -> UIImage? {
+        let longSide = max(image.size.width, image.size.height)
+        guard longSide > targetLongSide else { return image }
+        let scale = targetLongSide / longSide
+        let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+
+        UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+        image.draw(in: CGRect(origin: .zero, size: newSize))
+        let resized = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return resized
     }
     
     /// 画像アセットを削除
@@ -243,8 +277,8 @@ class AssetManager {
             // 重複を避けるためのユニーク名
             let uniqueName = self.generateUniqueName(baseName: assetName, type: type)
             
-            // 画像の保存
-            let success = self.saveImage(image, name: uniqueName, type: type)
+            // 画像の保存（高解像度ならプロキシも併せて保存）
+            let success = self.saveImage(image, name: uniqueName, type: type, alsoSaveProxy: true)
             
             DispatchQueue.main.async {
                 completion(success, success ? uniqueName : nil)

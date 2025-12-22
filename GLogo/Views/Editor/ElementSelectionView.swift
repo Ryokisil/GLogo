@@ -3,10 +3,9 @@
 //  GameLogoMaker
 //
 //  概要:
-//  このファイルは選択された要素の周囲に表示される選択ハンドルやコントロールを
-//  管理するビューコンポーネントです。移動、リサイズ、回転などの操作のための
-//  視覚的なハンドルを提供し、ユーザーがドラッグジェスチャーで要素を操作できるようにします。
-//  CanvasViewと連携して動作します。
+//  このファイルは選択された要素に対するジェスチャー入力を扱う SwiftUI オーバーレイです。
+//  役割: 移動・拡大縮小・回転のジェスチャー適用と、タップによる選択切り替え。
+//  ハンドルUIは廃止し、CanvasViewは描画とタップ選択のみを担当します。
 //
 
 import SwiftUI
@@ -108,10 +107,29 @@ struct ElementSelectionView: View {
     /// ハンドル操作終了時のコールバック
     var onManipulationEnded: (() -> Void)?
     
+    /// ピンチでスケール変更
+    var onMagnifyChanged: ((CGFloat) -> Void)?
+    var onMagnifyEnded: (() -> Void)?
+    
+    /// 回転ジェスチャー
+    var onRotateGestureChanged: ((CGFloat) -> Void)?
+    var onRotateGestureEnded: (() -> Void)?
+    
+    /// ドラッグで位置変更（ジェスチャーベース）
+    var onMoveChanged: ((CGSize) -> Void)?
+    var onMoveEnded: (() -> Void)?
+    
+    /// タップで選択を切り替えるためのコールバック（座標付き）
+    var onTapSelect: ((CGPoint) -> Void)?
+
+    /// ダブルタップ時のコールバック（テキスト編集など）
+    var onDoubleTap: (() -> Void)?
+
     var body: some View {
+        let localFrame = CGRect(origin: .zero, size: element.frame.size)
         ZStack {
             // 選択ボーダー
-            SelectionBorder(frame: element.frame,
+            SelectionBorder(frame: localFrame,
                             onDragStarted: { startPoint in
                 onManipulationStarted?(.move, startPoint)
             },
@@ -121,50 +139,69 @@ struct ElementSelectionView: View {
                             onDragEnded: {
                 onManipulationEnded?()
             })
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .onChanged { value in
+                        onMoveChanged?(value.translation)
+                    }
+                    .onEnded { _ in
+                        onMoveEnded?()
+                    }
+            )
+            .simultaneousGesture(
+                MagnificationGesture()
+                    .onChanged { scale in
+                        onMagnifyChanged?(scale)
+                    }
+                    .onEnded { _ in
+                        onMagnifyEnded?()
+                    }
+            )
+            .simultaneousGesture(
+                RotationGesture()
+                    .onChanged { angle in
+                        onRotateGestureChanged?(angle.radians)
+                    }
+                    .onEnded { _ in
+                        onRotateGestureEnded?()
+                    }
+            )
             
             // 要素がロックされていなければハンドルを表示
-            if !element.isLocked {
-                // 各種ハンドル
-                ForEach(getHandleTypes(), id: \.self) { handleType in
-                    SelectionHandle(
-                        type: handleType,
-                        position: handleType.position(for: element.frame),
-                        radius: handleRadius,
-                        onDragStarted: { startPoint in
-                            onManipulationStarted?(handleType.manipulationType, startPoint)
-                        },
-                        onDragChanged: { currentPoint in
-                            onManipulationChanged?(currentPoint)
-                        },
-                        onDragEnded: {
-                            onManipulationEnded?()
-                        }
-                    )
-                }
-                
-                // 回転ハンドルと中心を結ぶ線
-                Path { path in
-                    let topCenter = HandleType.top.position(for: element.frame)
-                    let rotationPoint = HandleType.rotation.position(for: element.frame)
-                    path.move(to: topCenter)
-                    path.addLine(to: rotationPoint)
-                }
-                .stroke(selectionBorderColor, lineWidth: 1)
-            } else {
-                // ロック表示
-                LockIndicator(position: CGPoint(x: element.frame.maxX - 15, y: element.frame.minY + 15))
+            // ハンドルUIは非表示（ジェスチャー操作に統一）
+            if element.isLocked {
+                LockIndicator(position: CGPoint(x: localFrame.maxX - 15, y: localFrame.minY + 15))
             }
         }
+        .frame(width: element.frame.width, height: element.frame.height)
+        .position(x: element.frame.midX, y: element.frame.midY)
+        .contentShape(Rectangle())
+        .highPriorityGesture(
+            TapGesture(count: 2)
+                .onEnded {
+                    guard element is TextElement else {
+                        print("DEBUG: ダブルタップ検出したが、TextElementではないのでスキップ")
+                        return
+                    }
+                    onDoubleTap?()
+                }
+        )
+        // タップを処理して選択切替
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .named("canvas"))
+                .onEnded { value in
+                    let distance = hypot(value.translation.width, value.translation.height)
+                    // 実質ドラッグでなければタップとして扱う
+                    if distance < 5 {
+                        onTapSelect?(value.startLocation)
+                    }
+                }
+        )
     }
     
     /// ハンドルタイプの配列を取得
     private func getHandleTypes() -> [HandleType] {
-        return [
-            .topLeft, .top, .topRight,
-            .left, .center, .right,
-            .bottomLeft, .bottom, .bottomRight,
-            .rotation
-        ]
+        []
     }
 }
 

@@ -6,6 +6,19 @@ import CoreImage
 /// 画像フィルター処理を提供するユーティリティクラス
 class ImageFilterUtility {
     
+    /// 共有の作業カラースペース（sRGBで統一）
+    static let workingColorSpace: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+    
+    // 共有CIContext（sRGBで色管理を揃える）
+    private static let sharedContext: CIContext = {
+        let options: [CIContextOption: Any] = [
+            .workingColorSpace: workingColorSpace,
+            .outputColorSpace: workingColorSpace,
+            .useSoftwareRenderer: false
+        ]
+        return CIContext(options: options)
+    }()
+    
     /// 基本的な色調補正を適用
     static func applyBasicColorAdjustment(to image: CIImage,saturation: CGFloat,brightness: CGFloat,contrast: CGFloat) -> CIImage? {
         guard let filter = CIFilter(name: "CIColorControls") else { return nil }
@@ -307,8 +320,7 @@ class ImageFilterUtility {
     
     /// CIImageをUIImageに変換
     static func convertToUIImage(_ ciImage: CIImage, scale: CGFloat, orientation: UIImage.Orientation) -> UIImage? {
-        let context = CIContext(options: nil)
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
+        guard let cgImage = sharedContext.createCGImage(ciImage, from: ciImage.extent) else {
             return nil
         }
         

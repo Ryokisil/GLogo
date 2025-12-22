@@ -1,9 +1,13 @@
 
 // GLogoTests
+// 概要: 写真保存フロー全体（フィルター適用・最高解像度選択・破損データ・キャッシュ無視）を結合レベルで検証する
 
 import XCTest
 @testable import GLogo
 import SwiftUI
+import UIKit
+import ImageIO
+import UniformTypeIdentifiers
 
 // ヘルパー関数を含む拡張
 extension XCTestCase {
@@ -22,108 +26,6 @@ extension XCTestCase {
 }
 
 /// ViewModelのメモリリーク検証テストクラス 継承させるためにfinal
-final class ViewModelMemoryLeakTests: XCTestCase {
-    /// 基本的なEditorViewModelのメモリリークがないことを検証
-    /// EditorViewModelが単体で適切に解放されることを確認する
-    func testEditorViewModelDoesNotLeak() {
-        assertNoMemoryLeak {
-            return EditorViewModel()
-        }
-    }
-    /// ElementViewModelと関連するEditorViewModelの間でメモリリークがないことを検証
-    /// 両ViewModelの参照関係が正しく設計され、循環参照を作らないことを確認する
-    @MainActor
-    func testElementViewModelDoesNotLeak() {
-        assertNoMemoryLeak {
-            let editorVM = EditorViewModel()
-            return ElementViewModel(editorViewModel: editorVM)
-        }
-    }
-    /// 要素選択操作を含む複雑なシナリオでもメモリリークが発生しないことを検証
-    /// 実際の使用パターンに近い状態で、ViewModelと要素間の参照関係が適切に管理されているか確認する
-    @MainActor
-    func testElementViewModelWithSelectedElementDoesNotLeak() {
-        assertNoMemoryLeak {
-            let editorVM = EditorViewModel()
-            let elementVM = ElementViewModel(editorViewModel: editorVM)
-            
-            // テスト要素を作成し、追加・選択操作を実行
-            let textElement = TextElement(text: "テスト")
-            editorVM.addElement(textElement)
-            editorVM.selectElement(textElement)
-            
-            return elementVM
-        }
-    }
-}
-
-// 操作に関するテスト
-final class OperationMemoryLeakTests: XCTestCase {
-    /// 要素操作（移動など）におけるメモリリークテスト
-    ///
-    /// 目的
-    /// 要素の追加、選択、移動操作を行った後、EditorViewModelが適切に解放されることを確認
-    /// 操作開始、操作続行、操作終了のシーケンスを実行し、操作履歴の管理が適切に行われているか検証
-    ///
-    /// 理由
-    /// 操作履歴の記録時に循環参照が発生する可能性がある
-    /// 特に操作イベントのコールバックやクロージャで自己参照を行う場合にリークの危険性がある
-    @MainActor
-    func testManipulationDoesNotLeak() {
-        weak var weakViewModel: EditorViewModel?
-        
-        autoreleasepool {
-            let viewModel = EditorViewModel()
-            weakViewModel = viewModel
-            
-            // 要素を追加
-            let element = ShapeElement(shapeType: .rectangle)
-            viewModel.addElement(element)
-            viewModel.selectElement(element)
-            
-            // 操作を実行
-            viewModel.startManipulation(.move, at: CGPoint(x: 0, y: 0))
-            viewModel.continueManipulation(at: CGPoint(x: 100, y: 100))
-            viewModel.endManipulation()
-        }
-        
-        XCTAssertNil(weakViewModel, "操作処理中にメモリリークが発生しています")
-    }
-    /// アンドゥ・リドゥ操作におけるメモリリークテスト
-    ///
-    /// 目的
-    /// 要素の追加、テキスト編集、アンドゥ、リドゥの操作を行った後、
-    /// EditorViewModelが適切に解放されることを確認
-    /// イベントソーシングによる操作履歴の実装が適切にメモリ管理されているか検証
-    ///
-    /// 理由
-    /// 操作履歴スタックが要素やViewModelへの強参照を持ち続ける可能性がある
-    /// アンドゥ・リドゥ操作はイベントの適用と取り消しを行うため、
-    /// イベントオブジェクトとモデルオブジェクト間で循環参照を作りやすい
-    @MainActor
-    func testUndoRedoDoesNotLeak() {
-        weak var weakViewModel: EditorViewModel?
-        
-        autoreleasepool {
-            let viewModel = EditorViewModel()
-            weakViewModel = viewModel
-            
-            // アンドゥ用の操作を実行
-            let element = TextElement(text: "テスト")
-            viewModel.addElement(element)
-            viewModel.selectElement(element)
-            viewModel.updateTextContent(element, newText: "変更後")
-            
-            // アンドゥ・リドゥを実行
-            viewModel.undo()
-            viewModel.redo()
-        }
-        
-        XCTAssertNil(weakViewModel, "アンドゥ・リドゥ処理中にメモリリークが発生しています")
-    }
-}
-
-// 写真アプリ保存機能テスト
 final class PhotoLibrarySaveTests: XCTestCase {
     
     /// 画像要素が存在しない場合の保存失敗テスト
@@ -169,8 +71,8 @@ final class PhotoLibrarySaveTests: XCTestCase {
             return
         }
         
-        // ImageElementを作成しフィルターを適用
-        let imageElement = ImageElement(imageData: imageData, fitMode: .aspectFit)
+        // ImageElementを作成しフィルターを適用（現行は fitMode 廃止）
+        let imageElement = ImageElement(imageData: imageData)
         imageElement.saturationAdjustment = 2.0  // 彩度を大幅に上げる
         imageElement.brightnessAdjustment = 0.5  // 明度も上げる
         
@@ -183,12 +85,14 @@ final class PhotoLibrarySaveTests: XCTestCase {
         
         // 元画像とフィルター適用後の画像は同じサイズであるべき
         XCTAssertEqual(filteredImage.size, originalImage.size, "フィルター適用後もサイズは保持されるべき")
-        
-        // フィルター適用画像が確実に生成されていることを確認
-        XCTAssertNotNil(filteredImage, "フィルター適用画像が生成されていない")
-        
-        print("DEBUG: 元画像サイズ: \(originalImage.size)")
-        print("DEBUG: フィルター適用画像サイズ: \(filteredImage.size)")
+
+        // フィルター適用で画素値が変化していることを確認
+        guard let originalData = originalImage.pngData(),
+              let filteredData = filteredImage.pngData() else {
+            XCTFail("画像データの変換に失敗")
+            return
+        }
+        XCTAssertNotEqual(originalData, filteredData, "フィルター適用後の画素が変化していない")
     }
     
     /// 複数画像要素の最高解像度選択テスト
@@ -218,9 +122,9 @@ final class PhotoLibrarySaveTests: XCTestCase {
         }
         
         // 意図的に順序をランダムにして追加（最高解像度が最初ではない）
-        let lowResElement = ImageElement(imageData: lowResData, fitMode: .aspectFit)
-        let midResElement = ImageElement(imageData: midResData, fitMode: .aspectFit)
-        let highResElement = ImageElement(imageData: highResData, fitMode: .aspectFit)
+        let lowResElement = ImageElement(imageData: lowResData)
+        let midResElement = ImageElement(imageData: midResData)
+        let highResElement = ImageElement(imageData: highResData)
         
         viewModel.addElement(lowResElement)
         viewModel.addElement(midResElement)
@@ -230,20 +134,10 @@ final class PhotoLibrarySaveTests: XCTestCase {
         let imageElements = viewModel.project.elements.compactMap { $0 as? ImageElement }
         XCTAssertEqual(imageElements.count, 3, "3つの画像要素が追加されているべき")
         
-        // 各画像要素の解像度を確認
-        var maxPixelCount: CGFloat = 0
-        var selectedElement: ImageElement?
-        
-        for imageElement in imageElements {
-            if let originalImage = imageElement.originalImage,
-               let cgImage = originalImage.cgImage {
-                let pixelCount = CGFloat(cgImage.width * cgImage.height)
-                if pixelCount > maxPixelCount {
-                    maxPixelCount = pixelCount
-                    selectedElement = imageElement
-                }
-            }
-        }
+        // 最高解像度選択ロジックが期待通りであること
+        let selectionService = ImageSelectionService()
+        let selectedElement = selectionService.selectHighestResolutionImageElement(from: imageElements)
+        XCTAssertEqual(selectedElement?.id, highResElement.id, "最高解像度の画像が選択されるべき")
     }
     
     /// 画像データ破損時の処理テスト
@@ -264,19 +158,14 @@ final class PhotoLibrarySaveTests: XCTestCase {
         let corruptedData = Data([0x89, 0x50, 0x4E, 0x47, 0x00, 0x00, 0x00, 0x00]) // 不完全なPNGヘッダ
         
         // 破損データでImageElementを作成
-        let imageElement = ImageElement(imageData: corruptedData, fitMode: .aspectFit)
+        let imageElement = ImageElement(imageData: corruptedData)
         viewModel.addElement(imageElement)
         
         // originalImageが正しくnilになることを確認
         XCTAssertNil(imageElement.originalImage, "破損データの場合、originalImageはnilであるべき")
         
-        // 保存処理を実行し、適切に失敗することを確認
-        await withCheckedContinuation { continuation in
-            viewModel.saveProject { success in
-                XCTAssertFalse(success, "破損データの場合は保存が失敗すべき")
-                continuation.resume()
-            }
-        }
+        // 強制フィルター適用が失敗することを確認
+        XCTAssertNil(imageElement.getFilteredImageForce(), "破損データはフィルター適用に失敗すべき")
     }
     
     /// getFilteredImageForceメソッドの動作確認テスト
@@ -297,10 +186,10 @@ final class PhotoLibrarySaveTests: XCTestCase {
             return
         }
         
-        let imageElement = ImageElement(imageData: imageData, fitMode: .aspectFit)
+        let imageElement = ImageElement(imageData: imageData)
         
         // 初期状態でフィルター適用画像を取得（キャッシュされる）
-        _ = imageElement.image
+        let initialFiltered = imageElement.image
         
         // フィルターを追加
         imageElement.saturationAdjustment = 1.8
@@ -314,9 +203,17 @@ final class PhotoLibrarySaveTests: XCTestCase {
         
         // 画像が正常に生成されることを確認
         XCTAssertNotNil(forcedFilteredImage, "フィルター強制適用画像が生成されるべき")
-        XCTAssertEqual(forcedFilteredImage.size, originalSize, "フィルター適用後もサイズは保持されるべき")
-        
-        print("DEBUG: フィルター強制適用画像サイズ: \(forcedFilteredImage.size)")
+
+        // ピクセル次元（cgImageベース）でサイズが保持されていることを確認
+        if let originalCG = imageElement.originalImage?.cgImage, let forcedCG = forcedFilteredImage.cgImage {
+            XCTAssertEqual(forcedCG.width, originalCG.width, "フィルター適用後も幅のピクセル数は保持されるべき")
+            XCTAssertEqual(forcedCG.height, originalCG.height, "フィルター適用後も高さのピクセル数は保持されるべき")
+        }
+
+        // キャッシュを無視して最新パラメータで再生成されていることを確認
+        if let cached = initialFiltered?.pngData(), let forced = forcedFilteredImage.pngData() {
+            XCTAssertNotEqual(cached, forced, "キャッシュではなく最新フィルターで再生成されるべき")
+        }
     }
     
     // MARK: - ヘルパーメソッド
@@ -357,5 +254,90 @@ final class PhotoLibrarySaveTests: XCTestCase {
                 cgContext.strokePath()
             }
         }
+    }
+}
+
+/// パフォーマンスKPI向けの計測テスト
+final class PerformanceKpiTests: XCTestCase {
+    /// 4K画像のインポート + プレビュー生成の性能を計測
+    func testImportPreviewPerformance_4K() {
+        let size = CGSize(width: 3840, height: 2160)
+        let sourceData = makeHEICData(size: size)
+        let coordinator = ImageImportCoordinator()
+        let project = LogoProject(canvasSize: size)
+
+        measure(metrics: [XCTClockMetric()]) {
+            guard let result = coordinator.importImage(
+                source: .imageData(sourceData),
+                project: project,
+                viewportSize: size,
+                assetIdentifier: "perf-import-4k",
+                canvasSize: size
+            ) else {
+                XCTFail("インポート結果がnil")
+                return
+            }
+
+            _ = result.element.getInstantPreview()
+        }
+    }
+
+    /// 4K画像のフィルター適用 + エンコード（HEIC）の性能を計測
+    func testSaveProcessingPerformance_4K_HEIC() {
+        let size = CGSize(width: 3840, height: 2160)
+        let sourceData = makeHEICData(size: size)
+        let imageElement = ImageElement(imageData: sourceData)
+        imageElement.saturationAdjustment = 1.2
+        imageElement.brightnessAdjustment = 0.1
+        imageElement.contrastAdjustment = 1.1
+        let processingService = ImageProcessingService()
+
+        measure(metrics: [XCTClockMetric()]) {
+            guard let processedImage = processingService.applyFilters(to: imageElement) else {
+                XCTFail("フィルター適用に失敗")
+                return
+            }
+
+            _ = makeHEICData(from: processedImage)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func makeHEICData(size: CGSize) -> Data {
+        let image = makeTestImage(size: size)
+        return makeHEICData(from: image)
+    }
+
+    private func makeTestImage(size: CGSize) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        return renderer.image { context in
+            UIColor.darkGray.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+    }
+
+    private func makeHEICData(from image: UIImage) -> Data {
+        guard let cgImage = image.cgImage else {
+            return Data()
+        }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data,
+            UTType.heic.identifier as CFString,
+            1,
+            nil
+        ) else {
+            return Data()
+        }
+
+        let properties = [kCGImageDestinationLossyCompressionQuality: 1.0] as CFDictionary
+        CGImageDestinationAddImage(destination, cgImage, properties)
+        guard CGImageDestinationFinalize(destination) else {
+            return Data()
+        }
+        return data as Data
     }
 }

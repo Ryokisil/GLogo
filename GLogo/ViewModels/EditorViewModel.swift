@@ -32,6 +32,7 @@ enum ElementManipulationType {
 }
 
 /// エディタビューモデル - エディタ画面の状態とロジックを管理
+@MainActor
 class EditorViewModel: ObservableObject {
     // MARK: - プロパティ
     
@@ -55,6 +56,10 @@ class EditorViewModel: ObservableObject {
     
     /// 操作履歴の管理
     private lazy var history = EditorHistory(project: project)
+
+    /// 保存フローのオーケストレーター
+    private let saveCoordinator = SaveImageCoordinator()
+    private let imageImportCoordinator = ImageImportCoordinator()
     
     /// 要素操作の開始位置
     private var manipulationStartPoint: CGPoint = .zero
@@ -67,6 +72,11 @@ class EditorViewModel: ObservableObject {
     
     /// プロジェクトが変更されたかどうか
     @Published private(set) var isProjectModified = false
+
+    /// 外部からプロジェクト変更フラグを立てる
+    func markProjectModified() {
+        isProjectModified = true
+    }
     
     // MARK: - イニシャライザ
     
@@ -164,67 +174,11 @@ class EditorViewModel: ObservableObject {
     }
     
     /// 画像要素を追加
-    func addImageElement(fileName: String, position: CGPoint) {
-        let imageElement = ImageElement(fileName: fileName)
-        imageElement.position = position
-        addElement(imageElement)
-    }
-    
-    /// 画像要素をデータから追加
-    func addImageElement(imageData: Data, position: CGPoint, phAsset: PHAsset? = nil, assetIdentifier: String? = nil) {
-        print("DEBUG: addImageElement開始 - PHAsset: \(phAsset != nil), 識別子: \(assetIdentifier ?? "なし")")
-        
-        // 現在の画像要素数を数えてインポート順番を決定
-        let currentImageCount = project.elements.compactMap { $0 as? ImageElement }.count
-        let importOrder = currentImageCount + 1
-        
-        let imageElement = ImageElement(imageData: imageData, fitMode: .aspectFit, importOrder: importOrder)
-        
-        // 役割に応じてzIndexを設定
-        if imageElement.imageRole == .base {
-            // ベース画像（1番目）は背面に配置
-            imageElement.zIndex = ElementPriority.image.rawValue - 10
-        } else {
-            // オーバーレイ画像は前面に配置
-            imageElement.zIndex = ElementPriority.image.rawValue + 10
-        }
-        
-        // 一時保存された識別子を使用
-        if let assetIdentifier = TemporaryImageData.shared.lastSelectedAssetIdentifier {
-            imageElement.originalImageIdentifier = assetIdentifier
-            print("DEBUG: 一時保存されていた識別子を設定: \(assetIdentifier)")
-            
-            // 使用したら消去（次回のために）
-            TemporaryImageData.shared.lastSelectedAssetIdentifier = nil
-        } else {
-            // PHAssetがない場合は内部で生成したUUIDを使用
-            imageElement.originalImageIdentifier = UUID().uuidString
-            print("DEBUG: 内部生成のUUIDを設定: \(imageElement.originalImageIdentifier!)")
-        }
-        
-        // 【修正箇所1】画面に表示される範囲の中央に配置（ビューポートの中央）
-        // デバイスの画面サイズを取得（おおよそのビューポート）
-        let viewportSize = getViewportSize() // 新しいメソッドを追加
-        let viewportCenter = CGPoint(
-            x: viewportSize.width / 2,
-            y: viewportSize.height / 4
-        )
-        
-        // キャンバス上の可視範囲の中央に配置
-        imageElement.position = CGPoint(
-            x: viewportCenter.x - imageElement.size.width / 2,
-            y: viewportCenter.y - imageElement.size.height / 2
-        )
-        
-        print("DEBUG: 配置位置 - X: \(imageElement.position.x), Y: \(imageElement.position.y)")
-        print("DEBUG: ビューポートサイズ: \(viewportSize)")
-        
-        addElement(imageElement)
-        selectElement(imageElement)
-        
-        // 【修正箇所2】画像が見えるようにカメラを移動
-        centerViewOnElement(imageElement)
-    }
+//    func addImageElement(fileName: String, position: CGPoint) {
+//        let imageElement = ImageElement(fileName: fileName)
+//        imageElement.position = position
+//        addElement(imageElement)
+//    }
     
     /// 選択中の要素を削除
     func deleteSelectedElement() {
@@ -243,13 +197,11 @@ class EditorViewModel: ObservableObject {
     
     /// 特定の位置にある要素を取得（ヒットテスト）
     func elementAt(_ point: CGPoint) -> LogoElement? {
-        // 逆順（前面の要素から）にチェック
-        for element in project.elements.reversed() {
-            if !element.isLocked && element.isVisible && element.hitTest(point) {
-                return element
-            }
-        }
-        return nil
+        // zIndexの降順で判定（前面優先）
+        let sorted = project.elements
+            .filter { $0.isVisible && !$0.isLocked }
+            .sorted { $0.zIndex > $1.zIndex }
+        return sorted.first { $0.hitTest(point) }
     }
     
     /// 要素を選択
@@ -335,7 +287,6 @@ class EditorViewModel: ObservableObject {
     func toggleSelectedElementVisibility() {
         guard let element = selectedElement else { return }
         
-        // TODO: 可視性切り替えイベントの実装
         // 現在の実装では直接可視性を切り替え
         element.isVisible = !element.isVisible
         
@@ -347,7 +298,6 @@ class EditorViewModel: ObservableObject {
     func toggleSelectedElementLock() {
         guard let element = selectedElement else { return }
         
-        // TODO: ロック状態切り替えイベントの実装
         // 現在の実装では直接ロック状態を切り替え
         element.isLocked = !element.isLocked
         
@@ -714,28 +664,6 @@ class EditorViewModel: ObservableObject {
     }
     
     // MARK: - 画像要素の操作
-    
-    /// 画像のフィッティングモードを更新
-    func updateImageFitMode(_ imageElement: ImageElement, newMode: ImageFitMode) {
-        print("DEBUG: 画像フィットモード変更開始 - 要素ID: \(imageElement.id)")
-        
-        let event = ImageFitModeChangedEvent(
-            elementId: imageElement.id,
-            oldMode: imageElement.fitMode,
-            newMode: newMode
-        )
-        
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == imageElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
-        print("DEBUG: 画像フィットモード変更完了")
-    }
     
     /// 画像の彩度を更新
     func updateImageSaturation(_ imageElement: ImageElement, newSaturation: CGFloat) {
@@ -1243,1090 +1171,97 @@ class EditorViewModel: ObservableObject {
         return history.getHistoryDescriptions()
     }
     
-    // MARK: - 編集した画像、テキスト、図形要素などの保存
+    // MARK: - 保存（通常/合成）
+    //
+    // フロー概要:
+    //  - UI からは saveProject を呼ぶだけで、要素構成に応じて通常 or 合成を自動判定。
+    //  - saveAsCompositeImage は互換用に合成保存を強制するエントリーポイント。
+    //  - 保存本体のロジックは SaveImage 配下に分離済み。
     
     /// 写真アプリに画像を保存（通常の1枚保存）
     /// プロジェクトの編集内容をフィルター適用済み画像として写真ライブラリに保存する
     func saveProject(completion: @escaping (Bool) -> Void) {
-        saveToPhotoLibrary(completion: completion)
+        saveCoordinator.save(project: project, completion: completion)
     }
-    
-    /// 写真アプリに画像を保存（通常の1枚保存）
-    /// - Parameter completion: 保存結果のコールバック（true: 成功, false: 失敗）
-    func saveToPhotoLibrary(completion: @escaping (Bool) -> Void) {
-        // 現在の写真ライブラリへの書き込み権限を確認
-        let authStatus = PHPhotoLibrary.authorizationStatus(for: .addOnly)
-        
-        switch authStatus {
-        case .authorized, .limited:
-            // 既に権限がある場合は即座に保存処理開始
-            performPhotoLibrarySave(completion: completion)
-        case .notDetermined:
-            // 権限が未決定の場合はユーザーに権限を要求
-            PHPhotoLibrary.requestAuthorization(for: .addOnly) { [weak self] status in
-                // システムの権限ダイアログの結果を受け取る
-                DispatchQueue.main.async {
-                    switch status {
-                    case .authorized, .limited:
-                        // 権限が許可された場合は保存処理実行
-                        self?.performPhotoLibrarySave(completion: completion)
-                    default:
-                        // 権限が拒否された場合は失敗として処理
-                        completion(false)
-                    }
-                }
-            }
-        default:
-            // .denied または .restricted の場合は即座に失敗
-            completion(false)
-        }
-    }
-    
-    /// 実際の写真ライブラリ保存処理（画像要素直接保存）
-    /// 権限確認後に呼び出される
-    /// 画像要素をベースとし、その上に配置されたテキスト・図形要素を重ねて統合画像を作成・保存
-    private func performPhotoLibrarySave(completion: @escaping (Bool) -> Void) {
-        // 重い画像処理をバックグラウンドタスクで実行（UIをブロックしない）
-        Task.detached(priority: .userInitiated) { [weak self] in
-            // ViewModelが解放されている場合は処理中止
-            guard let self = self else {
-                // 解放されてたら実行される
-                await MainActor.run { completion(false) }
-                return
-            }
-            
-            // プロジェクト内の全要素から画像要素のみを抽出
-            // compactMapを使用してnilを除外し、ImageElement型のみを残す
-            let imageElements = self.project.elements.compactMap { $0 as? ImageElement }
-            
-            print("DEBUG: 画像要素数: \(imageElements.count)")
-            
-            // 画像要素が1つ以上存在することを確認、なければ保存処理を中止
-            guard !imageElements.isEmpty else {
-                print("DEBUG: 保存する画像要素が見つかりません")
-                await MainActor.run { completion(false) }
-                return
-            }
-            
-            // 複数の画像要素の中から最高解像度のものを保存対象として選択
-            // 理由: 最も高品質な画像を保存するため
-            var targetImageElement: ImageElement?
-            var maxPixelCount: CGFloat = 0
-            
-            // 各画像要素の解像度を比較して最大のものを見つける
-            for imageElement in imageElements {
-                if let originalImage = imageElement.originalImage,
-                   let cgImage = originalImage.cgImage {
-                    // ピクセル総数を計算（幅 × 高さ）
-                    let pixelCount = CGFloat(cgImage.width * cgImage.height)
-                    print("DEBUG: 画像要素 \(imageElement.id) - サイズ: \(cgImage.width)x\(cgImage.height), ピクセル数: \(pixelCount)")
-                    
-                    // より高解像度の画像が見つかったら更新
-                    if pixelCount > maxPixelCount {
-                        maxPixelCount = pixelCount
-                        targetImageElement = imageElement
-                        print("DEBUG: 最大解像度画像更新: \(cgImage.width)x\(cgImage.height)")
-                    }
-                }
-            }
-            
-            // 選択された画像要素からフィルター適用済みの画像を取得
-            // getFilteredImageForce(): フィルター未適用の場合は強制的に適用して取得
-            guard let imageElement = targetImageElement,
-                  let processedImage = imageElement.getFilteredImageForce() else {
-                print("DEBUG: 保存対象の画像要素が見つからない、または画像処理に失敗")
-                await MainActor.run { completion(false) }
-                return
-            }
-            
-            print("DEBUG: 保存する画像サイズ: \(processedImage.size)")
-            print("DEBUG: 保存する画像スケール: \(processedImage.scale)")
-            
-            // この画像要素の上に配置されているテキスト・図形要素を収集
-            // 画像要素以外かつ可視状態のテキスト・図形要素のみを対象とする
-            let overlayElements = self.project.elements.filter { element in
-                // 以下の条件をすべて満たす要素を抽出:
-                // 1. 現在の画像要素とは異なる（自分自身は除外）
-                // 2. 可視状態である（非表示要素は除外）
-                // 3. テキストまたは図形要素である
-                return element.id != imageElement.id && element.isVisible &&
-                (element.type == .text || element.type == .shape)
-            }
-            
-            print("DEBUG: 画像要素情報 - ID: \(imageElement.id), 位置: \(imageElement.position), サイズ: \(imageElement.size)")
-            
-            print("DEBUG: オーバーレイ要素数 - テキスト: \(overlayElements.filter { $0.type == .text }.count), 図形: \(overlayElements.filter { $0.type == .shape }.count)")
-            
-            // 保存する最終画像を決定する分岐処理
-            let finalImage: UIImage
-            if !overlayElements.isEmpty {
-                // テキストや図形要素がある場合: 統合画像を作成
-                // createCompositeImage()で画像上にテキスト・図形を描画した統合画像を作成
-                // 失敗した場合はフィルター適用済み画像をフォールバック
-                finalImage = self.createCompositeImage(baseImage: processedImage, overlayElements: overlayElements) ?? processedImage
-                print("DEBUG: 統合画像作成完了")
-            } else {
-                // オーバーレイ要素がない場合: 元のフィルター適用済み画像をそのまま使用
-                finalImage = processedImage
-                print("DEBUG: オーバーレイなし - 元の画像をそのまま使用")
-            }
-            
-            // 最終画像を写真ライブラリに保存
-            do {
-                // PHPhotoLibrary.performChanges: 写真ライブラリへの変更操作を実行
-                // PHAssetCreationRequest: UIImageから新しい写真アセットを作成
-                try await PHPhotoLibrary.shared().performChanges {
-                    PHAssetCreationRequest.creationRequestForAsset(from: finalImage)
-                }
-                // 保存成功時はメインスレッドでコールバック実行
-                await MainActor.run { completion(true) }
-                print("DEBUG: 画像要素の保存完了")
-            } catch {
-                // 保存失敗時のエラーハンドリング
-                print("DEBUG: 写真ライブラリ保存エラー: \(error.localizedDescription)")
-                await MainActor.run { completion(false) }
-            }
-        }
-    }
-    
-    // MARK: - 合成画像保存　編集した画像、テキスト、図形要素などの保存
     
     /// - 役割：ユーザーが「保存」ボタンを押した時の最初の受け口（エントリーポイント）
-    /// - 処理：写真ライブラリの権限確認のみ
-    /// - 呼び出し：権限OKなら performCompositeImageSave を呼ぶ
+    /// - 処理：写真ライブラリの権限確認と合成保存フローの呼び出し
     func saveAsCompositeImage(completion: @escaping (Bool) -> Void) {
-        print("DEBUG: 合成保存開始")
-        
-        // 現在の写真ライブラリへの書き込み権限を確認
-        let authStatus = PHPhotoLibrary.authorizationStatus(for: .addOnly)
-        
-        switch authStatus {
-        case .authorized, .limited:
-            // 既に権限がある場合は即座に保存処理開始
-            performCompositeImageSave(completion: completion)
-        case .notDetermined:
-            // 権限が未決定の場合はユーザーに権限を要求
-            PHPhotoLibrary.requestAuthorization(for: .addOnly) { [weak self] status in
-                DispatchQueue.main.async {
-                    switch status {
-                    case .authorized, .limited:
-                        self?.performCompositeImageSave(completion: completion)
-                    default:
-                        completion(false)
-                    }
-                }
-            }
-        default:
-            // 権限が拒否されている場合は即座に失敗
-            completion(false)
-        }
-    }
-    
-    /// - 役割：実際の保存処理を統括
-    /// - 処理： ベース画像選択, オーバーレイ要素抽出, 背景向き判定と合成処理の振り分け（ここが重要！）, 写真ライブラリへの保存
-    /// - 呼び出し：判定結果に応じて適切な合成関数を呼ぶ
-    private func performCompositeImageSave(completion: @escaping (Bool) -> Void) {
-        Task.detached(priority: .userInitiated) { [weak self] in
-            guard let self = self else {
-                await MainActor.run { completion(false) }
-                return
-            }
-            
-            // 画像要素を抽出
-            let imageElements = self.project.elements.compactMap { $0 as? ImageElement }
-            
-            print("DEBUG: 画像要素数: \(imageElements.count)")
-            
-            guard !imageElements.isEmpty else {
-                print("DEBUG: 保存する画像要素が見つかりません")
-                await MainActor.run { completion(false) }
-                return
-            }
-            
-            // ベース画像を役割ベースで選択（新しいロジック）
-            var baseImageElement: ImageElement?
-            
-            // 1. まずベース役割の画像を探す
-            baseImageElement = imageElements.first { $0.imageRole == .base }
-            
-            // 2. ベース役割がない場合は、最高解像度の画像を選択（既存ロジック）
-            if baseImageElement == nil {
-                var maxPixelCount: CGFloat = 0
-                for imageElement in imageElements {
-                    if let originalImage = imageElement.originalImage,
-                       let cgImage = originalImage.cgImage {
-                        let pixelCount = CGFloat(cgImage.width * cgImage.height)
-                        if pixelCount > maxPixelCount {
-                            maxPixelCount = pixelCount
-                            baseImageElement = imageElement
-                        }
-                    }
-                }
-            }
-            
-            guard let selectedBaseImageElement = baseImageElement,
-                  let baseImage = selectedBaseImageElement.getFilteredImageForce() else {
-                print("DEBUG: ベース画像の取得に失敗")
-                await MainActor.run { completion(false) }
-                return
-            }
-            
-            print("DEBUG: ベース画像選択 - 役割: \(selectedBaseImageElement.imageRole.displayName), インポート順: \(selectedBaseImageElement.originalImportOrder)")
-            
-            // 他の全要素をオーバーレイ（画像・テキスト・図形すべて）
-            let overlayElements = self.project.elements.filter { element in
-                return element.id != selectedBaseImageElement.id && element.isVisible
-            }
-            
-            print("DEBUG: オーバーレイ要素数: \(overlayElements.count)")
-            
-            // STEP: 背景画像の向き判定（合成保存用）
-            let isPortraitBackground = baseImage.size.height > baseImage.size.width
-            print("DEBUG: =============== 合成保存：背景画像向き判定 ===============")
-            print("DEBUG: 画像サイズ - 幅: \(baseImage.size.width), 高さ: \(baseImage.size.height)")
-            print("DEBUG: アスペクト比: \(baseImage.size.width / baseImage.size.height)")
-            print("DEBUG: 判定結果: \(isPortraitBackground ? "縦向き" : "横向き")")
-            print("DEBUG: =====================================================")
-            
-            let finalImage: UIImage
-            if isPortraitBackground {
-                // 縦向き背景: 専用の合成関数を使用
-                print("DEBUG: 🔥 縦向き背景検出 - createCompositeImagePortrait を使用開始")
-                finalImage = self.createCompositeImagePortrait(baseImage: baseImage, overlayElements: overlayElements) ?? baseImage
-                print("DEBUG: 🔥 縦向き背景処理完了")
-            } else {
-                // 横向き背景: 既存の合成関数を使用
-                print("DEBUG: ➡️ 横向き背景検出 - createCompositeImage を使用開始")
-                finalImage = self.createCompositeImage(baseImage: baseImage, overlayElements: overlayElements) ?? baseImage
-                print("DEBUG: ➡️ 横向き背景処理完了")
-            }
-            
-            // 写真ライブラリに保存
-            do {
-                try await PHPhotoLibrary.shared().performChanges {
-                    PHAssetCreationRequest.creationRequestForAsset(from: finalImage)
-                }
-                await MainActor.run { completion(true) }
-                print("DEBUG: 合成画像保存完了")
-            } catch {
-                print("DEBUG: 合成画像保存エラー: \(error.localizedDescription)")
-                await MainActor.run { completion(false) }
-            }
-        }
-    }
-    
-    
-    
-    /// 高解像度画像要素を直接描画（ImageElement.drawのロジックを再現）
-    private func drawHighResolutionImageElement(
-        image: UIImage,
-        element: ImageElement,
-        adjustedElement: LogoElement,
-        in context: CGContext
-    ) {
-        guard element.isVisible else { return }
-        
-        context.saveGState()
-        
-        // 透明度の設定
-        context.setAlpha(element.opacity)
-        
-        // 中心点を計算
-        let centerX = adjustedElement.position.x + adjustedElement.size.width / 2
-        let centerY = adjustedElement.position.y + adjustedElement.size.height / 2
-        
-        // 変換行列を適用（回転と位置）
-        context.translateBy(x: centerX, y: centerY)
-        context.rotate(by: element.rotation)
-        context.translateBy(x: -adjustedElement.size.width / 2, y: -adjustedElement.size.height / 2)
-        
-        // 描画領域
-        let rect = CGRect(origin: .zero, size: adjustedElement.size)
-        
-        // 角丸クリッピングパスの設定
-        if element.roundedCorners && element.cornerRadius > 0 {
-            let path = UIBezierPath(roundedRect: rect, cornerRadius: element.cornerRadius)
-            context.addPath(path.cgPath)
-            context.clip()
-        }
-        
-        // フィットモードに応じた描画矩形を計算
-        let drawRect = self.calculateImageDrawRect(imageSize: image.size, boundingRect: rect, fitMode: element.fitMode)
-        
-        if element.fitMode == .tile {
-            // タイルパターンで描画
-            context.saveGState()
-            context.clip(to: rect)
-            
-            let tileSize = image.size
-            let horizontalTiles = ceil(adjustedElement.size.width / tileSize.width)
-            let verticalTiles = ceil(adjustedElement.size.height / tileSize.height)
-            
-            for y in 0..<Int(verticalTiles) {
-                for x in 0..<Int(horizontalTiles) {
-                    let tileRect = CGRect(
-                        x: CGFloat(x) * tileSize.width,
-                        y: CGFloat(y) * tileSize.height,
-                        width: tileSize.width,
-                        height: tileSize.height
-                    )
-                    image.draw(in: tileRect)
-                }
-            }
-            
-            context.restoreGState()
-        } else {
-            // 通常描画
-            image.draw(in: drawRect)
-        }
-        
-        // フレーム描画
-        if element.showFrame && element.frameWidth > 0 {
-            context.setStrokeColor(element.frameColor.cgColor)
-            context.setLineWidth(element.frameWidth)
-            
-            if element.roundedCorners && element.cornerRadius > 0 {
-                let frameRect = rect.insetBy(dx: element.frameWidth / 2, dy: element.frameWidth / 2)
-                let path = UIBezierPath(roundedRect: frameRect, cornerRadius: element.cornerRadius)
-                context.addPath(path.cgPath)
-                context.strokePath()
-            } else {
-                context.stroke(rect.insetBy(dx: element.frameWidth / 2, dy: element.frameWidth / 2))
-            }
-        }
-        
-        context.restoreGState()
-    }
-    
-    /// フィッティングモードに応じた描画矩形を計算
-    private func calculateImageDrawRect(imageSize: CGSize, boundingRect: CGRect, fitMode: ImageFitMode) -> CGRect {
-        switch fitMode {
-        case .fill:
-            return boundingRect
-            
-        case .aspectFit:
-            let widthRatio = boundingRect.width / imageSize.width
-            let heightRatio = boundingRect.height / imageSize.height
-            let scale = min(widthRatio, heightRatio)
-            
-            let newWidth = imageSize.width * scale
-            let newHeight = imageSize.height * scale
-            
-            return CGRect(
-                x: boundingRect.midX - newWidth / 2,
-                y: boundingRect.midY - newHeight / 2,
-                width: newWidth,
-                height: newHeight
-            )
-            
-        case .aspectFill:
-            let widthRatio = boundingRect.width / imageSize.width
-            let heightRatio = boundingRect.height / imageSize.height
-            let scale = max(widthRatio, heightRatio)
-            
-            let newWidth = imageSize.width * scale
-            let newHeight = imageSize.height * scale
-            
-            return CGRect(
-                x: boundingRect.midX - newWidth / 2,
-                y: boundingRect.midY - newHeight / 2,
-                width: newWidth,
-                height: newHeight
-            )
-            
-        case .center:
-            return CGRect(
-                x: boundingRect.midX - imageSize.width / 2,
-                y: boundingRect.midY - imageSize.height / 2,
-                width: imageSize.width,
-                height: imageSize.height
-            )
-            
-        case .tile:
-            return boundingRect
-        }
-    }
-    
-    /// アスペクト比を考慮した最適な合成サイズを計算
-    /// - Parameters:
-    ///   - baseImage: ベース画像
-    ///   - overlayElements: オーバーレイ要素配列
-    /// - Returns: 最適な合成サイズ
-    private func calculateOptimalCompositeSize(baseImage: UIImage, overlayElements: [LogoElement]) -> CGSize {
-        let baseSize = baseImage.size
-        let baseAspectRatio = baseSize.width / baseSize.height
-        
-        print("DEBUG: ベース画像 - サイズ: \(baseSize), アスペクト比: \(baseAspectRatio)")
-        
-        // オーバーレイ画像要素の最大解像度を検出
-        var maxOverlaySize = CGSize.zero
-        var maxOverlayPixels: CGFloat = 0
-        
-        for element in overlayElements {
-            if let imageElement = element as? ImageElement,
-               let originalImage = imageElement.originalImage {
-                let elementSize = originalImage.size
-                let elementPixels = elementSize.width * elementSize.height
-                let elementAspectRatio = elementSize.width / elementSize.height
-                
-                print("DEBUG: オーバーレイ画像 - サイズ: \(elementSize), アスペクト比: \(elementAspectRatio)")
-                
-                if elementPixels > maxOverlayPixels {
-                    maxOverlaySize = elementSize
-                    maxOverlayPixels = elementPixels
-                }
-            }
-        }
-        
-        // オーバーレイがない場合はベース画像サイズを使用
-        if maxOverlaySize == CGSize.zero {
-            print("DEBUG: オーバーレイなし - ベースサイズを使用: \(baseSize)")
-            return baseSize
-        }
-        
-        let overlayAspectRatio = maxOverlaySize.width / maxOverlaySize.height
-        print("DEBUG: 最大オーバーレイ - サイズ: \(maxOverlaySize), アスペクト比: \(overlayAspectRatio)")
-        
-        // オーバーレイの解像度を優先しつつ、キャンバスのアスペクト比を維持  
-        // 注意: baseSizeではなくself.project.canvasSizeを使用（編集時の実際のキャンバス比率）
-        let canvasAspectRatio = self.project.canvasSize.width / self.project.canvasSize.height
-        
-        print("DEBUG: アスペクト比比較 - キャンバス: \(canvasAspectRatio), オーバーレイ: \(overlayAspectRatio)")
-        
-        // 修正されたアプローチ: キャンバスアスペクト比を維持しつつ高解像度を活用
-        print("DEBUG: 🔍 キャンバス比率保持 + 高解像度アプローチを採用")
-        print("DEBUG: ベース画像サイズ: \(baseSize)")  
-        print("DEBUG: オーバーレイ最大サイズ: \(maxOverlaySize)")
-        print("DEBUG: キャンバスサイズ: \(self.project.canvasSize)")
-        
-        // ステップ1: 最大解像度を決定（ベースとオーバーレイの大きい方）
-        let maxPixels = max(baseSize.width * baseSize.height, maxOverlaySize.width * maxOverlaySize.height)
-        let targetResolution = sqrt(maxPixels)
-        
-        // ステップ2: キャンバスのアスペクト比で最適サイズを計算
-        let optimalSize = CGSize(
-            width: targetResolution * sqrt(canvasAspectRatio),
-            height: targetResolution / sqrt(canvasAspectRatio)
-        )
-        
-        print("DEBUG: 目標解像度: \(targetResolution)")
-        print("DEBUG: キャンバスアスペクト比適用後サイズ: \(optimalSize)")
-        
-        print("DEBUG: 🎯 最終決定サイズ: \(optimalSize)")
-        print("DEBUG: 最終アスペクト比: \(optimalSize.width / optimalSize.height)")
-        return optimalSize
-    }
-    
-    /// 縦向き画像用のアスペクト比を考慮した最適な合成サイズを計算
-    /// - Parameters:
-    ///   - baseImage: ベース画像（縦向き）
-    ///   - overlayElements: オーバーレイ要素配列
-    /// - Returns: 縦向きに最適化された合成サイズ
-    private func calculateOptimalCompositeSizePortrait(baseImage: UIImage, overlayElements: [LogoElement]) -> CGSize {
-        let baseSize = baseImage.size
-        let baseAspectRatio = baseSize.width / baseSize.height  // 縦向きの場合 < 1.0
-        
-        print("DEBUG: 縦向きベース画像 - サイズ: \(baseSize), アスペクト比: \(baseAspectRatio)")
-        
-        // オーバーレイ画像要素の最大解像度を検出（横向き関数と同じロジック）
-        var maxOverlaySize = CGSize.zero
-        var maxOverlayPixels: CGFloat = 0
-        
-        for element in overlayElements {
-            if let imageElement = element as? ImageElement,
-               let originalImage = imageElement.originalImage {
-                let elementSize = originalImage.size
-                let elementPixels = elementSize.width * elementSize.height
-                let elementAspectRatio = elementSize.width / elementSize.height
-                
-                print("DEBUG: 縦向きオーバーレイ画像 - サイズ: \(elementSize), アスペクト比: \(elementAspectRatio)")
-                
-                if elementPixels > maxOverlayPixels {
-                    maxOverlaySize = elementSize
-                    maxOverlayPixels = elementPixels
-                }
-            }
-        }
-        
-        // オーバーレイがない場合はベース画像サイズを使用
-        if maxOverlaySize == CGSize.zero {
-            print("DEBUG: 縦向きオーバーレイなし - ベースサイズを使用: \(baseSize)")
-            return baseSize
-        }
-        
-        let overlayAspectRatio = maxOverlaySize.width / maxOverlaySize.height
-        print("DEBUG: 縦向き最大オーバーレイ - サイズ: \(maxOverlaySize), アスペクト比: \(overlayAspectRatio)")
-        
-        // 縦向き専用: キャンバスのアスペクト比を取得（< 1.0 を前提）
-        let canvasAspectRatio = self.project.canvasSize.width / self.project.canvasSize.height
-        
-        print("DEBUG: 縦向きアスペクト比比較 - キャンバス: \(canvasAspectRatio), オーバーレイ: \(overlayAspectRatio)")
-        print("DEBUG: 🔍 縦向き専用アプローチを採用（canvasAspectRatio < 1.0 前提）")
-        print("DEBUG: 縦向きベース画像サイズ: \(baseSize)")
-        print("DEBUG: 縦向きオーバーレイ最大サイズ: \(maxOverlaySize)")
-        print("DEBUG: 縦向きキャンバスサイズ: \(self.project.canvasSize)")
-        
-        // ステップ1: 縦向きでは愚直にオーバーレイ元解像度を強制適用
-        print("DEBUG: 🎯 縦向き専用アプローチ - オーバーレイ元解像度を強制適用")
-        print("DEBUG: ベース画像解像度: \(baseSize.width * baseSize.height)")
-        print("DEBUG: 最大オーバーレイ解像度: \(maxOverlaySize.width * maxOverlaySize.height)")
-        
-        // アスペクト比不一致チェック付きでオーバーレイ解像度を適用
-        let optimalSize: CGSize
-        if maxOverlaySize != CGSize.zero {
-            let baseAspectRatio = baseSize.width / baseSize.height      // 縦向きベース: < 1.0
-            let overlayAspectRatio = maxOverlaySize.width / maxOverlaySize.height  // オーバーレイのアスペクト比
-            
-            print("DEBUG: アスペクト比チェック - ベース: \(baseAspectRatio), オーバーレイ: \(overlayAspectRatio)")
-            
-            // 縦向きベース + 横向きオーバーレイの不一致パターンを検出
-            if baseAspectRatio < 1.0 && overlayAspectRatio > 1.0 {
-                print("DEBUG: 🔄 アスペクト比不一致検出（縦向きベース + 横向きオーバーレイ）")
-                print("DEBUG: ベースのアスペクト比を保持してオーバーレイ解像度を適用")
-                
-                // オーバーレイの解像度を使いつつ、ベースのアスペクト比を保持
-                let overlayPixels = maxOverlaySize.width * maxOverlaySize.height
-                let targetResolution = sqrt(overlayPixels)
-                
-                optimalSize = CGSize(
-                    width: targetResolution * sqrt(baseAspectRatio),   // ベースのアスペクト比を保持
-                    height: targetResolution / sqrt(baseAspectRatio)
-                )
-                print("DEBUG: ✅ アスペクト比調整済みサイズ: \(optimalSize)")
-                print("DEBUG: 調整後アスペクト比: \(optimalSize.width / optimalSize.height) (ベースと一致: \(abs((optimalSize.width / optimalSize.height) - baseAspectRatio) < 0.01))")
-            } else {
-                // アスペクト比が一致または他のパターンの場合は従来通り
-                optimalSize = maxOverlaySize
-                print("DEBUG: ✅ オーバーレイ元解像度を直接適用: \(optimalSize)")
-            }
-        } else {
-            optimalSize = baseSize
-            print("DEBUG: ⚠️ オーバーレイなし - ベースサイズにフォールバック: \(optimalSize)")
-        }
-        
-        print("DEBUG: 🎯 縦向き最終決定サイズ: \(optimalSize)")
-        print("DEBUG: 縦向き最終アスペクト比: \(optimalSize.width / optimalSize.height)")
-        return optimalSize
-    }
-    
-    // MARK: - baseImageが横向き画像用の合成保存処理
-    
-    /// 画像要素をベースにテキスト・図形要素を重ねた統合画像を作成
-    /// 核心アルゴリズム: ====baseImageが横向き画像に対する合成保存処理====     キャンバス座標系から高解像度画像座標系への変換と要素描画
-    /// - Parameters:
-    ///   - baseImage: ベースとなるフィルター適用済み画像
-    ///   - overlayElements: 重ね合わせるテキスト・図形要素の配列
-    /// - Returns: 統合された画像、失敗時はnil
-    private func createCompositeImage(baseImage: UIImage, overlayElements: [LogoElement]) -> UIImage? {
-        print("DEBUG: createCompositeImage開始 - ベース画像サイズ: \(baseImage.size)")
-        print("DEBUG: オーバーレイ要素数: \(overlayElements.count)")
-        
-        // 最小解像度チェックを追加（低解像度画像での座標変換エラーを防ぐ）
-        let minWidth: CGFloat = 700
-        let minHeight: CGFloat = 400
-        
-        if baseImage.size.width < minWidth || baseImage.size.height < minHeight {
-            print("DEBUG: 画像解像度が低すぎるため処理をスキップ（\(baseImage.size) < \(minWidth)x\(minHeight)）")
-            print("DEBUG: 低解像度画像では座標変換で精度誤差が発生するため、ベース画像をそのまま返します")
-            return baseImage
-        }
-        
-        // プロジェクト内から今回保存する画像要素を特定
-        // 必要な理由: オーバーレイ要素の座標変換に画像要素のキャンバス上での位置・サイズが必要
-        print("DEBUG: ========== 画像要素特定開始 ==========")
-        print("DEBUG: ベース画像サイズ: \(baseImage.size)")
-        print("DEBUG: プロジェクト内の全画像要素:")
-        
-        for (index, element) in project.elements.enumerated() {
-            if let imageElement = element as? ImageElement {
-                let originalSize = imageElement.originalImage?.size ?? .zero
-                let processedSize = imageElement.image?.size ?? .zero
-                print("  [\(index)] ID: \(imageElement.id.uuidString.prefix(8))")
-                print("      位置: \(imageElement.position), サイズ: \(imageElement.size)")
-                print("      オリジナル画像: \(originalSize)")
-                print("      処理後画像: \(processedSize)")
-                print("      表示状態: \(imageElement.isVisible ? "表示" : "非表示")")
-            }
-        }
-        
-        guard let targetImageElement = self.project.elements.first(where: { element in
-            if let imageElement = element as? ImageElement,
-               let originalImage = imageElement.originalImage {
-                let originalMatch = originalImage.size == baseImage.size
-                let processedMatch = imageElement.image?.size == baseImage.size
-                print("DEBUG: 画像要素候補 ID: \(imageElement.id.uuidString.prefix(8))")
-                print("  - オリジナル: \(originalImage.size) vs ベース: \(baseImage.size) = \(originalMatch ? "一致" : "不一致")")
-                print("  - 処理後: \(imageElement.image?.size ?? .zero) vs ベース: \(baseImage.size) = \(processedMatch ? "一致" : "不一致")")
-                return originalMatch || processedMatch
-            }
-            return false
-        }) as? ImageElement else {
-            // 対応する画像要素が見つからない場合はデバッグ情報を出力してベース画像をそのまま返す
-            print("DEBUG: ❌ 対象の画像要素が見つかりません！")
-            print("DEBUG: ベース画像と一致するサイズの画像要素が存在しない可能性があります")
-            print("DEBUG: =========================================")
-            return baseImage
-        }
-        
-        // 特定された画像要素の詳細情報を出力
-        print("DEBUG: ✅ 対象画像要素が特定されました！")
-        print("DEBUG: 特定された画像要素 ID: \(targetImageElement.id.uuidString.prefix(8))")
-        print("DEBUG: キャンバス上の位置: \(targetImageElement.position)")
-        print("DEBUG: キャンバス上のサイズ: \(targetImageElement.size)")
-        print("DEBUG: =========================================")
-        
-        // アスペクト比を考慮した最適な合成サイズを計算
-        let optimalSize = calculateOptimalCompositeSize(baseImage: baseImage, overlayElements: overlayElements)
-        
-        // 高解像度画像と同サイズの描画コンテキストを作成
-        let imageSize = optimalSize
-        print("DEBUG: 最終決定サイズ - ベース: \(baseImage.size), 合成: \(imageSize)")
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1.0  // スケール統一（デバイススケールに依存しない）
-        format.opaque = true  // 写真保存のため透明度なしで最適化
-        
-        // UIGraphicsImageRenderer: iOS 10+の現代的な画像描画API
-        let renderer = UIGraphicsImageRenderer(size: imageSize, format: format)
-        
-        // ステップ1: キャンバス上での画像要素の境界矩形を取得
-        // これが座標変換の基準となる領域（編集ビューでの画像の表示領域）
-        let imageElementRect = CGRect(
-            x: targetImageElement.position.x,
-            y: targetImageElement.position.y,
-            width: targetImageElement.size.width,
-            height: targetImageElement.size.height
-        )
-        
-        return renderer.image { context in
-            let cgContext = context.cgContext
-            
-            // ステップ2: ベース画像を編集時の位置・サイズ比率で描画
-            // キャンバス内での画像要素の位置を保存画像内に再現
-            
-            print("DEBUG: 🖼️ ベース画像描画計算開始")
-            print("DEBUG: imageElementRect: \(imageElementRect)")
-            print("DEBUG: imageSize: \(imageSize)")
-            print("DEBUG: baseImage.size: \(baseImage.size)")
-            
-            // 🎯 修正: 画像要素範囲内のみを描画対象にする座標変換
-            // ベース画像を保存画像全体に描画（白いエリアを除去）
-            let baseRect = CGRect(x: 0, y: 0, width: imageSize.width, height: imageSize.height)
-            
-            print("DEBUG: 🎯 ベース画像描画位置: \(baseRect)")
-            print("DEBUG: ベース画像は保存画像全体に描画（白エリア除去）")
-            
-            baseImage.draw(in: baseRect)
-            
-            print("DEBUG: 画像要素の範囲: \(imageElementRect)")
-            print("DEBUG: 保存画像サイズ: \(imageSize)")
-            
-            // ステップ3: 画像要素範囲を基準とした座標変換比率を計算
-            // 画像要素の範囲内でのみ座標変換（白いエリア除去）
-            let scaleX = imageSize.width / imageElementRect.width   // X軸方向の拡大率
-            let scaleY = imageSize.height / imageElementRect.height // Y軸方向の拡大率
-            
-            print("DEBUG: 📐 座標変換比率計算")
-            print("DEBUG: 変換比率 - scaleX: \(scaleX), scaleY: \(scaleY)")
-            print("DEBUG: 保存サイズ: \(imageSize), キャンバスサイズ: \(self.project.canvasSize)")
-            print("DEBUG: scaleX == scaleY: \(abs(scaleX - scaleY) < 0.001)")  // 等比率かチェック
-            
-            // ステップ4: オーバーレイ要素をZ-Index順で描画（手前から奥の順番を維持）
-            let sortedElements = overlayElements.sorted { $0.zIndex < $1.zIndex }
-            
-            for element in sortedElements {
-                // 要素の境界矩形を取得（キャンバス座標系）
-                let elementRect = CGRect(x: element.position.x, y: element.position.y, width: element.size.width, height: element.size.height)
-                
-                // 画像領域との交差判定（画像範囲外の要素はスキップ）
-                // intersects: 2つの矩形が重なっているかを判定
-                // 低解像度画像での座標変換エラーを防ぐため、判定にマージンを追加
-                let marginSize: CGFloat = 10.0
-                let expandedImageRect = imageElementRect.insetBy(dx: -marginSize, dy: -marginSize)
-                
-                guard expandedImageRect.intersects(elementRect) else {
-                    print("DEBUG: 要素 \(element.type) は画像範囲外のためスキップ - 要素位置: \(elementRect)")
-                    print("DEBUG: 拡張された画像範囲: \(expandedImageRect)")
-                    continue
-                }
-                
-                // ステップ5: キャンバス座標を保存画像座標に直接変換
-                print("DEBUG: ⚡ 座標変換計算開始 ⚡")
-                print("DEBUG: 要素タイプ: \(element.type)")
-                print("DEBUG: 元要素位置: \(element.position)")
-                print("DEBUG: 元要素サイズ: \(element.size)")
-                print("DEBUG: キャンバスサイズ: \(self.project.canvasSize)")
-                
-                // 🎯 修正: 画像要素範囲内での相対座標に変換
-                let relativeX = element.position.x - imageElementRect.minX
-                let relativeY = element.position.y - imageElementRect.minY
-                
-                let actualX = relativeX * scaleX
-                let actualY = relativeY * scaleY
-                let actualWidth = element.size.width * scaleX
-                let actualHeight = element.size.height * scaleY
-                
-                print("DEBUG: 🔄 座標変換結果:")
-                print("  相対X: \(relativeX) * \(scaleX) = \(actualX)")
-                print("  相対Y: \(relativeY) * \(scaleY) = \(actualY)")  
-                print("  W: \(element.size.width) * \(scaleX) = \(actualWidth)")
-                print("  H: \(element.size.height) * \(scaleY) = \(actualHeight)")
-                
-                // 元の位置との比較（ゼロ除算回避）
-                if element.position.x != 0 && element.position.y != 0 {
-                    let scaleXRatio = actualX / element.position.x
-                    let scaleYRatio = actualY / element.position.y
-                    print("DEBUG: 🔍 実際のスケール比率チェック:")
-                    print("  X軸実測値: \(scaleXRatio), 期待値: \(scaleX)")
-                    print("  Y軸実測値: \(scaleYRatio), 期待値: \(scaleY)")
-                } else {
-                    print("DEBUG: 🔍 元位置が0のためスケール比率計算をスキップ")
-                }
-                
-                print("DEBUG: ========== 要素 \(element.type) (ID: \(element.id)) ==========")
-                print("  - キャンバス位置: \(element.position), サイズ: \(element.size)")
-                print("  - 画像範囲との交差: \(imageElementRect.intersects(elementRect))")
-                print("  - 保存位置: (\(actualX), \(actualY)), 保存サイズ: (\(actualWidth), \(actualHeight))")
-                
-                // サイズ妥当性チェック（ゼロ以下のサイズは描画不可能）
-                guard actualWidth > 0 && actualHeight > 0 else {
-                    print("DEBUG: 無効なサイズのためスキップ")
-                    continue
-                }
-                
-                // ステップ7: 要素のディープコピーを作成し高解像度用に調整
-                // 元の要素を変更せずに新しいインスタンスで描画用パラメータを設定
-                let adjustedElement = element.copy()
-                adjustedElement.position = CGPoint(x: actualX, y: actualY)
-                adjustedElement.size = CGSize(width: actualWidth, height: actualHeight)
-                
-                // ステップ8a: 画像要素の特別処理（高解像度直接描画）
-                if let imageElement = adjustedElement as? ImageElement {
-                    // AI背景除去等の処理で解像度が低下した場合の対策
-                    // 合成保存時は必ず高解像度の原画からフィルターを再適用
-                    if let originalImage = imageElement.originalImage {
-                        let currentImageSize = imageElement.image?.size ?? .zero
-                        print("DEBUG: 画像要素の高解像度再処理 - 原画: \(originalImage.size) -> 現在: \(currentImageSize)")
-                        
-                        // 原画からフィルターを再適用（AI背景除去も含めて）
-                        if let highResProcessedImage = imageElement.getFilteredImageForce() {
-                            print("DEBUG: 高解像度再処理完了 - サイズ: \(highResProcessedImage.size)")
-                            
-                            // 高解像度画像を直接描画（ImageElement.drawのロジックを再現）
-                            self.drawHighResolutionImageElement(
-                                image: highResProcessedImage,
-                                element: imageElement,
-                                adjustedElement: adjustedElement,
-                                in: cgContext
-                            )
-                            
-                            print("DEBUG: ========== 高解像度画像要素描画完了 ==========\n")
-                            continue
-                        }
-                    }
-                }
-                
-                // ステップ8b: テキスト要素の特別処理（フォントサイズ・エフェクトのスケーリング）
-                if let textElement = adjustedElement as? TextElement {
-                    let originalFontSize = textElement.fontSize
-                    // フォントサイズのスケーリング（縦横比の小さい方を使用してアスペクト比を維持）
-                    let scaledFontSize = originalFontSize * min(scaleX, scaleY)
-                    textElement.fontSize = scaledFontSize
-                    
-                    // テキストエフェクト（シャドウ等）のスケーリング処理
-                    for effect in textElement.effects {
-                        if let shadowEffect = effect as? ShadowEffect {
-                            let originalOffset = shadowEffect.offset
-                            let originalBlurRadius = shadowEffect.blurRadius
-                            
-                            // シャドウオフセットを軸別にスケーリング（方向性を維持）
-                            shadowEffect.offset = CGSize(
-                                width: originalOffset.width * scaleX,
-                                height: originalOffset.height * scaleY
-                            )
-                            // ぼかし半径は等比例スケーリング（視覚的なバランス維持）
-                            shadowEffect.blurRadius = originalBlurRadius * min(scaleX, scaleY)
-                            
-                            print("DEBUG: シャドウエフェクトをスケーリング:")
-                            print("  - オフセット: \(originalOffset) -> \(shadowEffect.offset)")
-                            print("  - ぼかし半径: \(originalBlurRadius) -> \(shadowEffect.blurRadius)")
-                        }
-                    }
-                    
-                    print("DEBUG: テキスト要素詳細:")
-                    print("  - テキスト内容: '\(textElement.text)'")
-                    print("  - 元フォントサイズ: \(originalFontSize) -> スケール後: \(scaledFontSize)")
-                    print("  - フォント名: \(textElement.fontName)")
-                    print("  - テキスト色: \(textElement.textColor)")
-                    print("  - エフェクト数: \(textElement.effects.count)")
-                }
-                
-                // ステップ9: Core Graphicsコンテキストに要素を描画
-                print("DEBUG: 描画実行 - 調整後位置: \(adjustedElement.position), サイズ: \(adjustedElement.size)")
-                print("DEBUG: 描画コンテキストサイズ: \(imageSize)")
-                
-                // 各要素のdraw(in:)メソッドを呼び出してCGContextに描画
-                // TextElement: NSAttributedStringを使用した高品質テキスト描画
-                // ShapeElement: UIBezierPathを使用したベクター図形描画
-                adjustedElement.draw(in: cgContext)
-                print("DEBUG: ========== 要素描画完了 ==========\n")
-            }
-        }
-    }
-    
-    // MARK: - baseImageが縦向き用の合成保存処理
-    
-    /// 縦向き画像要素をベースにテキスト・図形要素を重ねた統合画像を作成
-    /// - Parameters:
-    ///   - baseImage: ベース画像（縦向き、フィルター適用済み）
-    ///   - overlayElements: 重ねる要素配列（テキスト・図形）
-    /// - Returns: 統合された画像、失敗時はnil
-    private func createCompositeImagePortrait(baseImage: UIImage, overlayElements: [LogoElement]) -> UIImage? {
-        print("DEBUG: createCompositeImagePortrait開始 - ベース画像サイズ: \(baseImage.size)")
-        print("DEBUG: オーバーレイ要素数: \(overlayElements.count)")
-        
-        // STEP 1: 対象画像要素の特定（横向き実装を流用）
-        guard let targetImageElement = self.project.elements.first(where: { element in
-            if let imageElement = element as? ImageElement,
-               let originalImage = imageElement.originalImage {
-                let originalMatch = originalImage.size == baseImage.size
-                let processedMatch = imageElement.image?.size == baseImage.size
-                print("DEBUG: 縦向き画像要素候補 ID: \(imageElement.id.uuidString.prefix(8))")
-                print("  - オリジナル: \(originalImage.size) vs ベース: \(baseImage.size) = \(originalMatch ? "一致" : "不一致")")
-                print("  - 処理後: \(imageElement.image?.size ?? .zero) vs ベース: \(baseImage.size) = \(processedMatch ? "一致" : "不一致")")
-                return originalMatch || processedMatch
-            }
-            return false
-        }) as? ImageElement else {
-            print("DEBUG: ❌ 縦向き対象画像要素が見つかりません！")
-            return baseImage
-        }
-        
-        print("DEBUG: ✅ 縦向き対象画像要素が特定されました！")
-        print("DEBUG: 特定された画像要素 ID: \(targetImageElement.id.uuidString.prefix(8))")
-        print("DEBUG: キャンバス上の位置: \(targetImageElement.position)")
-        print("DEBUG: キャンバス上のサイズ: \(targetImageElement.size)")
-        
-        // STEP 2: 縦向き専用最適化関数を使用してオーバーレイ元解像度を保持
-        
-        let optimalSize = calculateOptimalCompositeSizePortrait(baseImage: baseImage, overlayElements: overlayElements)
-        let imageSize = optimalSize
-        print("DEBUG: 縦向き最適化サイズ適用 - オーバーレイ元解像度保持: \(imageSize)")
-        
-        // STEP 3: 描画コンテキストの設定（横向き実装と同一）
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1.0  // スケール統一（デバイススケールに依存しない）
-        format.opaque = true  // 写真保存のため透明度なしで最適化
-        
-        let renderer = UIGraphicsImageRenderer(size: imageSize, format: format)
-        print("DEBUG: 縦向きレンダラー設定完了 - 描画サイズ: \(imageSize)")
-        
-        // キャンバス上での画像要素の境界矩形を取得
-        let imageElementRect = CGRect(
-            x: targetImageElement.position.x,
-            y: targetImageElement.position.y,
-            width: targetImageElement.size.width,
-            height: targetImageElement.size.height
-        )
-        
-        // STEP 3: 縦向き専用統合描画実行
-        return renderer.image { context in
-            let cgContext = context.cgContext
-            
-            // STEP 3.1: ベース画像の描画（最下層）- 横向き処理と同じ方式に統一
-            let baseRect = CGRect(x: 0, y: 0, width: imageSize.width, height: imageSize.height)
-            
-            print("DEBUG: 🖼️ 縦向きベース画像描画計算開始")
-            print("DEBUG: 縦向き保存画像サイズ: \(imageSize)")
-            print("DEBUG: 縦向きベース画像サイズ: \(baseImage.size)")
-            print("DEBUG: 🎯 縦向きベース画像描画位置: \(baseRect)")
-            
-            baseImage.draw(in: baseRect)
-            print("DEBUG: 縦向きベース画像描画完了")
-            
-            // STEP 3.2: 縦向き画像専用座標変換パラメータの計算
-            // キャンバスが横向き設定でも縦向き画像の実際のアスペクト比で計算
-            
-            let imageElementRect = CGRect(
-                x: targetImageElement.position.x,
-                y: targetImageElement.position.y,
-                width: targetImageElement.size.width,
-                height: targetImageElement.size.height
-            )
-            
-            print("DEBUG: 縦向き画像要素の範囲: \(imageElementRect)")
-            
-            // 縦向き専用スケール比率の計算
-            // キャンバス上で横に引き伸ばされた表示を補正
-            let scaleX = imageSize.width / imageElementRect.width
-            let scaleY = imageSize.height / imageElementRect.height
-            
-            // 縦向き画像の場合、キャンバス表示での歪みを補正
-            let aspectRatioCanvas = imageElementRect.width / imageElementRect.height  // キャンバス上のアスペクト比（横に引き伸ばされた状態）
-            let aspectRatioActual = imageSize.width / imageSize.height              // 実際の画像のアスペクト比（縦向き）
-            let aspectCorrectionFactor = aspectRatioCanvas / aspectRatioActual      // 補正係数（逆算）
-            
-            print("DEBUG: 縦向き変換比率 - scaleX: \(scaleX), scaleY: \(scaleY)")
-            print("DEBUG: アスペクト比補正 - キャンバス: \(aspectRatioCanvas), 実際: \(aspectRatioActual), 補正係数: \(aspectCorrectionFactor)")
-            
-            // STEP 3.3: オーバーレイ要素の描画処理
-            let sortedElements = overlayElements.sorted { $0.zIndex < $1.zIndex }
-            print("DEBUG: 縦向きZ-Index順ソート完了 - 要素数: \(sortedElements.count)")
-            
-            for element in sortedElements {
-                print("DEBUG: ========== 縦向き要素 \(element.type) (ID: \(element.id)) ==========")
-                
-                // STEP 3.3.1: 境界検査
-                let elementRect = CGRect(x: element.position.x, y: element.position.y, width: element.size.width, height: element.size.height)
-                
-                guard imageElementRect.intersects(elementRect) else {
-                    print("DEBUG: 縦向き要素 \(element.type) は画像範囲外のためスキップ")
-                    continue
-                }
-                
-                // STEP 3.3.2: 縦向き専用相対座標の計算
-                // アスペクト比補正を適用した座標変換
-                let relativeX = (element.position.x - imageElementRect.minX) / imageElementRect.width
-                let relativeY = (element.position.y - imageElementRect.minY) / imageElementRect.height
-                let relativeWidth = element.size.width / imageElementRect.width * aspectCorrectionFactor  // X軸補正適用
-                let relativeHeight = element.size.height / imageElementRect.height
-                
-                print("DEBUG: 縦向き相対座標計算:")
-                print("  - 相対位置: (\(relativeX), \(relativeY))")
-                print("  - 相対サイズ（補正後）: (\(relativeWidth), \(relativeHeight))")
-                
-                // STEP 3.3.3: 縦向き画像での実座標への変換
-                let actualX = relativeX * imageSize.width
-                let actualY = relativeY * imageSize.height
-                let actualWidth = relativeWidth * imageSize.width
-                let actualHeight = relativeHeight * imageSize.height
-                
-                print("DEBUG: 縦向き実座標変換:")
-                print("  - 保存位置: (\(actualX), \(actualY))")
-                print("  - 保存サイズ: (\(actualWidth), \(actualHeight))")
-                
-                // STEP 3.3.4: サイズ妥当性チェック
-                guard actualWidth > 0 && actualHeight > 0 else {
-                    print("DEBUG: 縦向き無効サイズのためスキップ")
-                    continue
-                }
-                
-                // STEP 3.3.5: 要素のコピーと調整
-                let adjustedElement = element.copy()
-                adjustedElement.position = CGPoint(x: actualX, y: actualY)
-                adjustedElement.size = CGSize(width: actualWidth, height: actualHeight)
-                
-                // STEP 3.3.6a: 画像要素の特別処理（高解像度直接描画）- 横向き実証済みコード流用
-                if let imageElement = adjustedElement as? ImageElement {
-                    // AI背景除去等の処理で解像度が低下した場合の対策
-                    // 合成保存時は必ず高解像度の原画からフィルターを再適用
-                    if let originalImage = imageElement.originalImage {
-                        let currentImageSize = imageElement.image?.size ?? .zero
-                        print("DEBUG: 画像要素の高解像度再処理 - 原画: \(originalImage.size) -> 現在: \(currentImageSize)")
-                        
-                        // 原画からフィルターを再適用（AI背景除去も含めて）
-                        if let highResProcessedImage = imageElement.getFilteredImageForce() {
-                            print("DEBUG: 高解像度再処理完了 - サイズ: \(highResProcessedImage.size)")
-                            
-                            // 高解像度画像を直接描画（ImageElement.drawのロジックを再現）
-                            self.drawHighResolutionImageElement(
-                                image: highResProcessedImage,
-                                element: imageElement,
-                                adjustedElement: adjustedElement,
-                                in: cgContext
-                            )
-                            
-                            print("DEBUG: ========== 高解像度画像要素描画完了 ==========\n")
-                            continue
-                        }
-                    }
-                }
-                
-                // STEP 3.3.6b: 縦向き画像でのテキスト要素専用処理
-                if let textElement = adjustedElement as? TextElement {
-                    print("DEBUG: 縦向きテキスト要素専用処理開始")
-                    
-                    // 縦向き画像でのフォントサイズスケーリング
-                    let originalFontSize = textElement.fontSize
-                    let scaledFontSize = originalFontSize * min(scaleX, scaleY) * aspectCorrectionFactor
-                    textElement.fontSize = scaledFontSize
-                    
-                    print("DEBUG: 縦向きフォントサイズ調整:")
-                    print("  - 元サイズ: \(originalFontSize)pt -> 補正後: \(scaledFontSize)pt")
-                    
-                    // 縦向き画像でのシャドウエフェクト調整
-                    for effect in textElement.effects {
-                        if let shadowEffect = effect as? ShadowEffect {
-                            let originalOffset = shadowEffect.offset
-                            shadowEffect.offset = CGSize(
-                                width: originalOffset.width * scaleX * aspectCorrectionFactor,  // X軸にアスペクト比補正適用
-                                height: originalOffset.height * scaleY
-                            )
-                            
-                            let originalBlurRadius = shadowEffect.blurRadius
-                            shadowEffect.blurRadius = originalBlurRadius * min(scaleX, scaleY) * aspectCorrectionFactor
-                            
-                            print("DEBUG: 縦向きシャドウパラメータ調整:")
-                            print("  - オフセット: \(originalOffset) -> \(shadowEffect.offset)")
-                            print("  - ぼかし半径: \(originalBlurRadius) -> \(shadowEffect.blurRadius)")
-                        }
-                    }
-                }
-                
-                // STEP 3.3.7: 縦向き画像での描画実行
-                print("DEBUG: 縦向き描画実行 - 調整後位置: \(adjustedElement.position), サイズ: \(adjustedElement.size)")
-                adjustedElement.draw(in: cgContext)
-                
-                print("DEBUG: ========== 縦向き要素描画完了 ==========\n")
-            }
-            
-            print("DEBUG: 縦向き全要素描画完了 - 統合画像生成成功")
-        }
+        saveCoordinator.saveComposite(project: project, completion: completion)
     }
     
     // MARK: - インポート
+    //
+    // フロー概要:
+    //  - UI から addImageElement / addCroppedImageElement を呼び出す（エントリーポイント）。
+    //  - 画像ソースと条件を ImageImportCoordinator に渡して生成・初期配置を委譲。
+    //  - 生成後は ViewModel で追加・選択・カメラセンタリングを実行する。
+    
+    /// 画像要素をデータから追加
+    func addImageElement(imageData: Data, position: CGPoint, phAsset: PHAsset? = nil, assetIdentifier: String? = nil) {
+        print("DEBUG: addImageElement開始 - PHAsset: \(phAsset != nil), 識別子: \(assetIdentifier ?? "なし")")
+        guard let (result, viewportSize) = importImageElement(
+            source: .imageData(imageData),
+            canvasSize: nil,
+            assetIdentifier: assetIdentifier
+        ) else {
+            return
+        }
+
+        if let assetIdentifier = result.assetIdentifier {
+            print("DEBUG: 受け取った識別子を設定: \(assetIdentifier)")
+        } else {
+            print("DEBUG: 内部生成のUUIDを設定: \(result.element.originalImageIdentifier ?? "なし")")
+        }
+
+        print("DEBUG: 配置位置 - X: \(result.element.position.x), Y: \(result.element.position.y)")
+        print("DEBUG: ビューポートサイズ: \(viewportSize)")
+
+        applyImportedImage(result.element)
+    }
     
     /// 画像のクロップ後にImageElementを追加
-    func addCroppedImageElement(image: UIImage) {
-        // UIImageをDataに変換
-        guard let imageData = image.pngData() else { return }
-        
-        // 現在の画像要素数を数えてインポート順番を決定
-        let currentImageCount = project.elements.compactMap { $0 as? ImageElement }.count
-        let importOrder = currentImageCount + 1
-        
-        let imageElement = ImageElement(imageData: imageData, fitMode: .aspectFit, canvasSize: project.canvasSize, importOrder: importOrder)
-        
-        // 役割に応じてzIndexを設定
-        if imageElement.imageRole == .base {
-            // ベース画像（1番目）は背面に配置
-            imageElement.zIndex = ElementPriority.image.rawValue - 10
-        } else {
-            // オーバーレイ画像は前面に配置
-            imageElement.zIndex = ElementPriority.image.rawValue + 10
+    func addCroppedImageElement(image: UIImage, assetIdentifier: String? = nil) {
+        guard let (result, _) = importImageElement(
+            source: .uiImage(image),
+            canvasSize: project.canvasSize,
+            assetIdentifier: assetIdentifier
+        ) else {
+            return
         }
-        
-        // ビューポートの中央に配置
-        let viewportSize = getViewportSize()
-        let viewportCenter = CGPoint(
-            x: viewportSize.width / 2,
-            y: viewportSize.height / 4
-        )
-        
-        // 画像の中央位置を計算
-        imageElement.position = CGPoint(
-            x: viewportCenter.x - imageElement.size.width / 2,
-            y: viewportCenter.y - imageElement.size.height / 2
-        )
-        
-        print("DEBUG: クロップ済み画像配置位置 - X: \(imageElement.position.x), Y: \(imageElement.position.y)")
-        
-        // 要素を追加
-        addElement(imageElement)
-        selectElement(imageElement)
-        
-        // 画像が見えるようにカメラを移動
-        centerViewOnElement(imageElement)
+
+        print("DEBUG: クロップ済み画像配置位置 - X: \(result.element.position.x), Y: \(result.element.position.y)")
+        applyImportedImage(result.element)
     }
+
+    private func importImageElement(
+        source: ImageImportSource,
+        canvasSize: CGSize?,
+        assetIdentifier: String?
+    ) -> (ImageImportResult, CGSize)? {
+        let viewportSize = getViewportSize()
+        guard let result = imageImportCoordinator.importImage(
+            source: source,
+            project: project,
+            viewportSize: viewportSize,
+            assetIdentifier: assetIdentifier,
+            canvasSize: canvasSize
+        ) else {
+            return nil
+        }
+
+        return (result, viewportSize)
+    }
+
+    private func applyImportedImage(_ element: ImageElement) {
+        addElement(element)
+        selectElement(element)
+
+        // 画像が見えるようにカメラを移動
+        centerViewOnElement(element)
+    }
+    
+    // MARK: - インポートの表示制御
     
     /// デバイスの画面サイズを取得
     private func getViewportSize() -> CGSize {

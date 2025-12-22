@@ -43,8 +43,7 @@ struct ImageCropView: View {
                             
                             if viewModel.imageIsLoaded {
                                 CropOverlay(
-                                    cropRect: $viewModel.cropRect,
-                                    imageFrame: $viewModel.imageViewFrame
+                                    viewModel: viewModel
                                 )
                             }
                         }

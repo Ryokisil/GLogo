@@ -298,6 +298,7 @@ class TextElement: LogoElement {
         
         return NSAttributedString(string: text, attributes: attributes)
     }
+
     
     /// テキストを描画
     override func draw(in context: CGContext) {

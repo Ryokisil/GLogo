@@ -2,9 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**⚠️ IMPORTANT: This project requires strict adherence to MVVM architecture and Japanese coding standards. All code must follow these mandatory guidelines.**
+
 ## Project Overview
 
 GLogo is an advanced iOS image editing application built with Swift 6.0 and SwiftUI. It provides a comprehensive logo creation and editing interface with professional-grade image manipulation capabilities, featuring custom Core Image filters, event-sourcing based undo/redo system, and seamless SwiftUI + UIKit integration.
+
+**Architecture Philosophy**: Strict MVVM pattern with clear separation between Models (data), ViewModels (business logic), and Views (UI). Deviations from this pattern are not permitted.
 
 ### Key Features
 - **Professional Image Editing**: Custom highlight/shadow adjustments using ITU-R BT.709 luminance masking
@@ -42,11 +46,7 @@ xcodebuild -workspace GLogo.xcworkspace -scheme GLogo build
 xcodebuild -workspace GLogo.xcworkspace -scheme GLogo test
 
 # Run specific test
-xcodebuild -workspace GLogo.xcworkspace -scheme GLogo -only-testing:GLogoTests/ViewModelMemoryLeakTests/testEditorViewModelDoesNotLeak test
-
-# Run memory leak tests specifically
-xcodebuild -workspace GLogo.xcworkspace -scheme GLogo -only-testing:GLogoTests/ViewModelMemoryLeakTests test
-xcodebuild -workspace GLogo.xcworkspace -scheme GLogo -only-testing:GLogoTests/OperationMemoryLeakTests test
+xcodebuild -workspace GLogo.xcworkspace -scheme GLogo -only-testing:GLogoTests/ImageCropTests test
 
 # Clean build for fresh compilation
 xcodebuild -workspace GLogo.xcworkspace -scheme GLogo clean build
@@ -76,8 +76,25 @@ xcrun simctl launch booted com.yourcompany.GLogo
 
 ## Architecture
 
-### MVVM Pattern
+### MVVM Pattern (Strict Compliance Required)
+**⚠️ CRITICAL: All code MUST strictly adhere to the MVVM architecture pattern. Violations will require immediate refactoring.**
+
 The application follows a sophisticated Model-View-ViewModel (MVVM) architecture with clear separation of concerns:
+
+#### Architecture Rules (Mandatory)
+**❌ PROHIBITED - Absolute Violations:**
+- Writing business logic or data processing in Views
+- Adding observable properties (@Published, ObservableObject) to Models
+- Direct references from ViewModel to View
+- References from Model to ViewModel or View
+- Direct data modification between Views
+
+**✅ REQUIRED - Mandatory Practices:**
+- All business logic must be implemented in ViewModels
+- Models must be pure data structures (struct/class only)
+- Views must observe ViewModels via @ObservedObject/@StateObject
+- Data flow must always be unidirectional: ViewModel → View
+- User actions must be processed through ViewModel method calls
 
 #### Models (`GLogo/Models/`)
 Core data structures with comprehensive state management:
@@ -97,7 +114,7 @@ Core data structures with comprehensive state management:
 
 #### ViewModels (`GLogo/ViewModels/`)
 Business logic layer with reactive state management:
-- **`EditorViewModel`**: Central coordinator (1,336 lines)
+- **`EditorViewModel`**: Central coordinator
   - Project state management with @Published properties
   - Element manipulation operations (add, select, delete, transform)
   - Event sourcing integration for undo/redo
@@ -105,9 +122,6 @@ Business logic layer with reactive state management:
 - **`ElementViewModel`**: Individual element manipulation
   - Property editing with validation
   - Type-specific operations (text formatting, shape geometry, image filters)
-- **`ExportViewModel`**: Rendering and export operations
-  - High-resolution image generation
-  - Format-specific optimization (PNG transparency, JPEG quality)
 - **`ImageCropViewModel`**: Advanced cropping functionality
   - iOS orientation-aware cropping with `createOrientedCGImage`
   - Real-time preview updates
@@ -133,7 +147,7 @@ The application implements a comprehensive event sourcing pattern for reliable u
   - `apply(to:)` and `revert(from:)` methods for bidirectional operations
   - Timestamp tracking and event naming for debugging
   - Full Codable support for persistence
-- **`EditorHistory` Class**: Event stack management (1,354 lines total in EventSourcing.swift)
+- **`EditorHistory` Class**: Event stack management
   - Dual stack architecture (undo/redo stacks)
   - Maximum history limit with automatic cleanup
   - Memory-safe weak references to prevent retain cycles
@@ -194,7 +208,7 @@ The application employs a sophisticated hybrid approach combining SwiftUI's decl
 - Real-time state synchronization between SwiftUI `@ObservedObject` and UIKit views
 
 #### High-Performance Canvas (`CanvasView`)
-**UIKit-Based Drawing Engine (784 lines):**
+**UIKit-Based Drawing Engine:**
 ```swift
 class CanvasView: UIView {
     // Direct Core Graphics rendering for optimal performance
@@ -331,36 +345,15 @@ private func createOrientedCGImage(from uiImage: UIImage) -> CGImage? {
 
 ## Comprehensive Testing Strategy
 
-### Memory Management & Leak Prevention
-The application employs rigorous memory management testing to ensure stability and performance:
+### Testing Infrastructure
+The application includes comprehensive test coverage:
 
-#### Automated Memory Leak Detection
-**Core Testing Infrastructure**:
-```swift
-extension XCTestCase {
-    func assertNoMemoryLeak<T: AnyObject>(_ instance: () -> T, file: StaticString = #file, line: UInt = #line) {
-        weak var weakInstance: T?
-        autoreleasepool {
-            let strongInstance = instance()
-            weakInstance = strongInstance
-            XCTAssertNotNil(weakInstance)
-        }
-        XCTAssertNil(weakInstance, "インスタンスがメモリリークしています", file: file, line: line)
-    }
-}
-```
+#### Available Test Suites
+- **`GLogoTests`**: General unit tests for core functionality
+- **`ImageCropTests`**: Image cropping functionality validation
+- **`ToneCurveFilterTests`**: Tone curve filter implementation tests
 
-#### Test Coverage Areas
-**ViewModel Lifecycle Testing** (`ViewModelMemoryLeakTests`):
-- **`testEditorViewModelDoesNotLeak`**: Basic ViewModel instantiation and cleanup
-- **`testElementViewModelDoesNotLeak`**: Cross-ViewModel reference management
-- **`testElementViewModelWithSelectedElementDoesNotLeak`**: Complex selection scenario testing
-
-**Operation Memory Management** (`OperationMemoryLeakTests`):
-- **`testManipulationDoesNotLeak`**: Element transformation operations (move, resize, rotate)
-- **`testUndoRedoDoesNotLeak`**: Event sourcing memory integrity during history operations
-
-#### Memory Safety Patterns
+#### Memory Management Best Practices
 **Weak Reference Management**:
 - Coordinator pattern callbacks use `[weak self]` capture lists
 - ViewModel cross-references avoid retain cycles
@@ -377,17 +370,13 @@ autoreleasepool {
 
 ### Test Execution Commands
 ```bash
-# Run all memory leak tests
-xcodebuild -workspace GLogo.xcworkspace -scheme GLogo \
-  -only-testing:GLogoTests/ViewModelMemoryLeakTests test
-
-# Run operation-specific tests
-xcodebuild -workspace GLogo.xcworkspace -scheme GLogo \
-  -only-testing:GLogoTests/OperationMemoryLeakTests test
-
 # Comprehensive test suite
 xcodebuild -workspace GLogo.xcworkspace -scheme GLogo test \
   -resultBundlePath TestResults.xcresult
+
+# Run specific test class
+xcodebuild -workspace GLogo.xcworkspace -scheme GLogo \
+  -only-testing:GLogoTests/ImageCropTests test
 ```
 
 ### Performance Testing Considerations
@@ -608,12 +597,34 @@ EventSourcing.swift           // Event system implementation
 ImageFilterUtility.swift     // Image processing utilities
 ```
 
-### Code Structure Principles
-**Clear Separation of Concerns**:
-- **Models**: Pure data structures with minimal business logic
-- **ViewModels**: Reactive state management with @Published properties  
-- **Views**: Declarative UI with minimal imperative code
-- **Utilities**: Pure functions for image processing and coordinate math
+### Code Structure Principles (Strict Enforcement)
+**Clear Separation of Concerns - These principles must be strictly followed:**
+
+**Models (GLogo/Models/)**:
+- ✅ Allowed: Pure data structures using struct/class
+- ✅ Allowed: Codable conformance, computed properties, helper methods (data transformation only)
+- ❌ Prohibited: @Published, ObservableObject, business logic
+- ❌ Prohibited: References to View or ViewModel
+
+**ViewModels (GLogo/ViewModels/)**:
+- ✅ Allowed: ObservableObject conformance, @Published properties
+- ✅ Allowed: All business logic and state management
+- ✅ Allowed: Model manipulation and data transformation
+- ❌ Prohibited: Direct references to Views (callbacks/closures are acceptable)
+- ❌ Prohibited: Direct UI component manipulation
+
+**Views (GLogo/Views/)**:
+- ✅ Allowed: Declarative UI using SwiftUI
+- ✅ Allowed: Observing ViewModels via @ObservedObject/@StateObject
+- ✅ Allowed: Forwarding user actions to ViewModel method calls
+- ❌ Prohibited: Business logic implementation
+- ❌ Prohibited: Direct Model manipulation
+- ❌ Prohibited: Complex data processing
+
+**Utilities (GLogo/Utils/)**:
+- ✅ Allowed: Pure functions (image processing, coordinate calculations, etc.)
+- ✅ Allowed: Static methods, extensions
+- ❌ Prohibited: State retention, dependencies on View or ViewModel
 
 **File Header Standard**:
 ```swift
@@ -648,6 +659,37 @@ func loadImage(from url: URL) -> UIImage? {
 }
 ```
 
+### Code Review Requirements (Mandatory Checklist)
+**All code must meet the following criteria:**
+
+#### Architecture Compliance
+- [ ] Fully adheres to MVVM pattern
+- [ ] Models contain no business logic
+- [ ] Views contain no data processing
+- [ ] ViewModels appropriately handle their responsibilities
+
+#### Coding Standards
+- [ ] All comments are written in Japanese
+- [ ] MARK section separation is properly implemented
+- [ ] Naming conventions (camelCase/PascalCase) are followed
+- [ ] File headers follow the standard format
+
+#### Memory Management
+- [ ] [weak self] is appropriately used in closures
+- [ ] No potential retain cycles exist
+- [ ] autoreleasepool is used for heavy processing
+
+#### Concurrency
+- [ ] @MainActor is used where necessary
+- [ ] async/await is properly implemented
+- [ ] No potential data races exist
+
+**❌ Code modifications required in the following cases:**
+- MVVM pattern violations found → **Immediate refactoring required**
+- English comments used → **Must be changed to Japanese**
+- Missing MARK separation → **Must be added**
+- Potential memory leaks → **Must be fixed**
+
 ## Advanced Development Workflows
 
 ### Performance Profiling
@@ -680,10 +722,12 @@ xcodebuild -workspace GLogo.xcworkspace -scheme GLogo \
 
 ### Memory Debugging
 ```bash
-# Detailed memory leak detection
+# Detailed memory leak detection with Address Sanitizer
 xcodebuild -workspace GLogo.xcworkspace -scheme GLogo \
-  test -enableAddressSanitizer YES \
-  -only-testing:GLogoTests/ViewModelMemoryLeakTests
+  test -enableAddressSanitizer YES
+
+# Memory analysis with Instruments
+instruments -t "Leaks" -D leak_trace.trace GLogo.app
 ```
 
 ## Troubleshooting Guide
@@ -794,18 +838,24 @@ func printHistoryStatus() {
 - [ ] Optimize coordinate transformation calculations
 
 #### Memory Management
-- [ ] Run memory leak tests regularly
+- [ ] Use Instruments to profile memory usage regularly
 - [ ] Monitor autoreleasepool usage in image processing
 - [ ] Verify weak reference patterns in event system
 - [ ] Check for proper cleanup in view controllers
+- [ ] Enable Address Sanitizer during development testing
 
 ### Best Practices Summary
 
-1. **Always test memory leaks** after implementing new features
-2. **Use autoreleasepool** for memory-intensive operations
-3. **Implement weak references** in callback patterns
-4. **Cache expensive calculations** (coordinate transformations, filter results)
-5. **Validate Core Image filter availability** before use
-6. **Profile performance regularly** during development
-7. **Document complex algorithms** with Japanese comments
-8. **Follow Swift 6.0 concurrency guidelines** strictly
+**🔴 CRITICAL - Absolute Principles (Never Compromise):**
+1. **Strictly adhere to MVVM pattern** - Architecture violations require immediate refactoring
+2. **Use Japanese comments** - All comments must be written in Japanese
+3. **Separate sections with MARK** - Mandatory for all files
+
+**🟡 IMPORTANT - Essential Implementation Guidelines:**
+4. **Profile memory usage** regularly using Instruments and Address Sanitizer
+5. **Use autoreleasepool** for memory-intensive operations
+6. **Implement weak references** in callback patterns
+7. **Cache expensive calculations** (coordinate transformations, filter results)
+8. **Validate Core Image filter availability** before use
+9. **Profile performance regularly** during development
+10. **Follow Swift 6.0 concurrency guidelines** strictly

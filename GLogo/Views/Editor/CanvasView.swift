@@ -3,12 +3,11 @@
 //  GameLogoMaker
 //
 //  概要:
-//  このファイルはロゴ編集用のキャンバスを実装するUIKitビュークラスです。
-//  プロジェクトの要素を描画し、タッチイベントを処理してユーザーが要素を
-//  選択、移動、リサイズ、回転などの操作を行えるようにします。
-//  また、ズーム、パン、グリッド表示などの機能も提供します。
-//  UIViewRepresentableプロトコルを実装したラッパークラスを通じてSwiftUIと統合されます。
-//　SwiftUIとUIKitを統合、CoreGraphicsを直接扱うことでグラフィック処理を効率化しSwiftUIでUi設計
+//  このファイルは画像編集用のキャンバスを実装するUIKitビューです。
+//  役割: プロジェクト要素の描画と、タップによる選択/削除のみを担当。
+//  移動・拡縮・回転などの操作は SwiftUI オーバーレイ (ElementSelectionView) 側で実施。
+//  ズーム/パンは撤廃し、描画専用サーフェスとして動作します。
+//  UIViewRepresentable を通じて SwiftUI と統合しています。
 
 import UIKit
 import SwiftUI
@@ -62,36 +61,19 @@ class CanvasView: UIView {
     /// 要素の操作を終了するときのコールバック
     var onManipulationEnded: (() -> Void)?
     
+    /// 選択要素の変形変更通知（位置・サイズ・回転）
+    var onElementTransformChanged: ((LogoElement, CGPoint, CGSize, CGFloat) -> Void)?
+    
     /// 新しい要素を作成するときのコールバック
     var onCreateElement: ((CGPoint) -> Void)?
     
     /// 要素の削除を実行するときのコールバック
     var onElementDelete: (() -> Void)?
-    
-    /// テキスト要素の編集を開始するときのコールバック
-    var onTextEditStarted: ((TextElement) -> Void)?
-    
+
     /// 編集中のテキスト要素のID
     var editingTextElementId: UUID?
     
-    
-    /// ズーム比率
-    var zoomScale: CGFloat = 1.0 {
-        didSet {
-            // ズーム比率の制限（最小0.1、最大5.0）
-            zoomScale = min(max(zoomScale, 0.1), 5.0)
-            updateTransform()
-        }
-    }
-    
-    /// パン（平行移動）のオフセット
-    var panOffset: CGPoint = .zero {
-        didSet {
-            updateTransform()
-        }
-    }
-    
-    /// 表示用の変換行列
+    /// 表示用の変換行列（ズーム/パン撤廃に伴い恒等）
     private var viewTransform: CGAffineTransform = .identity
     
     /// 操作ハンドルの半径
@@ -142,20 +124,6 @@ class CanvasView: UIView {
     private func setupView() {
         backgroundColor = .systemGray6
         isMultipleTouchEnabled = true
-        
-        // ピンチジェスチャーの追加（ズーム用）
-        let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinchGesture(_:)))
-        addGestureRecognizer(pinchGesture)
-        
-        // パンジェスチャーの追加（キャンバス移動用）
-        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
-        panGesture.minimumNumberOfTouches = 2
-        addGestureRecognizer(panGesture)
-        
-        // ダブルタップジェスチャーの追加（ズームリセット用）
-        let doubleTapGesture = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTapGesture(_:)))
-        doubleTapGesture.numberOfTapsRequired = 2
-        addGestureRecognizer(doubleTapGesture)
     }
     
     // MARK: - 描画
@@ -224,11 +192,6 @@ class CanvasView: UIView {
         }
         
         context.restoreGState()
-        
-        // 選択中の要素があれば選択ハンドルを描画
-        if let selectedElement = selectedElement {
-            drawSelectionHandles(for: selectedElement, in: context)
-        }
     }
     
     /// 背景の描画
@@ -403,12 +366,11 @@ class CanvasView: UIView {
         // 座標変換
         let transformedLocation = location.applying(viewTransform.inverted())
         
-        // エディタモードに応じた処理
+        // エディタモードに応じた処理（操作ジェスチャーは別レイヤーに委譲）
         switch editorMode {
         case .select:
-            handleSelectTouchBegan(at: transformedLocation)
+            break
         case .textCreate, .shapeCreate, .imageImport:
-            // 要素作成モードでは何もしない（タッチエンド時に作成）
             break
         case .delete:
             handleDeleteTouchBegan(at: transformedLocation)
@@ -417,94 +379,38 @@ class CanvasView: UIView {
     
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesMoved(touches, with: event)
-        
-        guard let touch = touches.first else { return }
-        let location = touch.location(in: self)
-        
-        // 座標変換
-        let transformedLocation = location.applying(viewTransform.inverted())
-        
-        // 操作中の場合
-        if currentManipulationType != .none {
-            onManipulationChanged?(transformedLocation)
-        }
     }
     
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesEnded(touches, with: event)
-        
+
         guard let touch = touches.first else { return }
         let location = touch.location(in: self)
-        
-        // 座標変換
         let transformedLocation = location.applying(viewTransform.inverted())
-        
-        // 操作中の場合は終了
-        if currentManipulationType != .none {
-            onManipulationEnded?()
-            currentManipulationType = .none
-            return
-        }
-        
-        // 短いタップの場合（クリック）
+
         let distance = hypot(touchStartPoint.x - location.x, touchStartPoint.y - location.y)
-        if distance < 5 {  // 閾値を小さくして、タップとドラッグを区別
-            switch editorMode {
-            case .select:
-                handleSelectTouchEnded(at: transformedLocation)
-            case .textCreate, .shapeCreate, .imageImport:
-                onCreateElement?(transformedLocation)
-            case .delete:
-                break
-            }
+
+        print("DEBUG: touchesEnded - tapCount: \(touch.tapCount), distance: \(distance), mode: \(editorMode)")
+
+        guard distance < 5 else { return }
+
+        // 通常のタップ処理
+        switch editorMode {
+        case .select:
+            break
+        case .textCreate, .shapeCreate, .imageImport:
+            onCreateElement?(transformedLocation)
+        case .delete:
+            break
         }
     }
     
     // MARK: - タッチイベントハンドラ
     
-    /// 選択モードのタッチ開始処理
+    /// 選択モードのタッチ開始処理（選択のみ）
     private func handleSelectTouchBegan(at location: CGPoint) {
-        // 位置にある要素をヒットテスト
         let hitElement = hitTestElement(at: location)
-        
-        if let selectedElement = selectedElement {
-            // 選択中の要素がある場合
-            
-            // 最初に、要素自体がタッチされているかチェック
-            if selectedElement.hitTest(location) {
-                // 要素の中央のハンドル以外の領域がタップされた場合は移動開始
-                let centerHandleHit = pointInHandle(location, handlePosition: CGPoint(x: selectedElement.frame.midX, y: selectedElement.frame.midY))
-                
-                if !centerHandleHit {
-                    // 移動開始
-                    currentManipulationType = .move
-                    onManipulationStarted?(.move, location)
-                    return
-                }
-            }
-            
-            // ハンドルのヒットテスト
-            let manipulationType = hitTestHandle(for: selectedElement, at: location)
-            if manipulationType != .none {
-                currentManipulationType = manipulationType
-                onManipulationStarted?(manipulationType, location)
-                return
-            }
-        }
-        
-        // 選択中の要素がない、またはヒットしなかった場合
-        // 新しい要素を選択する際に、onElementSelectedを呼ぶ
-        if let hitElement = hitElement {
-            // 要素を選択
-            onElementSelected?(hitElement)
-            
-            // 要素が選択された場合、すぐに移動開始
-            currentManipulationType = .move
-            onManipulationStarted?(.move, location)
-        } else {
-            // 何もヒットしなかった場合、選択解除
-            onElementSelected?(nil)
-        }
+        onElementSelected?(hitElement)
     }
     
     /// 選択モードのタッチ終了処理
@@ -548,131 +454,13 @@ class CanvasView: UIView {
         
         return sortedElements.first { $0.hitTest(testPoint) }
     }
-    
-    /// 選択中の要素のハンドルのヒットテスト
-    private func hitTestHandle(for element: LogoElement, at point: CGPoint) -> ElementManipulationType {
-        let frame = element.frame
-        
-        // 要素がロックされている場合は何もできない
-        if element.isLocked {
-            return .none
-        }
-        
-        // 回転ハンドル
-        let rotationHandlePosition = CGPoint(x: frame.midX, y: frame.minY - 30)
-        if pointInHandle(point, handlePosition: rotationHandlePosition) {
-            return .rotate
-        }
-        
-        // リサイズハンドル（四隅）
-        if pointInHandle(point, handlePosition: CGPoint(x: frame.minX, y: frame.minY)) ||  // 左上
-            pointInHandle(point, handlePosition: CGPoint(x: frame.maxX, y: frame.minY)) ||  // 右上
-            pointInHandle(point, handlePosition: CGPoint(x: frame.minX, y: frame.maxY)) ||  // 左下
-            pointInHandle(point, handlePosition: CGPoint(x: frame.maxX, y: frame.maxY)) ||  // 右下
-            pointInHandle(point, handlePosition: CGPoint(x: frame.midX, y: frame.minY)) ||  // 上中央
-            pointInHandle(point, handlePosition: CGPoint(x: frame.midX, y: frame.maxY)) ||  // 下中央
-            pointInHandle(point, handlePosition: CGPoint(x: frame.minX, y: frame.midY)) ||  // 左中央
-            pointInHandle(point, handlePosition: CGPoint(x: frame.maxX, y: frame.midY)) {   // 右中央
-            return .resize
-        }
-        
-        // 中央（移動ハンドル）
-        if pointInHandle(point, handlePosition: CGPoint(x: frame.midX, y: frame.midY)) {
-            return .move
-        }
-        
-        return .none // 何もしない
-    }
-    
-    /// 当たり判定チェック
-    private func pointInHandle(_ point: CGPoint, handlePosition: CGPoint) -> Bool {
-        let handleRect = CGRect(
-            x: handlePosition.x - handleRadius,
-            y: handlePosition.y - handleRadius,
-            width: handleRadius * 2,
-            height: handleRadius * 2
-        )
-        return handleRect.contains(point) // 当たり判定返す　※contains(point) は 「pointが矩形の中にあるか？」
-    }
-    
-    // MARK: - ジェスチャーハンドラ
-    
-    /// ピンチジェスチャー処理（ズーム）
-    @objc private func handlePinchGesture(_ gesture: UIPinchGestureRecognizer) {
-        switch gesture.state {
-        case .began:
-            // ジェスチャー開始時の処理
-            break
-            
-        case .changed:
-            // ズーム比率を更新
-            zoomScale *= gesture.scale
-            gesture.scale = 1.0 // スケールをリセット（累積を防ぐ）
-            
-        case .ended, .cancelled:
-            // ジェスチャー終了時の処理
-            break
-            
-        default:
-            break
-        }
-    }
-    
-    /// パンジェスチャー処理（キャンバス移動）
-    @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
-        // 2本指でパンしたときだけキャンバスを移動
-        if gesture.numberOfTouches >= 2 {
-            let translation = gesture.translation(in: self)
-            
-            switch gesture.state {
-            case .changed:
-                // パンオフセットを更新
-                panOffset.x += translation.x
-                panOffset.y += translation.y
-                gesture.setTranslation(.zero, in: self)
-                
-            default:
-                break
-            }
-        }
-    }
-    
-    /// ダブルタップジェスチャー処理（ズームリセット）
-    @objc private func handleDoubleTapGesture(_ gesture: UITapGestureRecognizer) {
-        let touchPoint = gesture.location(in: self)
-        let canvasPoint = convertPointToCanvas(touchPoint)
-        
-        // タップされた要素を検索
-        if let tappedElement = hitTestElement(at: canvasPoint) {
-            // テキスト要素の場合は編集モードに入る
-            if let textElement = tappedElement as? TextElement {
-                onTextEditStarted?(textElement)
-                return
-            }
-        }
-        
-        // テキスト要素でない場合はズームリセット
-        resetViewTransform()
-    }
-    
+
     // MARK: - 座標変換
     
-    /// 変換行列の更新
-    private func updateTransform() {
-        // スケールと移動を組み合わせた変換行列を作成
-        var transform = CGAffineTransform.identity
-        transform = transform.translatedBy(x: panOffset.x, y: panOffset.y)
-        transform = transform.scaledBy(x: zoomScale, y: zoomScale)
-        
-        viewTransform = transform
-        setNeedsDisplay()
-    }
-    
-    /// ビュー変換のリセット
+    /// ビュー変換のリセット（ズーム/パン撤廃につき恒等）
     func resetViewTransform() {
-        zoomScale = 1.0
-        panOffset = .zero
-        updateTransform()
+        viewTransform = .identity
+        setNeedsDisplay()
     }
     
     // MARK: - ユーティリティ
@@ -726,12 +514,6 @@ struct CanvasViewRepresentable: UIViewRepresentable {
     
     /// グリッドスナップフラグ
     var snapToGrid: Bool = false
-    
-    /// ズーム比率のバインディング
-    @Binding var zoomScale: CGFloat
-    
-    /// パンオフセットのバインディング
-    @Binding var panOffset: CGPoint
     
     /// コーディネータークラス - UIKitの委託パターンをSwiftUIに橋渡し
     class Coordinator: NSObject {
@@ -810,10 +592,11 @@ struct CanvasViewRepresentable: UIViewRepresentable {
                     
                     self?.parent.viewModel.endManipulation()
                 }
-            }
-            
-            // 要素作成時のコールバック
-            canvasView.onCreateElement = { [viewModel = parent.viewModel] point in
+        }
+        
+        // 要素作成時のコールバック
+        canvasView.onCreateElement = { [viewModel = parent.viewModel] point in
+            Task { @MainActor in
                 print("DEBUG: onCreateElementコールバック開始 - 位置: \(point)")
                 print("DEBUG: 現在のモード: \(viewModel.editorMode)")
                 switch viewModel.editorMode {
@@ -836,19 +619,15 @@ struct CanvasViewRepresentable: UIViewRepresentable {
                 print("DEBUG: 選択モードに戻る")
                 viewModel.editorMode = .select
             }
-            
-            // 要素削除時のコールバック
-            canvasView.onElementDelete = { [viewModel = parent.viewModel] in
+        }
+        
+        // 要素削除時のコールバック
+        canvasView.onElementDelete = { [viewModel = parent.viewModel] in
+            Task { @MainActor in
                 viewModel.deleteSelectedElement()
             }
-            
-            // テキスト編集開始時のコールバック
-            canvasView.onTextEditStarted = { [viewModel = parent.viewModel] textElement in
-                DispatchQueue.main.async {
-                    viewModel.startTextEditing(for: textElement)
-                }
-            }
-            
+        }
+
         }
     }
     
@@ -861,23 +640,6 @@ struct CanvasViewRepresentable: UIViewRepresentable {
         // コールバックの設定
         context.coordinator.setupCallbacks(canvasView: canvasView)
         
-        // カメラ位置変更通知の監視を追加
-        NotificationCenter.default.addObserver(
-            forName: Notification.Name("CenterCameraOnPoint"),
-            object: nil,
-            queue: .main
-        ) { notification in
-            if let centerPoint = notification.object as? CGPoint {
-                // キャンバスビューのカメラ位置を更新
-                canvasView.panOffset = CGPoint(
-                    x: -centerPoint.x + canvasView.bounds.width / 2,
-                    y: -centerPoint.y + canvasView.bounds.height / 2
-                )
-                // ビューを再描画
-                canvasView.setNeedsDisplay()
-            }
-        }
-        
         return canvasView
     }
     
@@ -889,23 +651,8 @@ struct CanvasViewRepresentable: UIViewRepresentable {
         canvasView.editorMode = viewModel.editorMode
         canvasView.showGrid = showGrid
         canvasView.snapToGrid = snapToGrid
-        
-        // ズーム・パンの値を同期
-        canvasView.zoomScale = zoomScale
-        canvasView.panOffset = panOffset
-        
         // 編集中のテキスト要素IDを同期
         canvasView.editingTextElementId = viewModel.editingTextElement?.id
-        
-        // CanvasViewからの変更をバインディングに反映するコールバックを設定
-        DispatchQueue.main.async {
-            if self.zoomScale != canvasView.zoomScale {
-                self.zoomScale = canvasView.zoomScale
-            }
-            if self.panOffset != canvasView.panOffset {
-                self.panOffset = canvasView.panOffset
-            }
-        }
     }
     
     /// コーディネーターの作成

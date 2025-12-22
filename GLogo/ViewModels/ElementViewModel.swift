@@ -40,9 +40,17 @@ class ElementViewModel: ObservableObject {
     
     /// 画像要素（キャスト済み）
     @Published private(set) var imageElement: ImageElement?
-    
+
     /// 購読の保持
     private var cancellables = Set<AnyCancellable>()
+
+    /// 最新のみ実行するレンダリングスケジューラ
+    private let renderScheduler = RenderScheduler()
+
+    /// ジェスチャー変形用の基準値
+    private var gestureBasePosition: CGPoint?
+    private var gestureBaseSize: CGSize?
+    private var gestureBaseRotation: CGFloat?
     
     // MARK: - イニシャライザ
     
@@ -51,6 +59,7 @@ class ElementViewModel: ObservableObject {
         
         // エディタの選択要素の変更を監視
         editorViewModel.$selectedElement
+            .receive(on: RunLoop.main)
             .sink { [weak self] selectedElement in
                 self?.updateElement(selectedElement)
             }
@@ -112,6 +121,39 @@ class ElementViewModel: ObservableObject {
         
         updateElement(to: element)
     }
+
+    /// ジェスチャーによる変形（移動・拡大縮小・回転）
+    func applyGestureTransform(translation: CGSize?, scale: CGFloat?, rotation: CGFloat?, ended: Bool) {
+        guard let element = element else { return }
+
+        // 基準値を保持（ジェスチャー開始時のみ）
+        if gestureBasePosition == nil { gestureBasePosition = element.position }
+        if gestureBaseSize == nil { gestureBaseSize = element.size }
+        if gestureBaseRotation == nil { gestureBaseRotation = element.rotation }
+
+        if let basePos = gestureBasePosition, let delta = translation {
+            element.position = CGPoint(x: basePos.x + delta.width, y: basePos.y + delta.height)
+        }
+
+        if let baseSize = gestureBaseSize, let scale = scale {
+            let clampedScale = max(scale, 0.01) // 極端な縮小を防止
+            element.size = CGSize(width: baseSize.width * clampedScale, height: baseSize.height * clampedScale)
+        }
+
+        if let baseRot = gestureBaseRotation, let deltaRot = rotation {
+            element.rotation = baseRot + deltaRot
+        }
+
+        updateElement(to: element)
+
+        if ended {
+            gestureBasePosition = nil
+            gestureBaseSize = nil
+            gestureBaseRotation = nil
+            editorViewModel?.markProjectModified()
+        }
+    }
+
     
     /// 不透明度の更新
     func updateOpacity(_ opacity: CGFloat) {
@@ -456,23 +498,7 @@ class ElementViewModel: ObservableObject {
     
     // MARK: - 画像要素の更新
     
-    /// フィッティングモードの更新
-    func updateFitMode(_ fitMode: ImageFitMode) {
-        print("DEBUG: ElementViewModel - フィッティングモード更新開始: \(fitMode)")
-        guard let imageElement = imageElement else {
-            print("DEBUG: ElementViewModel - imageElementがnilのため更新できません")
-            return
-        }
-        
-        // 現在と同じモードなら何もしない
-        if imageElement.fitMode == fitMode {
-            print("DEBUG: ElementViewModel - モードが同じなので変更をスキップします")
-            return
-        }
-        
-        // EditorViewModelの対応するメソッドを呼び出す
-        editorViewModel?.updateImageFitMode(imageElement, newMode: fitMode)
-    }
+    // fitMode 廃止: フィットモード更新は行わない
     
     /// 彩度調整の更新
     func updateSaturation(_ saturation: CGFloat) {
@@ -721,26 +747,65 @@ class ElementViewModel: ObservableObject {
             print("DEBUG: ElementViewModel - ガウシアンブラー半径が同じなので変更をスキップします")
             return
         }
-        
-        let oldValue = imageElement.gaussianBlurRadius
-        
+
         // 編集開始をマーク
         imageElement.startEditing()
-        
+
         // 即座に値を更新（UI即座反応のため）
         imageElement.gaussianBlurRadius = radius
-        
-        // EditorViewModelの対応するメソッドを呼び出す
-        editorViewModel?.updateImageGaussianBlur(imageElement, newRadius: radius)
-        
-        if imageElement.originalImageIdentifier != nil {
-            imageElement.recordMetadataEdit(
-                fieldKey: "gaussianBlurRadius",
-                oldValue: oldValue,
-                newValue: radius)
+
+        // プレビュー描画を更新（最新のみ実行）
+        editorViewModel?.updateImageElement(imageElement)
+
+        renderScheduler.schedule { [weak self] in
+            guard let self = self, let imageElement = self.imageElement else { return }
+
+            imageElement.endEditing()
+            imageElement.cachedImage = nil
+            Task { @MainActor in
+                self.editorViewModel?.updateImageElement(imageElement)
+            }
         }
+        return
     }
     
+    /// トーンカーブの更新（プレビュー + 最終品質の2段階処理, RenderSchedulerを利用）
+    func updateToneCurveData(_ newData: ToneCurveData) {
+        guard let imageElement = imageElement else { return }
+
+        // データを即座に更新
+        imageElement.toneCurveData = newData
+
+        // 編集中フラグを立てる（プレビュー品質で処理）
+        imageElement.startEditing()
+
+        #if DEBUG
+        print("🎨 [ElementViewModel] トーンカーブ更新 - プレビュー処理")
+        #endif
+
+        // 即座にキャッシュをクリアして再描画（プレビュー品質）
+        imageElement.cachedImage = nil
+        editorViewModel?.updateImageElement(imageElement)
+
+        // 新しい最新のみ実行のスケジューラを利用（旧タイマーは不使用）
+        renderScheduler.schedule { [weak self] in
+            guard let self = self, let imageElement = self.imageElement else { return }
+
+            #if DEBUG
+            print("✨ [ElementViewModel] トーンカーブ確定 - 最終品質処理 (RenderScheduler)")
+            #endif
+
+            // 編集終了フラグを立てる（最終品質で処理）
+            imageElement.endEditing()
+
+            // キャッシュをクリアして最終品質で再描画
+            imageElement.cachedImage = nil
+            Task { @MainActor in
+                self.editorViewModel?.updateImageElement(imageElement)
+            }
+        }
+    }
+
     /// ティントカラーの更新
     func updateTintColor(_ color: UIColor?, intensity: CGFloat) {
         print("DEBUG: ElementViewModel - ティントカラー更新開始")
@@ -943,7 +1008,6 @@ class ElementViewModel: ObservableObject {
             )
         }
     }
-
     
     // MARK: - 更新の適用
     
