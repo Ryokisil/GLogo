@@ -152,7 +152,9 @@ struct EditorView: View {
             // 手動背景除去画面への遷移
             .navigationDestination(isPresented: $isNavigatingToManualRemoval) {
                 if let imageElement = viewModel.selectedElement as? ImageElement {
-                    ManualBackgroundRemovalView(imageElement: imageElement, editorViewModel: viewModel)
+                    ManualBackgroundRemovalView(imageElement: imageElement) { editedImage in
+                        viewModel.applyManualBackgroundRemovalResult(editedImage, to: imageElement)
+                    }
                 }
             }
             // 保存オプション（iOS16+はconfirmationDialogに統一）
@@ -620,6 +622,7 @@ struct EditorView: View {
                     }
                 }
             }
+
         }
     }
     

@@ -12,6 +12,9 @@ import Vision
 
 struct BackgroundRemovalUseCase {
     /// Vision フレームワークを使用した背景除去処理（解像度保持版）
+    /// - Parameters:
+    ///   - image: 背景除去対象の画像
+    /// - Returns: 背景除去後の画像
     func removeBackground(from image: UIImage) async throws -> UIImage {
         guard let cgImage = image.cgImage else {
             throw NSError(
@@ -102,16 +105,83 @@ struct BackgroundRemovalUseCase {
         }
     }
 
+    /// Vision フレームワークで前景マスクを生成
+    /// - Parameters:
+    ///   - image: マスク生成対象の画像
+    /// - Returns: 前景マスク画像（白=前景、黒=背景）
+    func generateMask(from image: UIImage) async throws -> UIImage {
+        guard let cgImage = image.cgImage else {
+            throw NSError(
+                domain: "ImageCropError",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "CGImageの作成に失敗"]
+            )
+        }
+
+        let request = VNGenerateForegroundInstanceMaskRequest()
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let handler = VNImageRequestHandler(cgImage: cgImage)
+
+            do {
+                try handler.perform([request])
+
+                guard let result = request.results?.first else {
+                    continuation.resume(throwing: NSError(
+                        domain: "VisionError",
+                        code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "前景マスクの生成に失敗"]
+                    ))
+                    return
+                }
+
+                let lowResMask = try result.generateScaledMaskForImage(forInstances: result.allInstances, from: handler)
+                let lowResMaskImage = CIImage(cvPixelBuffer: lowResMask)
+
+                let originalSize = image.size
+                let originalScale = image.scale
+                let pixelSize = CGSize(
+                    width: originalSize.width * originalScale,
+                    height: originalSize.height * originalScale
+                )
+
+                let highResMaskImage = upscaleMask(lowResMaskImage, to: pixelSize)
+                let featheredMask = createFeatheredMask(from: highResMaskImage)
+                    .cropped(to: CGRect(origin: .zero, size: pixelSize))
+
+                let context = CIContext()
+                guard let resultCGImage = context.createCGImage(featheredMask, from: featheredMask.extent) else {
+                    continuation.resume(throwing: NSError(
+                        domain: "CoreImageError",
+                        code: 5,
+                        userInfo: [NSLocalizedDescriptionKey: "マスク画像の生成に失敗"]
+                    ))
+                    return
+                }
+
+                let maskImage = UIImage(
+                    cgImage: resultCGImage,
+                    scale: originalScale,
+                    orientation: image.imageOrientation
+                )
+                continuation.resume(returning: maskImage)
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
+    }
+
     /// AI生成マスクを高解像度にアップスケール（キャラクター検出精度を保持）
+    /// - Parameters:
+    ///   - lowResMask: 低解像度マスク画像
+    ///   - targetSize: アップスケール先のピクセルサイズ
+    /// - Returns: アップスケール後のマスク画像
     private func upscaleMask(_ lowResMask: CIImage, to targetSize: CGSize) -> CIImage {
         let currentExtent = lowResMask.extent
         let currentSize = currentExtent.size
 
         let scaleX = targetSize.width / currentSize.width
         let scaleY = targetSize.height / currentSize.height
-
-        print("DEBUG: マスクアップスケール - 元: \(currentSize) → 目標: \(targetSize)")
-        print("DEBUG: スケール比率 - X: \(scaleX), Y: \(scaleY)")
 
         guard let scaleFilter = CIFilter(name: "CILanczosScaleTransform") else {
             print("WARNING: CILanczosScaleTransform が利用不可 - バイリニア補間を使用")
@@ -136,6 +206,9 @@ struct BackgroundRemovalUseCase {
     }
 
     /// AIマスクに浸透効果を適用（高精度を保持しつつエッジを柔らかく）
+    /// - Parameters:
+    ///   - originalMask: 元のマスク画像
+    /// - Returns: ぼかし・ガンマ調整後のマスク画像
     private func createFeatheredMask(from originalMask: CIImage) -> CIImage {
         guard let blurFilter = CIFilter(name: "CIGaussianBlur") else {
             print("WARNING: CIGaussianBlur が利用できません - 元のマスクを使用")
@@ -145,7 +218,7 @@ struct BackgroundRemovalUseCase {
         let maskSize = originalMask.extent.size
         let baseRadius: CGFloat = 6.0
         let scaleFactor = max(maskSize.width, maskSize.height) / 1024.0
-        let adjustedRadius = baseRadius * max(1.0, scaleFactor)
+        _ = baseRadius * max(1.0, scaleFactor)
 
         blurFilter.setValue(originalMask, forKey: kCIInputImageKey)
         blurFilter.setValue(6.0, forKey: kCIInputRadiusKey)

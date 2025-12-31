@@ -1131,6 +1131,220 @@ struct ImageTintColorChangedEvent: EditorEvent {
     }
 }
 
+/// 画像内容差し替えイベント（手動背景除去などの結果適用）
+struct ImageContentReplacedEvent: EditorEvent {
+    var eventName = "ImageContentReplaced"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldImageData: Data?
+    let oldImageFileName: String?
+    let oldOriginalImageURL: URL?
+    let oldOriginalImagePath: String?
+    let oldOriginalImageIdentifier: String?
+    let oldToneCurveData: ToneCurveData
+    let oldSaturation: CGFloat
+    let oldBrightness: CGFloat
+    let oldContrast: CGFloat
+    let oldHighlights: CGFloat
+    let oldShadows: CGFloat
+    let oldHue: CGFloat
+    let oldSharpness: CGFloat
+    let oldGaussianBlurRadius: CGFloat
+    let oldTintIntensity: CGFloat
+    var oldTintColor: UIColor?
+    let newImageData: Data
+    let newOriginalImageIdentifier: String
+
+    var description: String {
+        return "画像内容を差し替えました"
+    }
+
+    /// 画像差し替えイベントを生成する
+    /// - Parameters:
+    ///   - elementId: 対象要素のID
+    ///   - oldImageData: 以前の画像データ
+    ///   - oldImageFileName: 以前の画像ファイル名
+    ///   - oldOriginalImageURL: 以前の画像URL
+    ///   - oldOriginalImagePath: 以前の画像パス
+    ///   - oldOriginalImageIdentifier: 以前の画像識別子
+    ///   - oldToneCurveData: 以前のトーンカーブ
+    ///   - oldSaturation: 以前の彩度
+    ///   - oldBrightness: 以前の明度
+    ///   - oldContrast: 以前のコントラスト
+    ///   - oldHighlights: 以前のハイライト補正
+    ///   - oldShadows: 以前のシャドウ補正
+    ///   - oldHue: 以前の色相
+    ///   - oldSharpness: 以前のシャープネス
+    ///   - oldGaussianBlurRadius: 以前のガウシアンブラー半径
+    ///   - oldTintIntensity: 以前のティント強度
+    ///   - oldTintColor: 以前のティントカラー
+    ///   - newImageData: 差し替え後の画像データ
+    ///   - newOriginalImageIdentifier: 差し替え後の画像識別子
+    /// - Returns: なし
+    init(
+        elementId: UUID,
+        oldImageData: Data?,
+        oldImageFileName: String?,
+        oldOriginalImageURL: URL?,
+        oldOriginalImagePath: String?,
+        oldOriginalImageIdentifier: String?,
+        oldToneCurveData: ToneCurveData,
+        oldSaturation: CGFloat,
+        oldBrightness: CGFloat,
+        oldContrast: CGFloat,
+        oldHighlights: CGFloat,
+        oldShadows: CGFloat,
+        oldHue: CGFloat,
+        oldSharpness: CGFloat,
+        oldGaussianBlurRadius: CGFloat,
+        oldTintIntensity: CGFloat,
+        oldTintColor: UIColor?,
+        newImageData: Data,
+        newOriginalImageIdentifier: String
+    ) {
+        self.elementId = elementId
+        self.oldImageData = oldImageData
+        self.oldImageFileName = oldImageFileName
+        self.oldOriginalImageURL = oldOriginalImageURL
+        self.oldOriginalImagePath = oldOriginalImagePath
+        self.oldOriginalImageIdentifier = oldOriginalImageIdentifier
+        self.oldToneCurveData = oldToneCurveData
+        self.oldSaturation = oldSaturation
+        self.oldBrightness = oldBrightness
+        self.oldContrast = oldContrast
+        self.oldHighlights = oldHighlights
+        self.oldShadows = oldShadows
+        self.oldHue = oldHue
+        self.oldSharpness = oldSharpness
+        self.oldGaussianBlurRadius = oldGaussianBlurRadius
+        self.oldTintIntensity = oldTintIntensity
+        self.oldTintColor = oldTintColor
+        self.newImageData = newImageData
+        self.newOriginalImageIdentifier = newOriginalImageIdentifier
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case timestamp, elementId
+        case oldImageData, oldImageFileName, oldOriginalImageURL, oldOriginalImagePath, oldOriginalImageIdentifier
+        case oldToneCurveData, oldSaturation, oldBrightness, oldContrast, oldHighlights, oldShadows
+        case oldHue, oldSharpness, oldGaussianBlurRadius, oldTintIntensity
+        case oldTintColorData, hasOldTintColor
+        case newImageData, newOriginalImageIdentifier
+    }
+
+    /// エンコード処理（UIColorの変換を含む）
+    /// - Parameters:
+    ///   - encoder: エンコーダー
+    /// - Returns: なし
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(elementId, forKey: .elementId)
+        try container.encodeIfPresent(oldImageData, forKey: .oldImageData)
+        try container.encodeIfPresent(oldImageFileName, forKey: .oldImageFileName)
+        try container.encodeIfPresent(oldOriginalImageURL, forKey: .oldOriginalImageURL)
+        try container.encodeIfPresent(oldOriginalImagePath, forKey: .oldOriginalImagePath)
+        try container.encodeIfPresent(oldOriginalImageIdentifier, forKey: .oldOriginalImageIdentifier)
+        try container.encode(oldToneCurveData, forKey: .oldToneCurveData)
+        try container.encode(oldSaturation, forKey: .oldSaturation)
+        try container.encode(oldBrightness, forKey: .oldBrightness)
+        try container.encode(oldContrast, forKey: .oldContrast)
+        try container.encode(oldHighlights, forKey: .oldHighlights)
+        try container.encode(oldShadows, forKey: .oldShadows)
+        try container.encode(oldHue, forKey: .oldHue)
+        try container.encode(oldSharpness, forKey: .oldSharpness)
+        try container.encode(oldGaussianBlurRadius, forKey: .oldGaussianBlurRadius)
+        try container.encode(oldTintIntensity, forKey: .oldTintIntensity)
+        try container.encode(newImageData, forKey: .newImageData)
+        try container.encode(newOriginalImageIdentifier, forKey: .newOriginalImageIdentifier)
+
+        try container.encode(oldTintColor != nil, forKey: .hasOldTintColor)
+        if let oldTintColor = oldTintColor {
+            let colorData = try NSKeyedArchiver.archivedData(withRootObject: oldTintColor, requiringSecureCoding: false)
+            try container.encode(colorData, forKey: .oldTintColorData)
+        }
+    }
+
+    /// デコード処理（UIColorの復元を含む）
+    /// - Parameters:
+    ///   - decoder: デコーダー
+    /// - Returns: なし
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        elementId = try container.decode(UUID.self, forKey: .elementId)
+        oldImageData = try container.decodeIfPresent(Data.self, forKey: .oldImageData)
+        oldImageFileName = try container.decodeIfPresent(String.self, forKey: .oldImageFileName)
+        oldOriginalImageURL = try container.decodeIfPresent(URL.self, forKey: .oldOriginalImageURL)
+        oldOriginalImagePath = try container.decodeIfPresent(String.self, forKey: .oldOriginalImagePath)
+        oldOriginalImageIdentifier = try container.decodeIfPresent(String.self, forKey: .oldOriginalImageIdentifier)
+        oldToneCurveData = try container.decode(ToneCurveData.self, forKey: .oldToneCurveData)
+        oldSaturation = try container.decode(CGFloat.self, forKey: .oldSaturation)
+        oldBrightness = try container.decode(CGFloat.self, forKey: .oldBrightness)
+        oldContrast = try container.decode(CGFloat.self, forKey: .oldContrast)
+        oldHighlights = try container.decode(CGFloat.self, forKey: .oldHighlights)
+        oldShadows = try container.decode(CGFloat.self, forKey: .oldShadows)
+        oldHue = try container.decode(CGFloat.self, forKey: .oldHue)
+        oldSharpness = try container.decode(CGFloat.self, forKey: .oldSharpness)
+        oldGaussianBlurRadius = try container.decode(CGFloat.self, forKey: .oldGaussianBlurRadius)
+        oldTintIntensity = try container.decode(CGFloat.self, forKey: .oldTintIntensity)
+        newImageData = try container.decode(Data.self, forKey: .newImageData)
+        newOriginalImageIdentifier = try container.decode(String.self, forKey: .newOriginalImageIdentifier)
+
+        let hasOldTintColor = try container.decode(Bool.self, forKey: .hasOldTintColor)
+        oldTintColor = nil
+        if hasOldTintColor {
+            let colorData = try container.decode(Data.self, forKey: .oldTintColorData)
+            oldTintColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: colorData)
+        }
+    }
+
+    /// 画像内容を差し替える
+    /// - Parameters:
+    ///   - project: 対象プロジェクト
+    /// - Returns: なし
+    func apply(to project: LogoProject) {
+        guard let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement else {
+            return
+        }
+        element.replaceImageSource(
+            with: newImageData,
+            resetAdjustments: true,
+            originalIdentifier: newOriginalImageIdentifier
+        )
+    }
+
+    /// 画像内容を元に戻す
+    /// - Parameters:
+    ///   - project: 対象プロジェクト
+    /// - Returns: なし
+    func revert(from project: LogoProject) {
+        guard let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement else {
+            return
+        }
+
+        element.restoreImageSource(
+            imageData: oldImageData,
+            fileName: oldImageFileName,
+            url: oldOriginalImageURL,
+            path: oldOriginalImagePath,
+            originalIdentifier: oldOriginalImageIdentifier
+        )
+
+        element.toneCurveData = oldToneCurveData
+        element.saturationAdjustment = oldSaturation
+        element.brightnessAdjustment = oldBrightness
+        element.contrastAdjustment = oldContrast
+        element.highlightsAdjustment = oldHighlights
+        element.shadowsAdjustment = oldShadows
+        element.hueAdjustment = oldHue
+        element.sharpnessAdjustment = oldSharpness
+        element.gaussianBlurRadius = oldGaussianBlurRadius
+        element.tintColor = oldTintColor
+        element.tintIntensity = oldTintIntensity
+    }
+}
+
 /// 画像フレーム表示変更イベント
 struct ImageShowFrameChangedEvent: EditorEvent {
     var eventName = "ImageShowFrameChanged"

@@ -576,14 +576,63 @@ class ImageElement: LogoElement {
         cachedImage = nil
         previewImage = nil  // プレビューもリセット
     }
+
+    /// 画像ソースを差し替える
+    /// - Parameters:
+    ///   - imageData: 差し替える画像データ
+    ///   - resetAdjustments: フィルター調整値を初期化するかどうか
+    ///   - originalIdentifier: 差し替え後に設定する識別子（nilの場合は新規生成）
+    /// - Returns: なし
+    func replaceImageSource(with imageData: Data, resetAdjustments: Bool, originalIdentifier: String? = nil) {
+        self.imageData = imageData
+        imageFileName = nil
+        originalImageURL = nil
+        originalImagePath = nil
+        originalImageIdentifier = originalIdentifier ?? UUID().uuidString
+
+        if let image = UIImage(data: imageData) {
+            updateSizeFromImage(image)
+        }
+
+        if resetAdjustments {
+            resetToOriginal()
+        }
+
+        clearImageCaches()
+    }
+
+    /// 画像ソースを復元する
+    /// - Parameters:
+    ///   - imageData: 復元する画像データ
+    ///   - fileName: 復元する画像ファイル名
+    ///   - url: 復元する画像URL
+    ///   - path: 復元する画像パス
+    ///   - originalIdentifier: 復元する識別子
+    /// - Returns: なし
+    func restoreImageSource(imageData: Data?,fileName: String?,url: URL?,path: String?,originalIdentifier: String?) {
+        self.imageData = imageData
+        imageFileName = fileName
+        originalImageURL = url
+        originalImagePath = path
+        originalImageIdentifier = originalIdentifier
+
+        if let data = imageData, let image = UIImage(data: data) {
+            updateSizeFromImage(image)
+        } else if let path = path, let image = UIImage(contentsOfFile: path) {
+            updateSizeFromImage(image)
+        } else if let fileName = fileName, let image = UIImage(named: fileName) {
+            updateSizeFromImage(image)
+        } else if let url = url, url.isFileURL, let image = UIImage(contentsOfFile: url.path) {
+            updateSizeFromImage(image)
+        }
+
+        clearImageCaches()
+    }
     
     /// 画像のサイズに基づいて要素のサイズを更新
     private func updateSizeFromImage(_ image: UIImage) {
         // キャンバスの15%程度を最大サイズとして使用
         let maxSize: CGFloat = min(canvasSize.width, canvasSize.height) * 0.15
-        
-        print("DEBUG: キャンバスサイズ: \(canvasSize)")
-        print("DEBUG: 計算された最大サイズ: \(maxSize)")
         
         let imageSize = image.size
         
@@ -603,12 +652,28 @@ class ImageElement: LogoElement {
             height: max(1, newSize.height)
         )
         
-        print("DEBUG: updateSizeFromImage - 元画像サイズ: \(imageSize), 設定サイズ: \(size)")
     }
     
     private func getCanvasSize() -> CGSize {
         // デフォルトは4Kサイズ
         return CGSize(width: 3840, height: 2160)
+    }
+
+    /// 画像キャッシュをクリアする
+    private func clearImageCaches() {
+        cachedImage = nil
+        cachedOriginalImage = nil
+        previewImage = nil
+        proxyImage = nil
+        ImageElement.previewService.resetCache()
+    }
+
+    /// メモリ警告時に画像キャッシュを解放する
+    func handleMemoryWarning() {
+        cachedImage = nil
+        cachedOriginalImage = nil
+        previewImage = nil
+        proxyImage = nil
     }
     
     /// プレビュー用低解像度画像を生成

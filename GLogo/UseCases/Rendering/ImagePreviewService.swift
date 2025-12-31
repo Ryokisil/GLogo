@@ -78,6 +78,11 @@ protocol ImagePreviewing {
         params: ImageFilterParams,
         quality: ToneCurveFilter.Quality
     ) async -> UIImage?
+
+    /// プレビューキャッシュをリセットする
+    /// - Parameters: なし
+    /// - Returns: なし
+    func resetCache()
 }
 
 /// デフォルト実装。内部にプレビューキャッシュを持つ。
@@ -185,6 +190,13 @@ final class ImagePreviewService: ImagePreviewing {
             }
             return result
         }.value
+    }
+
+    /// プレビューキャッシュをリセットする
+    /// - Parameters: なし
+    /// - Returns: なし
+    func resetCache() {
+        previewCache.reset()
     }
 
     // MARK: - Helpers

@@ -24,8 +24,11 @@ struct ManualBackgroundRemovalState {
     /// ブラシサイズ（5-50ピクセル）
     var brushSize: CGFloat = 20.0
     
-    /// 編集中のマスク画像（白=除去、黒=保持）
+    /// 編集中のマスク画像（白=表示、黒=透明）
     var maskImage: UIImage?
+
+    /// 編集の基準となるマスク画像（AI適用後の初期状態を保持）
+    var baseMaskImage: UIImage?
     
     /// SwiftUI更新トリガー用のID
     var maskUpdateId: UUID = UUID()
@@ -51,4 +54,16 @@ struct ManualBackgroundRemovalState {
     
     /// プレビューモード（true=編集結果、false=元画像）
     var isShowingPreview: Bool = false
+
+    /// ターゲット中心の画像座標
+    var targetPoint: CGPoint = .zero
+
+    /// AI処理中かどうか
+    var isProcessingAI: Bool = false
+
+    /// 元画像の取得に成功したかどうか
+    var isSourceImageAvailable: Bool = true
+
+    /// 元画像の取得に失敗した場合のメッセージ
+    var sourceImageErrorMessage: String? = nil
 }

@@ -73,11 +73,23 @@ class EditorViewModel: ObservableObject {
     /// プロジェクトが変更されたかどうか
     @Published private(set) var isProjectModified = false
 
+    /// メモリ警告監視のトークン
+    private var memoryWarningObserver: NSObjectProtocol?
+
     /// 外部からプロジェクト変更フラグを立てる
     func markProjectModified() {
         isProjectModified = true
     }
-    
+
+    /// メモリ警告を受けた際にキャッシュを解放する
+    private func handleMemoryWarning() {
+        for element in project.elements {
+            (element as? ImageElement)?.handleMemoryWarning()
+        }
+        ImageElement.previewService.resetCache()
+        ToneCurveFilter.clearCache()
+    }
+
     // MARK: - イニシャライザ
     
     /// 新しいプロジェクトでエディタを初期化
@@ -88,6 +100,22 @@ class EditorViewModel: ObservableObject {
         // 履歴管理の初期化
         history = EditorHistory(project: project)
         print("DEBUG: 履歴管理初期化完了")
+
+        memoryWarningObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleMemoryWarning()
+            }
+        }
+    }
+
+    deinit {
+        if let memoryWarningObserver {
+            NotificationCenter.default.removeObserver(memoryWarningObserver)
+        }
     }
     
     // MARK: - プロジェクト操作
@@ -354,6 +382,46 @@ class EditorViewModel: ObservableObject {
     /// 画像要素のプロパティを更新
     func updateImageElement(_ imageElement: ImageElement) {
         updateSelectedElement(imageElement)
+    }
+
+    /// 手動背景除去の結果を画像要素に反映
+    /// - Parameters:
+    ///   - image: 背景除去後の画像
+    ///   - imageElement: 更新対象の画像要素
+    /// - Returns: なし
+    func applyManualBackgroundRemovalResult(_ image: UIImage, to imageElement: ImageElement) {
+        guard let newImageData = image.pngData() else { return }
+
+        let newOriginalIdentifier = UUID().uuidString
+        let event = ImageContentReplacedEvent(
+            elementId: imageElement.id,
+            oldImageData: imageElement.imageData,
+            oldImageFileName: imageElement.imageFileName,
+            oldOriginalImageURL: imageElement.originalImageURL,
+            oldOriginalImagePath: imageElement.originalImagePath,
+            oldOriginalImageIdentifier: imageElement.originalImageIdentifier,
+            oldToneCurveData: imageElement.toneCurveData,
+            oldSaturation: imageElement.saturationAdjustment,
+            oldBrightness: imageElement.brightnessAdjustment,
+            oldContrast: imageElement.contrastAdjustment,
+            oldHighlights: imageElement.highlightsAdjustment,
+            oldShadows: imageElement.shadowsAdjustment,
+            oldHue: imageElement.hueAdjustment,
+            oldSharpness: imageElement.sharpnessAdjustment,
+            oldGaussianBlurRadius: imageElement.gaussianBlurRadius,
+            oldTintIntensity: imageElement.tintIntensity,
+            oldTintColor: imageElement.tintColor,
+            newImageData: newImageData,
+            newOriginalImageIdentifier: newOriginalIdentifier
+        )
+
+        history.recordAndApply(event)
+
+        if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
+            selectedElement = updatedElement
+        }
+        isProjectModified = true
+        objectWillChange.send()
     }
     
     // MARK: - テキスト要素の操作
