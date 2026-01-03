@@ -1,6 +1,5 @@
 //
 //  LogoProject.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはロゴプロジェクト全体を表すモデルクラスを定義しています。
@@ -79,6 +78,23 @@ class LogoProject: Codable {
     func addElement(_ element: LogoElement) {
         elements.append(element)
         updatedAt = Date()
+    }
+
+    /// 指定したIDの要素を取得
+    /// - Parameters:
+    ///   - id: 要素ID
+    /// - Returns: 該当する要素（存在しない場合はnil）
+    func element(for id: UUID) -> LogoElement? {
+        elements.first { $0.id == id }
+    }
+
+    /// 指定した型として要素を取得
+    /// - Parameters:
+    ///   - id: 要素ID
+    ///   - type: 取得したい要素の型
+    /// - Returns: 型変換に成功した要素（存在しない場合はnil）
+    func element<T: LogoElement>(for id: UUID, as type: T.Type) -> T? {
+        element(for: id) as? T
     }
     
     /// 指定したIDの要素を削除

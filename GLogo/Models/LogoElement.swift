@@ -1,6 +1,5 @@
 //
 //  LogoElement.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはロゴの基本構成要素を表す抽象基底クラスを定義しています。

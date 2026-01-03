@@ -1,7 +1,5 @@
 
 //  ImageElement.swift
-//  GameLogoMaker
-
 //  概要:
 //  このファイルは画像要素を表すモデルクラスを定義しています。
 //  LogoElementを継承し、画像データの管理と表示に関するプロパティを提供します。
@@ -47,6 +45,86 @@ class ImageElement: LogoElement {
     
     /// 元画像の識別子（UUIDなど）
     var originalImageIdentifier: String?
+
+    // MARK: - 画像ソース管理
+
+    /// 画像ソース種別
+    private enum ImageSource {
+        case data(Data)
+        case fileName(String)
+        case url(URL)
+        case path(String)
+    }
+
+    /// 現在の画像ソースを取得
+    /// - Parameters: なし
+    /// - Returns: 画像ソース
+    private var imageSource: ImageSource? {
+        if let originalImagePath = originalImagePath {
+            return .path(originalImagePath)
+        }
+        if let originalImageURL = originalImageURL {
+            return .url(originalImageURL)
+        }
+        if let imageFileName = imageFileName {
+            return .fileName(imageFileName)
+        }
+        if let imageData = imageData {
+            return .data(imageData)
+        }
+        return nil
+    }
+
+    /// 画像ソースを設定（他のソースはクリア）
+    /// - Parameters:
+    ///   - source: 設定する画像ソース
+    /// - Returns: なし
+    private func setImageSource(_ source: ImageSource?) {
+        imageData = nil
+        imageFileName = nil
+        originalImageURL = nil
+        originalImagePath = nil
+
+        guard let source else { return }
+        switch source {
+        case .data(let data):
+            imageData = data
+        case .fileName(let fileName):
+            imageFileName = fileName
+        case .url(let url):
+            originalImageURL = url
+        case .path(let path):
+            originalImagePath = path
+        }
+    }
+
+    /// 優先順位付きで画像ソースを解決
+    /// - Parameters:
+    ///   - imageData: 画像データ
+    ///   - fileName: 画像ファイル名
+    ///   - url: 画像URL
+    ///   - path: 画像パス
+    /// - Returns: 解決した画像ソース
+    private func resolveImageSource(
+        imageData: Data?,
+        fileName: String?,
+        url: URL?,
+        path: String?
+    ) -> ImageSource? {
+        if let path = path {
+            return .path(path)
+        }
+        if let url = url {
+            return .url(url)
+        }
+        if let fileName = fileName {
+            return .fileName(fileName)
+        }
+        if let imageData = imageData {
+            return .data(imageData)
+        }
+        return nil
+    }
     
     // MARK: - インポート順番管理
     
@@ -150,27 +228,26 @@ class ImageElement: LogoElement {
         if let cachedOriginalImage = cachedOriginalImage {
             return cachedOriginalImage
         }
-        
-        var loadedImage: UIImage?
-        
-        if let originalImagePath = originalImagePath {
-            loadedImage = UIImage(contentsOfFile: originalImagePath)
-        } else if let originalImageURL = originalImageURL {
-            if originalImageURL.isFileURL {
-                loadedImage = UIImage(contentsOfFile: originalImageURL.path)
-            } else {
-                // URLからの画像ロードは非同期で行うべきですが、
-                // 簡略化のため同期処理としています
-                if let data = try? Data(contentsOf: originalImageURL) {
-                    loadedImage = UIImage(data: data)
+
+        let loadedImage: UIImage? = {
+            guard let source = imageSource else { return nil }
+            switch source {
+            case .path(let path):
+                return UIImage(contentsOfFile: path)
+            case .url(let url):
+                if url.isFileURL {
+                    return UIImage(contentsOfFile: url.path)
                 }
+                // 非ファイルURLは対象外（将来の拡張時に検討）
+                print("DEBUG: 非ファイルURLのため読み込みをスキップ: \(url.absoluteString)")
+                return nil
+            case .fileName(let fileName):
+                return UIImage(named: fileName)
+            case .data(let data):
+                return UIImage(data: data)
             }
-        } else if let imageFileName = imageFileName {
-            loadedImage = UIImage(named: imageFileName)
-        } else if let imageData = imageData {
-            loadedImage = UIImage(data: imageData)
-        }
-        
+        }()
+
         // 元画像をキャッシュ
         cachedOriginalImage = loadedImage
         return loadedImage
@@ -354,23 +431,35 @@ class ImageElement: LogoElement {
         }
     }
     
-    /// 画像とメタデータから初期化
-    init(imageData: Data, metadata: ImageMetadata?, importOrder: Int = 0) {
-        // インポート順番を設定
+    /// 共通の初期化処理
+    /// - Parameters:
+    ///   - importOrder: インポート順序（1番目はベース画像として扱う）
+    /// - Returns: なし
+    private init(importOrder: Int) {
         self.originalImportOrder = importOrder
         
         super.init(name: "Image")
-        self.imageData = imageData
-        self.metadata = metadata
-        self.originalImageIdentifier = UUID().uuidString
+        originalImageIdentifier = UUID().uuidString
         
         // 1番目の画像は自動的にベース画像に設定
         if importOrder == 1 {
-            self.imageRole = .base
+            imageRole = .base
         }
         
         // デフォルトzIndexを設定
-        self.zIndex = ElementPriority.image.rawValue
+        zIndex = ElementPriority.image.rawValue
+    }
+    
+    /// 画像とメタデータから初期化
+    /// - Parameters:
+    ///   - imageData: 画像データ
+    ///   - metadata: 画像メタデータ（nilの場合は抽出を試みる）
+    ///   - importOrder: インポート順序
+    /// - Returns: なし
+    convenience init(imageData: Data, metadata: ImageMetadata?, importOrder: Int = 0) {
+        self.init(importOrder: importOrder)
+        setImageSource(.data(imageData))
+        self.metadata = metadata
         
         // 画像のサイズに合わせて要素のサイズを調整
         if let image = UIImage(data: imageData) {
@@ -384,21 +473,13 @@ class ImageElement: LogoElement {
     }
     
     /// ファイル名から画像要素を初期化
-    init(fileName: String, importOrder: Int = 0) {
-        // インポート順番を設定
-        self.originalImportOrder = importOrder
-        
-        super.init(name: "Image")
-        self.imageFileName = fileName
-        self.originalImageIdentifier = UUID().uuidString
-        
-        // 1番目の画像は自動的にベース画像に設定
-        if importOrder == 1 {
-            self.imageRole = .base
-        }
-        
-        // デフォルトzIndexを設定
-        self.zIndex = ElementPriority.image.rawValue
+    /// - Parameters:
+    ///   - fileName: 画像ファイル名
+    ///   - importOrder: インポート順序
+    /// - Returns: なし
+    convenience init(fileName: String, importOrder: Int = 0) {
+        self.init(importOrder: importOrder)
+        setImageSource(.fileName(fileName))
         
         // 画像のサイズに合わせて要素のサイズを調整（必要なら外部でプロキシ生成）
         if let image = UIImage(named: fileName) {
@@ -407,26 +488,18 @@ class ImageElement: LogoElement {
     }
     
     /// URLから初期化（メタデータの抽出を含む）
-    init(url: URL, importOrder: Int = 0) {
-        // インポート順番を設定
-        self.originalImportOrder = importOrder
-        
-        super.init(name: "Image")
-        self.originalImageURL = url
-        self.originalImageIdentifier = UUID().uuidString
-        
-        // 1番目の画像は自動的にベース画像に設定
-        if importOrder == 1 {
-            self.imageRole = .base
-        }
-        
-        // デフォルトzIndexを設定
-        self.zIndex = ElementPriority.image.rawValue
+    /// - Parameters:
+    ///   - url: 画像URL
+    ///   - importOrder: インポート順序
+    /// - Returns: なし
+    convenience init(url: URL, importOrder: Int = 0) {
+        self.init(importOrder: importOrder)
+        setImageSource(.url(url))
         
         do {
             // URLから画像データを読み込む
             let data = try Data(contentsOf: url)
-            self.imageData = data
+            imageData = data
             
             // 画像サイズを調整（必要なら外部でプロキシ生成）
             if let image = UIImage(data: data) {
@@ -434,28 +507,20 @@ class ImageElement: LogoElement {
             }
             
             // メタデータを抽出
-            self.metadata = extractMetadataFromImageData(data)
+            metadata = extractMetadataFromImageData(data)
         } catch {
             print("DEBUG: URLからの画像読み込みに失敗: \(error.localizedDescription)")
         }
     }
     
     /// パスから画像要素を初期化
-    init(path: String, importOrder: Int = 0) {
-        // インポート順番を設定
-        self.originalImportOrder = importOrder
-        
-        super.init(name: "Image")
-        self.originalImagePath = path
-        self.originalImageIdentifier = UUID().uuidString
-        
-        // 1番目の画像は自動的にベース画像に設定
-        if importOrder == 1 {
-            self.imageRole = .base
-        }
-        
-        // デフォルトzIndexを設定
-        self.zIndex = ElementPriority.image.rawValue
+    /// - Parameters:
+    ///   - path: 画像パス
+    ///   - importOrder: インポート順序
+    /// - Returns: なし
+    convenience init(path: String, importOrder: Int = 0) {
+        self.init(importOrder: importOrder)
+        setImageSource(.path(path))
         
         // 画像をロードしてサイズを調整（必要なら外部でプロキシ生成）
         if let image = UIImage(contentsOfFile: path) {
@@ -464,21 +529,14 @@ class ImageElement: LogoElement {
     }
     
     /// データから画像要素を初期化（動的サイズ調整フラグ付き）
-    init(imageData: Data, isDynamicSizing: Bool = true, importOrder: Int = 0) {
-        // インポート順番を設定
-        self.originalImportOrder = importOrder
-        
-        super.init(name: "Image")
-        self.imageData = imageData
-        self.originalImageIdentifier = UUID().uuidString
-        
-        // 1番目の画像は自動的にベース画像に設定
-        if importOrder == 1 {
-            self.imageRole = .base
-        }
-        
-        // デフォルトzIndexを設定
-        self.zIndex = ElementPriority.image.rawValue
+    /// - Parameters:
+    ///   - imageData: 画像データ
+    ///   - isDynamicSizing: サイズを画像に合わせて自動調整するかどうか
+    ///   - importOrder: インポート順序
+    /// - Returns: なし
+    convenience init(imageData: Data, isDynamicSizing: Bool = true, importOrder: Int = 0) {
+        self.init(importOrder: importOrder)
+        setImageSource(.data(imageData))
         
         // isDynamicSizingフラグによってサイズ調整の実行を制御
         if let image = UIImage(data: imageData) {
@@ -498,22 +556,15 @@ class ImageElement: LogoElement {
     }
     
     /// データから画像要素を初期化（キャンバスサイズ付き）
-    init(imageData: Data, canvasSize: CGSize = CGSize(width: 3840, height: 2160), importOrder: Int = 0) {
-        // インポート順番を設定
-        self.originalImportOrder = importOrder
-        
-        super.init(name: "Image")
-        self.imageData = imageData
-        self.originalImageIdentifier = UUID().uuidString
+    /// - Parameters:
+    ///   - imageData: 画像データ
+    ///   - canvasSize: キャンバスサイズ
+    ///   - importOrder: インポート順序
+    /// - Returns: なし
+    convenience init(imageData: Data, canvasSize: CGSize = CGSize(width: 3840, height: 2160), importOrder: Int = 0) {
+        self.init(importOrder: importOrder)
+        setImageSource(.data(imageData))
         self.canvasSize = canvasSize
-        
-        // 1番目の画像は自動的にベース画像に設定
-        if importOrder == 1 {
-            self.imageRole = .base
-        }
-        
-        // デフォルトzIndexを設定
-        self.zIndex = ElementPriority.image.rawValue
         
         // 画像のサイズに合わせて要素のサイズを調整（必要なら外部でプロキシ生成）
         if let image = UIImage(data: imageData) {
@@ -525,29 +576,12 @@ class ImageElement: LogoElement {
     }
     
     /// データから画像要素を初期化
-    init(imageData: Data, importOrder: Int = 0) {
-        // インポート順番を設定
-        self.originalImportOrder = importOrder
-        
-        super.init(name: "Image")
-        self.imageData = imageData
-        self.originalImageIdentifier = UUID().uuidString
-        
-        // 1番目の画像は自動的にベース画像に設定
-        if importOrder == 1 {
-            self.imageRole = .base
-        }
-        
-        // デフォルトzIndexを設定
-        self.zIndex = ElementPriority.image.rawValue
-        
-        // 画像のサイズに合わせて要素のサイズを調整
-        if let image = UIImage(data: imageData) {
-            print("DEBUG: 初期化時の画像サイズ: \(image.size)")
-            updateSizeFromImage(image)
-        } else {
-            print("DEBUG: エラー: UIImageの作成に失敗しました")
-        }
+    /// - Parameters:
+    ///   - imageData: 画像データ
+    ///   - importOrder: インポート順序
+    /// - Returns: なし
+    convenience init(imageData: Data, importOrder: Int = 0) {
+        self.init(imageData: imageData, isDynamicSizing: true, importOrder: importOrder)
     }
     
     /// 編集操作を記録
@@ -584,10 +618,7 @@ class ImageElement: LogoElement {
     ///   - originalIdentifier: 差し替え後に設定する識別子（nilの場合は新規生成）
     /// - Returns: なし
     func replaceImageSource(with imageData: Data, resetAdjustments: Bool, originalIdentifier: String? = nil) {
-        self.imageData = imageData
-        imageFileName = nil
-        originalImageURL = nil
-        originalImagePath = nil
+        setImageSource(.data(imageData))
         originalImageIdentifier = originalIdentifier ?? UUID().uuidString
 
         if let image = UIImage(data: imageData) {
@@ -610,20 +641,34 @@ class ImageElement: LogoElement {
     ///   - originalIdentifier: 復元する識別子
     /// - Returns: なし
     func restoreImageSource(imageData: Data?,fileName: String?,url: URL?,path: String?,originalIdentifier: String?) {
-        self.imageData = imageData
-        imageFileName = fileName
-        originalImageURL = url
-        originalImagePath = path
+        let source = resolveImageSource(
+            imageData: imageData,
+            fileName: fileName,
+            url: url,
+            path: path
+        )
+        setImageSource(source)
         originalImageIdentifier = originalIdentifier
 
-        if let data = imageData, let image = UIImage(data: data) {
-            updateSizeFromImage(image)
-        } else if let path = path, let image = UIImage(contentsOfFile: path) {
-            updateSizeFromImage(image)
-        } else if let fileName = fileName, let image = UIImage(named: fileName) {
-            updateSizeFromImage(image)
-        } else if let url = url, url.isFileURL, let image = UIImage(contentsOfFile: url.path) {
-            updateSizeFromImage(image)
+        if let source = source {
+            switch source {
+            case .data(let data):
+                if let image = UIImage(data: data) {
+                    updateSizeFromImage(image)
+                }
+            case .fileName(let fileName):
+                if let image = UIImage(named: fileName) {
+                    updateSizeFromImage(image)
+                }
+            case .url(let url):
+                if url.isFileURL, let image = UIImage(contentsOfFile: url.path) {
+                    updateSizeFromImage(image)
+                }
+            case .path(let path):
+                if let image = UIImage(contentsOfFile: path) {
+                    updateSizeFromImage(image)
+                }
+            }
         }
 
         clearImageCaches()
@@ -763,11 +808,18 @@ class ImageElement: LogoElement {
     /// 要素のコピーを作成
     override func copy() -> LogoElement {
         let copy: ImageElement
-        
-        if let imageFileName = imageFileName {
-            copy = ImageElement(fileName: imageFileName)
-        } else if let imageData = imageData {
-            copy = ImageElement(imageData: imageData)
+
+        if let source = imageSource {
+            switch source {
+            case .data(let data):
+                copy = ImageElement(imageData: data)
+            case .fileName(let fileName):
+                copy = ImageElement(fileName: fileName)
+            case .url(let url):
+                copy = ImageElement(url: url)
+            case .path(let path):
+                copy = ImageElement(path: path)
+            }
         } else {
             copy = ImageElement(fileName: "")
         }

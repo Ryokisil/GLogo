@@ -1,6 +1,5 @@
 //
 //  ShapeElement.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルは図形要素を表すモデルクラスを定義しています。

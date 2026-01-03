@@ -4,6 +4,7 @@ import UIKit
 // ViewModelから渡された入力と表示条件を使い、UseCase群を組み合わせて
 // ImageElementの生成と初期配置までを完了させる。
 // UI操作（追加・選択・通知）はViewModelに残す。
+
 struct ImageImportCoordinator {
     private let useCase: ImageImportUseCase
 

@@ -1,6 +1,5 @@
 //
 //  CropModels.swift
-//  GameLogoMaker
 //
 //  概要:
 //  クロップ機能で使用するモデル

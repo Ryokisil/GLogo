@@ -2,17 +2,25 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**⚠️ IMPORTANT: This project requires strict adherence to MVVM architecture and Japanese coding standards. All code must follow these mandatory guidelines.**
+**⚠️ IMPORTANT: This project requires strict adherence to MVVM + Clean Architecture and Japanese coding standards. All code must follow these mandatory guidelines.**
 
 ## Project Overview
 
 GLogo is an advanced iOS image editing application built with Swift 6.0 and SwiftUI. It provides a comprehensive logo creation and editing interface with professional-grade image manipulation capabilities, featuring custom Core Image filters, event-sourcing based undo/redo system, and seamless SwiftUI + UIKit integration.
 
-**Architecture Philosophy**: Strict MVVM pattern with clear separation between Models (data), ViewModels (business logic), and Views (UI). Deviations from this pattern are not permitted.
+**Architecture Philosophy**: Strict MVVM + Clean Architecture pattern with clear separation across four layers:
+- **Models (Domain/Entities)**: Pure data structures representing domain concepts
+- **UseCases (Business Logic)**: All application business rules, using Coordinator, Service, Policy, and Repository patterns
+- **ViewModels (Presentation)**: Interface adapters that transform UseCase outputs for Views
+- **Views (UI)**: SwiftUI declarative UI with minimal logic
+
+**Dependency Rule**: All dependencies must point inward (Views → ViewModels → UseCases → Models). Inner layers must never depend on outer layers. Deviations from this pattern are not permitted.
 
 ### Key Features
+- **Clean Architecture Implementation**: MVVM + Clean Architecture with four distinct layers (Models, UseCases, ViewModels, Views)
 - **Professional Image Editing**: Custom highlight/shadow adjustments using ITU-R BT.709 luminance masking
-- **Advanced Event Sourcing**: Complete undo/redo system with 20+ specific event types
+- **Advanced Event Sourcing**: Complete undo/redo system with 20+ specific event types (UseCases/History)
+- **Modular Business Logic**: Coordinator, Service, Policy, and Repository patterns in UseCases layer
 - **Hybrid UI Architecture**: SwiftUI interface with UIKit-based high-performance canvas
 - **Memory-Safe Design**: Comprehensive memory leak prevention with automated testing
 - **macOS Catalyst Support**: Full desktop experience with menu commands and keyboard shortcuts
@@ -76,28 +84,56 @@ xcrun simctl launch booted com.yourcompany.GLogo
 
 ## Architecture
 
-### MVVM Pattern (Strict Compliance Required)
-**⚠️ CRITICAL: All code MUST strictly adhere to the MVVM architecture pattern. Violations will require immediate refactoring.**
+### MVVM + Clean Architecture (Strict Compliance Required)
+**⚠️ CRITICAL: All code MUST strictly adhere to the MVVM + Clean Architecture pattern. Violations will require immediate refactoring.**
 
-The application follows a sophisticated Model-View-ViewModel (MVVM) architecture with clear separation of concerns:
+The application follows a sophisticated MVVM + Clean Architecture pattern with clear separation of concerns across multiple layers:
+
+#### Clean Architecture Layers
+The application consists of four distinct layers following Clean Architecture principles:
+
+```
+┌─────────────────────────────────────────┐
+│         Views (UI Layer)                │  SwiftUI Views
+├─────────────────────────────────────────┤
+│      ViewModels (Presentation)          │  @ObservableObject + @Published
+├─────────────────────────────────────────┤
+│    UseCases (Business Logic)            │  Coordinators, Services, Policies
+│    Repositories (Data Access)           │  Abstract data access layer
+├─────────────────────────────────────────┤
+│      Models (Domain/Entities)           │  Pure data structures
+└─────────────────────────────────────────┘
+```
+
+**Dependency Rule**: Dependencies must only point inward:
+- Views → ViewModels → UseCases → Models
+- ViewModels → Repositories → Models
+- UseCases can depend on Repositories
+- Inner layers must never know about outer layers
 
 #### Architecture Rules (Mandatory)
 **❌ PROHIBITED - Absolute Violations:**
 - Writing business logic or data processing in Views
 - Adding observable properties (@Published, ObservableObject) to Models
 - Direct references from ViewModel to View
-- References from Model to ViewModel or View
+- References from Model to ViewModel, UseCase, or View
 - Direct data modification between Views
+- Business logic implementation in ViewModels (must delegate to UseCases)
+- Direct Model manipulation in Views
+- UseCases depending on ViewModels or Views
 
 **✅ REQUIRED - Mandatory Practices:**
-- All business logic must be implemented in ViewModels
+- All business logic must be implemented in UseCases layer
+- ViewModels must delegate to UseCases for all business operations
 - Models must be pure data structures (struct/class only)
 - Views must observe ViewModels via @ObservedObject/@StateObject
-- Data flow must always be unidirectional: ViewModel → View
-- User actions must be processed through ViewModel method calls
+- Data flow must always be unidirectional: View → ViewModel → UseCase → Model
+- User actions must be processed through ViewModel → UseCase method calls
+- Repositories must abstract all data access operations
+- UseCases must be framework-agnostic (no UIKit/SwiftUI dependencies when possible)
 
-#### Models (`GLogo/Models/`)
-Core data structures with comprehensive state management:
+#### Layer 1: Models - Domain/Entities (`GLogo/Models/`)
+Pure data structures representing the core domain concepts:
 - **`LogoProject`**: Main project container with elements and settings
   - Thread-safe element collection management
   - Custom Codable implementation for CGSize and Date serialization
@@ -111,46 +147,194 @@ Core data structures with comprehensive state management:
   - `ShapeElement`: Vector shapes with gradient support, custom paths, polygon generation
   - `ImageElement`: Advanced image processing with Core Image integration
 - **`BackgroundSettings`**: Canvas background configuration with gradient/solid color support
+- **`CropModels`**: Crop-related data structures
+- **Supporting Models**: State models for specific features (ManualBackgroundRemovalModel, etc.)
 
-#### ViewModels (`GLogo/ViewModels/`)
-Business logic layer with reactive state management:
-- **`EditorViewModel`**: Central coordinator
-  - Project state management with @Published properties
-  - Element manipulation operations (add, select, delete, transform)
-  - Event sourcing integration for undo/redo
-  - Real-time property updates with change detection
-- **`ElementViewModel`**: Individual element manipulation
-  - Property editing with validation
-  - Type-specific operations (text formatting, shape geometry, image filters)
-- **`ImageCropViewModel`**: Advanced cropping functionality
+**Design Principles**:
+- No dependencies on outer layers
+- Framework-agnostic (UIKit dependencies only when necessary for image/graphics types)
+- Immutable when possible, with clear mutation points
+- Full Codable support for persistence
+
+#### Layer 2: UseCases - Application Business Rules (`GLogo/UseCases/`)
+Business logic layer implementing all application use cases. This layer is organized by feature domain:
+
+**`UseCases/BackgroundRemoval/`**:
+- **`BackgroundRemovalUseCase`**: AI-powered background removal using Vision framework
+  - High-resolution mask generation with ITU-R BT.709 luminance-based processing
+  - Multi-pass filter pipeline (luminance extraction → gamma masking → feathered blending)
+- **`ManualBackgroundRemovalUseCase`**: Manual brush-based background removal
+  - Brush stroke rendering with adjustable size and mode (erase/restore)
+  - Undo/redo support with state management
+
+**`UseCases/Import/`**:
+- **`ImageImportCoordinator`**: Orchestrates the complete image import workflow
+  - Combines multiple services for end-to-end import processing
+- **`ImageImportUseCase`**: Core image import business logic
+  - Element creation from various sources (PHAsset, UIImage, file URL)
+- **`ImageImportElementBuilder`**: Constructs ImageElement from import sources
+- **`ImageImportPlacementCalculator`**: Calculates optimal element positioning
+- **Supporting Types**: `ImageImportSource`, `ImageImportContext`, `ImageImportResult`
+
+**`UseCases/SaveImage/`**:
+- **`SaveImageCoordinator`**: Orchestrates the complete save workflow
+  - Automatic mode detection (individual vs composite)
+  - Permission handling and error recovery
+- **`ImageProcessingService`**: Applies filters and creates composite images
+  - Filter chain application with memory optimization
+  - Multi-layer composition with proper alpha blending
+- **`ImageSelectionService`**: Selects appropriate image elements for saving
+  - Highest resolution selection for individual mode
+  - Base image selection for composite mode
+- **`PhotoLibraryWriter`**: Writes images to photo library with proper permissions
+- **`SaveImagePolicy`**: Determines save mode based on project state
+- **Supporting Types**: `SaveImageFormat`, `SaveImageMode`
+
+**`UseCases/Crop/`**:
+- **`CropHandleInteraction`**: Handles crop handle manipulation logic
+  - Hit testing and drag calculation for crop boundaries
+
+**`UseCases/History/`**:
+- **`EventSourcing.swift`**: Complete event sourcing system
+  - `EditorEvent` protocol with 20+ event types
+  - `EditorHistory` class managing undo/redo stacks
+  - Memory-safe event storage with automatic cleanup
+
+**`UseCases/Rendering/`**:
+- **`CanvasRenderer`**: High-quality canvas rendering for export
+  - Multi-element composition with coordinate transformation
+  - Custom resolution scaling for export quality
+- **`ImageFilterUtility`**: Core Image filter implementations
+  - Custom highlight/shadow adjustments using ITU-R BT.709 coefficients
+  - Professional-grade color adjustments (saturation, brightness, contrast)
+- **`FilterPipeline`**: Filter chain management and optimization
+- **`ImagePreviewService`**: Optimized preview generation
+- **`PreviewCache`**: Memory-efficient preview caching
+- **`RenderScheduler`**: Manages rendering task scheduling
+- **`RenderPolicy`**: Determines rendering strategies
+- **`ToneCurveFilter`**: Tone curve adjustment implementation
+- **`ToneCurveStage`**: Multi-stage tone curve processing
+- **`AdjustmentStages`**: Individual adjustment stage implementations
+- **`MonotonicCubicInterpolator`**: Smooth curve interpolation
+- **`CIFilterInspector`**: Core Image filter inspection utilities
+
+**`UseCases/Storage/`**:
+- **`ImageAssetRepository`** (Repository Pattern): Abstracts image and proxy resolution
+  - Lazy loading of high-resolution images
+  - Proxy image generation for memory efficiency
+  - Multi-source image resolution (asset manager, file system, in-memory)
+- **`AssetManager`**: Manages image asset lifecycle
+  - Disk-based asset storage and retrieval
+  - Proxy image caching for performance
+- **`ProjectStorage`**: Project persistence and loading
+  - JSON-based project serialization
+  - File system management
+- **`ImageMetadataManager`**: Manages image metadata and associations
+
+**Design Patterns in UseCases Layer**:
+- **Coordinator Pattern**: Orchestrates complex workflows combining multiple services
+  - Example: `SaveImageCoordinator`, `ImageImportCoordinator`
+- **Service Pattern**: Single-responsibility business operations
+  - Example: `ImageProcessingService`, `ImageSelectionService`
+- **Policy Pattern**: Business rule evaluation and decision-making
+  - Example: `SaveImagePolicy`, `RenderPolicy`
+- **Repository Pattern**: Abstract data access and persistence
+  - Example: `ImageAssetRepository`
+- **Strategy Pattern**: Interchangeable algorithm implementations
+  - Example: Filter stages, rendering strategies
+
+**UseCase Design Principles**:
+- Framework-agnostic when possible (UIKit/SwiftUI imports only when necessary)
+- Single Responsibility Principle (each UseCase handles one specific business capability)
+- Dependency Injection for testability
+- Stateless when possible (state managed in ViewModels or passed as parameters)
+- Clear error handling with typed errors
+
+#### Layer 3: ViewModels - Interface Adapters (`GLogo/ViewModels/`)
+Presentation logic layer that adapts UseCases for Views:
+- **`EditorViewModel`**: Main editor coordinator
+  - Delegates business logic to UseCases (SaveImageCoordinator, ImageImportCoordinator)
+  - Manages presentation state with @Published properties
+  - Coordinates event sourcing for undo/redo via EditorHistory UseCase
+  - Transforms domain models into view-ready state
+- **`ElementViewModel`**: Individual element property editing
+  - Delegates transformations to appropriate UseCases
+  - Manages element-specific UI state
+- **`ImageCropViewModel`**: Crop interface management
+  - Delegates crop calculations to CropHandleInteraction UseCase
+  - Manages crop overlay state and user interactions
   - iOS orientation-aware cropping with `createOrientedCGImage`
-  - Real-time preview updates
+- **`ManualBackgroundRemovalViewModel`**: Manual background removal interface
+  - Delegates brush operations to ManualBackgroundRemovalUseCase
+  - Manages brush state and preview updates
+  - Handles undo/redo for brush strokes
 
-#### Views (`GLogo/Views/`)
-SwiftUI interface components with UIKit integration:
+**ViewModel Design Principles**:
+- ObservableObject conformance with @Published properties
+- Delegates all business logic to UseCases
+- No direct Model manipulation (only through UseCases)
+- Transforms UseCase results into view-ready state
+- Manages only presentation state (not business state)
+- Uses dependency injection for UseCases (enables testing)
+
+#### Layer 4: Views - UI Layer (`GLogo/Views/`)
+SwiftUI interface components with minimal logic (delegates to ViewModels):
+
+**`Views/Editor/`**:
 - **`EditorView`**: Main editing interface with tool panels
+  - Observes EditorViewModel for state changes
+  - Forwards user actions to ViewModel methods
 - **`CanvasView`**: High-performance UIKit canvas integrated via UIViewRepresentable
-- **Tool Panels**: Modular property editors for each element type
-- **Utility Views**: Image picker, crop overlay, export options
+  - Direct Core Graphics rendering for optimal performance
+  - Gesture handling and coordinate transformation
+  - Bridges UIKit rendering with SwiftUI state management
+- **`ManualBackgroundRemovalView`**: Manual background removal interface
+  - Observes ManualBackgroundRemovalViewModel
+  - Brush stroke visualization and interaction
 
-#### Application Entry Point
+**`Views/ToolPanels/`**:
+- Modular property editors for each element type
+- Pure presentation logic (no business logic)
+- Two-way binding with ViewModel @Published properties
+
+**`Views/Components/`**:
+- Reusable UI components
+- Stateless when possible, or minimal local UI state
+
+**`Views/Library/`**:
+- Image library and asset management UI
+
+**`Views/Settings/`**:
+- Application settings interface
+
+**View Design Principles**:
+- Declarative UI using SwiftUI
+- Observes ViewModels via @ObservedObject/@StateObject
+- Forwards user actions to ViewModel methods (no business logic)
+- No direct Model access (only through ViewModel)
+- Minimal local state (only UI-specific state like animation flags)
+- UIKit integration via UIViewRepresentable when needed for performance
+
+#### Application Entry Point (`GLogo/App/`)
 - **`GameLogoMakerApp`**: SwiftUI App lifecycle with WindowGroup
   - macOS Catalyst support with menu commands and keyboard shortcuts
   - Global settings management through `AppSettings` class
   - Notification-based communication for cross-component messaging
+  - Dependency injection setup for main ViewModels
 
-### Event Sourcing System
-The application implements a comprehensive event sourcing pattern for reliable undo/redo functionality:
+### Event Sourcing System (UseCases/History/)
+The application implements a comprehensive event sourcing pattern for reliable undo/redo functionality. This system resides in the UseCases layer and provides a framework-agnostic undo/redo implementation:
 
 #### Core Architecture
 - **`EditorEvent` Protocol**: Base interface for all state changes
   - `apply(to:)` and `revert(from:)` methods for bidirectional operations
   - Timestamp tracking and event naming for debugging
   - Full Codable support for persistence
-- **`EditorHistory` Class**: Event stack management
+- **`EditorHistory` Class**: Event stack management UseCase
   - Dual stack architecture (undo/redo stacks)
   - Maximum history limit with automatic cleanup
   - Memory-safe weak references to prevent retain cycles
+  - Framework-agnostic design (operates on Models only)
 
 #### Event Type Hierarchy (20+ Specific Events)
 **Element Lifecycle Events:**
@@ -255,16 +439,20 @@ var onManipulationChanged: ((CGPoint) -> Void)?
 - Automatic cleanup of gesture recognizers and notification observers
 - Optimized view hierarchy to prevent retain cycles
 
-### Core Graphics Integration
+### Advanced Image Processing & Rendering (UseCases/Rendering/)
+The rendering and image processing capabilities are implemented in the UseCases layer, providing sophisticated image manipulation that exceeds standard Core Image capabilities:
+
+#### Core Graphics Integration
 Advanced rendering pipeline using Core Graphics and Core Image:
-- `CanvasRenderer.swift`: High-quality export rendering with custom resolution scaling
-- `ElementRenderer.swift`: Individual element rendering with effects and transformations
-- `ImageFilterUtility.swift`: Custom Core Image filter implementations for professional image adjustments
+- **`CanvasRenderer`**: High-quality export rendering with custom resolution scaling
+  - Multi-element composition with coordinate transformation
+  - Resolution-independent rendering for various export sizes
+- **`ImageFilterUtility`**: Custom Core Image filter implementations
+  - Professional-grade color adjustments beyond standard CIFilter capabilities
+  - ITU-R BT.709 luminance-based selective adjustments
 
-## Advanced Image Processing Implementation
-
-### Professional-Grade Color Adjustments
-The application implements sophisticated image processing techniques that exceed standard Core Image capabilities:
+#### Professional-Grade Color Adjustments
+Sophisticated image processing techniques implemented in UseCases/Rendering/:
 
 #### Custom Highlight/Shadow Adjustment Algorithm
 **Problem Solved**: Core Image lacks dedicated highlight/shadow filters, requiring custom implementation for professional-grade selective adjustments.
@@ -600,31 +788,57 @@ ImageFilterUtility.swift     // Image processing utilities
 ### Code Structure Principles (Strict Enforcement)
 **Clear Separation of Concerns - These principles must be strictly followed:**
 
-**Models (GLogo/Models/)**:
+**Models (GLogo/Models/) - Domain Layer**:
 - ✅ Allowed: Pure data structures using struct/class
 - ✅ Allowed: Codable conformance, computed properties, helper methods (data transformation only)
-- ❌ Prohibited: @Published, ObservableObject, business logic
-- ❌ Prohibited: References to View or ViewModel
+- ✅ Allowed: Protocol definitions for domain concepts
+- ❌ Prohibited: @Published, ObservableObject (these belong in ViewModels)
+- ❌ Prohibited: Business logic (belongs in UseCases)
+- ❌ Prohibited: References to View, ViewModel, or UseCase
+- ❌ Prohibited: Framework-specific code beyond basic UIKit types (UIImage, CGPoint, etc.)
 
-**ViewModels (GLogo/ViewModels/)**:
+**UseCases (GLogo/UseCases/) - Application Business Rules Layer**:
+- ✅ Allowed: All business logic implementation
+- ✅ Allowed: Coordinator, Service, Policy, Repository patterns
+- ✅ Allowed: Dependencies on Models and other UseCases
+- ✅ Allowed: Protocol definitions for dependency injection
+- ✅ Allowed: Framework imports when necessary (Vision, Core Image, Photos, etc.)
+- ✅ Allowed: Stateless operations (preferred) or minimal state
+- ❌ Prohibited: @Published, ObservableObject (these belong in ViewModels)
+- ❌ Prohibited: Dependencies on ViewModels or Views
+- ❌ Prohibited: Direct UI manipulation
+- ❌ Prohibited: SwiftUI imports (use UIKit when UI framework needed)
+
+**ViewModels (GLogo/ViewModels/) - Interface Adapters Layer**:
 - ✅ Allowed: ObservableObject conformance, @Published properties
-- ✅ Allowed: All business logic and state management
-- ✅ Allowed: Model manipulation and data transformation
+- ✅ Allowed: Presentation state management
+- ✅ Allowed: Dependencies on UseCases (via dependency injection)
+- ✅ Allowed: Transforming UseCase results into view-ready state
+- ✅ Allowed: Coordinating multiple UseCases for complex user flows
+- ❌ Prohibited: Business logic implementation (must delegate to UseCases)
+- ❌ Prohibited: Direct Model manipulation (only through UseCases)
 - ❌ Prohibited: Direct references to Views (callbacks/closures are acceptable)
 - ❌ Prohibited: Direct UI component manipulation
+- ❌ Prohibited: Complex algorithms or data processing (belongs in UseCases)
 
-**Views (GLogo/Views/)**:
+**Views (GLogo/Views/) - UI Layer**:
 - ✅ Allowed: Declarative UI using SwiftUI
 - ✅ Allowed: Observing ViewModels via @ObservedObject/@StateObject
 - ✅ Allowed: Forwarding user actions to ViewModel method calls
+- ✅ Allowed: Minimal local UI state (animation flags, focus state, etc.)
+- ✅ Allowed: UIKit integration via UIViewRepresentable for performance
 - ❌ Prohibited: Business logic implementation
 - ❌ Prohibited: Direct Model manipulation
-- ❌ Prohibited: Complex data processing
+- ❌ Prohibited: Direct UseCase instantiation or method calls
+- ❌ Prohibited: Complex data processing or transformation
 
-**Utilities (GLogo/Utils/)**:
-- ✅ Allowed: Pure functions (image processing, coordinate calculations, etc.)
+**Utilities (GLogo/Utils/) - Shared Utilities**:
+- ✅ Allowed: Pure functions (coordinate calculations, etc.)
 - ✅ Allowed: Static methods, extensions
-- ❌ Prohibited: State retention, dependencies on View or ViewModel
+- ✅ Allowed: Helper types used across layers
+- ❌ Prohibited: State retention
+- ❌ Prohibited: Dependencies on View, ViewModel, or UseCase
+- ❌ Prohibited: Business logic (belongs in UseCases)
 
 **File Header Standard**:
 ```swift
@@ -662,11 +876,16 @@ func loadImage(from url: URL) -> UIImage? {
 ### Code Review Requirements (Mandatory Checklist)
 **All code must meet the following criteria:**
 
-#### Architecture Compliance
-- [ ] Fully adheres to MVVM pattern
-- [ ] Models contain no business logic
-- [ ] Views contain no data processing
-- [ ] ViewModels appropriately handle their responsibilities
+#### Architecture Compliance (MVVM + Clean Architecture)
+- [ ] Fully adheres to MVVM + Clean Architecture pattern
+- [ ] Dependency rule followed: Views → ViewModels → UseCases → Models
+- [ ] Models contain no business logic (pure data structures only)
+- [ ] UseCases contain all business logic (no business logic in ViewModels or Views)
+- [ ] ViewModels delegate to UseCases (no direct business logic implementation)
+- [ ] Views contain no data processing (only presentation logic)
+- [ ] No circular dependencies between layers
+- [ ] Proper dependency injection used for UseCases in ViewModels
+- [ ] Repository pattern used for all data access operations
 
 #### Coding Standards
 - [ ] All comments are written in Japanese
@@ -685,7 +904,10 @@ func loadImage(from url: URL) -> UIImage? {
 - [ ] No potential data races exist
 
 **❌ Code modifications required in the following cases:**
-- MVVM pattern violations found → **Immediate refactoring required**
+- MVVM + Clean Architecture violations found → **Immediate refactoring required**
+- Business logic in ViewModels/Views (should be in UseCases) → **Must be moved to UseCases**
+- Layer dependency violations (e.g., UseCase depending on ViewModel) → **Must be refactored**
+- Missing dependency injection in ViewModels → **Must be added**
 - English comments used → **Must be changed to Japanese**
 - Missing MARK separation → **Must be added**
 - Potential memory leaks → **Must be fixed**
@@ -847,15 +1069,20 @@ func printHistoryStatus() {
 ### Best Practices Summary
 
 **🔴 CRITICAL - Absolute Principles (Never Compromise):**
-1. **Strictly adhere to MVVM pattern** - Architecture violations require immediate refactoring
-2. **Use Japanese comments** - All comments must be written in Japanese
-3. **Separate sections with MARK** - Mandatory for all files
+1. **Strictly adhere to MVVM + Clean Architecture pattern** - Architecture violations require immediate refactoring
+2. **Follow the Dependency Rule** - Dependencies must only point inward (Views → ViewModels → UseCases → Models)
+3. **All business logic in UseCases layer** - ViewModels must delegate to UseCases
+4. **Use Japanese comments** - All comments must be written in Japanese
+5. **Separate sections with MARK** - Mandatory for all files
 
 **🟡 IMPORTANT - Essential Implementation Guidelines:**
-4. **Profile memory usage** regularly using Instruments and Address Sanitizer
-5. **Use autoreleasepool** for memory-intensive operations
-6. **Implement weak references** in callback patterns
-7. **Cache expensive calculations** (coordinate transformations, filter results)
-8. **Validate Core Image filter availability** before use
-9. **Profile performance regularly** during development
-10. **Follow Swift 6.0 concurrency guidelines** strictly
+6. **Use dependency injection** for UseCases in ViewModels
+7. **Profile memory usage** regularly using Instruments and Address Sanitizer
+8. **Use autoreleasepool** for memory-intensive operations
+9. **Implement weak references** in callback patterns
+10. **Cache expensive calculations** (coordinate transformations, filter results)
+11. **Validate Core Image filter availability** before use
+12. **Profile performance regularly** during development
+13. **Follow Swift 6.0 concurrency guidelines** strictly
+14. **Keep UseCases framework-agnostic** when possible (prefer UIKit over SwiftUI in UseCases)
+15. **Use Coordinator pattern** for complex multi-step workflows in UseCases

@@ -1,6 +1,5 @@
 //
 //  TextElement.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはテキスト要素を表すモデルクラスを定義しています。

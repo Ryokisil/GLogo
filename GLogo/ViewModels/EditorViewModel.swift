@@ -352,20 +352,31 @@ class EditorViewModel: ObservableObject {
     }
     
     /// 選択中の要素を更新
-    func updateSelectedElement(_ element: LogoElement, recordInHistory: Bool = true) {
+    func updateSelectedElement(_ element: LogoElement) {
         guard let index = project.elements.firstIndex(where: { $0.id == element.id }) else { return }
         
-        // 履歴に記録するかどうかを判断
-        if recordInHistory {
-            // ここではイベントを使用しない
-            project.elements[index] = element
-        } else {
-            // 履歴に記録せずに要素を直接更新
-            project.elements[index] = element
-        }
+        // ここではイベントを使用しない
+        project.elements[index] = element
         
         // 選択要素を更新
         selectedElement = element
+        isProjectModified = true
+    }
+
+    /// 編集イベントを適用し、選択要素と変更フラグを更新
+    /// - Parameters:
+    ///   - event: 適用する編集イベント
+    ///   - elementId: 対象要素のID
+    /// - Returns: なし
+    private func applyEventAndRefreshSelection(_ event: EditorEvent, elementId: UUID) {
+        history.recordAndApply(event)
+
+        if selectedElement?.id == elementId {
+            if let updatedElement = project.elements.first(where: { $0.id == elementId }) {
+                selectedElement = updatedElement
+            }
+        }
+
         isProjectModified = true
     }
     
@@ -434,14 +445,7 @@ class EditorViewModel: ObservableObject {
             newText: newText
         )
         
-        history.recordAndApply(event)
-        
-        // 選択要素を更新
-        if selectedElement?.id == textElement.id {
-            selectedElement = textElement
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: textElement.id)
     }
     
     /// テキスト色の更新
@@ -463,16 +467,9 @@ class EditorViewModel: ObservableObject {
         )
         
         // イベントを履歴に記録して適用
-        history.recordAndApply(event)
+        applyEventAndRefreshSelection(event, elementId: textElement.id)
         
         print("DEBUG: 色変更後のイベントスタック: \(history.getEventNames())")
-        
-        // 選択要素を更新
-        if selectedElement?.id == textElement.id {
-            selectedElement = textElement
-        }
-        
-        isProjectModified = true
         print("DEBUG: テキスト色変更完了")
     }
     
@@ -491,17 +488,7 @@ class EditorViewModel: ObservableObject {
         )
         
         // イベントを履歴に記録して適用
-        history.recordAndApply(event)
-        
-        // 選択要素を更新
-        if selectedElement?.id == textElement.id {
-            // 最新の状態を反映
-            if let updatedElement = project.elements.first(where: { $0.id == textElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: textElement.id)
         print("DEBUG: フォント更新完了: \(fontName), サイズ: \(fontSize)")
     }
     
@@ -519,16 +506,7 @@ class EditorViewModel: ObservableObject {
         )
         
         // イベントを履歴に記録して適用
-        history.recordAndApply(event)
-        
-        // 選択要素を更新
-        if selectedElement?.id == shapeElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == shapeElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
         print("DEBUG: 図形タイプ変更完了: \(newType)")
     }
     
@@ -542,15 +520,7 @@ class EditorViewModel: ObservableObject {
             newColor: newColor
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == shapeElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == shapeElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
         print("DEBUG: 塗りつぶし色変更完了")
     }
     
@@ -564,15 +534,7 @@ class EditorViewModel: ObservableObject {
             newMode: newMode
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == shapeElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == shapeElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
         print("DEBUG: 塗りつぶしモード変更完了")
     }
     
@@ -586,15 +548,7 @@ class EditorViewModel: ObservableObject {
             newColor: newColor
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == shapeElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == shapeElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
         print("DEBUG: 枠線色変更完了")
     }
     
@@ -608,15 +562,7 @@ class EditorViewModel: ObservableObject {
             newWidth: newWidth
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == shapeElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == shapeElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
         print("DEBUG: 枠線太さ変更完了")
     }
     
@@ -630,15 +576,7 @@ class EditorViewModel: ObservableObject {
             newMode: newMode
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == shapeElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == shapeElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
         print("DEBUG: 枠線モード変更完了")
     }
     
@@ -652,15 +590,7 @@ class EditorViewModel: ObservableObject {
             newRadius: newRadius
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == shapeElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == shapeElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
         print("DEBUG: 角丸半径変更完了")
     }
     
@@ -674,15 +604,7 @@ class EditorViewModel: ObservableObject {
             newSides: newSides
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == shapeElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == shapeElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
         print("DEBUG: 辺の数変更完了")
     }
     
@@ -698,15 +620,7 @@ class EditorViewModel: ObservableObject {
             newEndColor: newEndColor
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == shapeElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == shapeElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
         print("DEBUG: グラデーション色変更完了")
     }
     
@@ -719,15 +633,7 @@ class EditorViewModel: ObservableObject {
             newAngle: newAngle
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == shapeElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == shapeElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
         print("DEBUG: グラデーション角度変更完了")
     }
     
@@ -743,15 +649,7 @@ class EditorViewModel: ObservableObject {
             newSaturation: newSaturation
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == imageElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
         print("DEBUG: 画像彩度変更完了")
     }
     
@@ -765,15 +663,7 @@ class EditorViewModel: ObservableObject {
             newBrightness: newBrightness
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == imageElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
         print("DEBUG: 画像明度変更完了")
     }
     
@@ -787,15 +677,7 @@ class EditorViewModel: ObservableObject {
             newContrast: newContrast
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == imageElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
         print("DEBUG: 画像コントラスト変更完了")
     }
     
@@ -809,15 +691,7 @@ class EditorViewModel: ObservableObject {
             newHighlights: newHighlights
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == imageElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
         print("DEBUG: 画像ハイライト変更完了")
     }
     
@@ -831,15 +705,7 @@ class EditorViewModel: ObservableObject {
             newShadows: newShadows
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == imageElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
         print("DEBUG: 画像シャドウ変更完了")
     }
     
@@ -853,15 +719,7 @@ class EditorViewModel: ObservableObject {
             newHue: newHue
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == imageElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
         print("DEBUG: 画像色相変更完了")
     }
     
@@ -875,15 +733,7 @@ class EditorViewModel: ObservableObject {
             newSharpness: newSharpness
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == imageElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
         print("DEBUG: 画像シャープネス変更完了")
     }
     
@@ -897,15 +747,7 @@ class EditorViewModel: ObservableObject {
             newRadius: newRadius
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == imageElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
         print("DEBUG: 画像ガウシアンブラー変更完了")
     }
     
@@ -921,15 +763,7 @@ class EditorViewModel: ObservableObject {
             newIntensity: newIntensity
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == imageElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
         print("DEBUG: 画像ティントカラー変更完了")
     }
     
@@ -943,15 +777,7 @@ class EditorViewModel: ObservableObject {
             newValue: newValue
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == imageElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
         print("DEBUG: 画像フレーム表示変更完了")
     }
     
@@ -965,15 +791,7 @@ class EditorViewModel: ObservableObject {
             newColor: newColor
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == imageElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
         print("DEBUG: 画像フレーム色変更完了")
     }
     
@@ -987,15 +805,7 @@ class EditorViewModel: ObservableObject {
             newWidth: newWidth
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == imageElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
         print("DEBUG: 画像フレーム太さ変更完了")
     }
     
@@ -1011,15 +821,7 @@ class EditorViewModel: ObservableObject {
             newRadius: newRadius
         )
         
-        history.recordAndApply(event)
-        
-        if selectedElement?.id == imageElement.id {
-            if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
-                selectedElement = updatedElement
-            }
-        }
-        
-        isProjectModified = true
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
         print("DEBUG: 画像角丸設定変更完了")
     }
     
@@ -1097,7 +899,7 @@ class EditorViewModel: ObservableObject {
                 x: startX + deltaX,
                 y: startY + deltaY
             )
-            updateSelectedElement(movedElement, recordInHistory: false) // 履歴に記録しない
+            updateSelectedElement(movedElement) // 操作中は履歴に記録しない
             
         case .resize:
             // 要素のサイズ変更
@@ -1106,7 +908,7 @@ class EditorViewModel: ObservableObject {
                 width: max(10, (manipulationStartElement?.size.width ?? 0) + deltaX),
                 height: max(10, (manipulationStartElement?.size.height ?? 0) + deltaY)
             )
-            updateSelectedElement(resizedElement, recordInHistory: false) // 履歴に記録しない
+            updateSelectedElement(resizedElement) // 操作中は履歴に記録しない
             
         case .rotate:
             // 要素の回転
@@ -1125,7 +927,7 @@ class EditorViewModel: ObservableObject {
             
             let rotatedElement = element
             rotatedElement.rotation = (manipulationStartElement?.rotation ?? 0) + deltaAngle
-            updateSelectedElement(rotatedElement, recordInHistory: false) // 履歴に記録しない
+            updateSelectedElement(rotatedElement) // 操作中は履歴に記録しない
         case .none:
             break
         }

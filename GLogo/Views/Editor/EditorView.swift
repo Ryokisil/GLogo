@@ -15,13 +15,59 @@ import SwiftUI
 enum ActiveSheet: Identifiable {
     case imagePicker
     case imageCrop(UIImage, String?)
-    
+
     var id: String {  // ビルド時にInt型だとクラッシュしたのでString型に変更
         switch self {
         case .imagePicker: return "imagePicker"
         case .imageCrop: return "imageCrop"
         }
     }
+}
+
+// MARK: - UI状態管理用struct
+
+/// 純粋なUI表示状態（パネル表示、グリッド設定など）
+private struct EditorUIState {
+    /// ツールパネルの表示フラグ
+    var isShowingToolPanel = true
+    /// エクスポートシートの表示フラグ
+    var isShowingExportSheet = false
+    /// プロジェクト設定シートの表示フラグ
+    var isShowingProjectSettings = false
+    /// グリッド表示フラグ
+    var showGrid = true
+    /// グリッドスナップフラグ
+    var snapToGrid = false
+    /// 画像要素の選択タブ（0=プロパティ、1=カーブ）
+    var selectedImageTab: Int = 0
+    /// 初回ガイドの表示フラグ
+    var isShowingEditorIntro = false
+    /// 初回ガイドの現在ステップ
+    var editorIntroStepIndex = 0
+}
+
+/// アラート・確認ダイアログの状態
+private struct EditorAlertState {
+    /// 確認ダイアログの表示フラグ
+    var isShowingConfirmation = false
+    /// 確認ダイアログのメッセージ
+    var confirmationMessage = ""
+    /// 確認ダイアログのアクション
+    var confirmationAction: () -> Void = {}
+    /// アラートの表示フラグ
+    var isShowingAlert = false
+    /// アラートのタイトル
+    var alertTitle = ""
+    /// アラートのメッセージ
+    var alertMessage = ""
+}
+
+/// 一時的なタップ判定状態
+private struct EditorTapState {
+    /// ダブルタップ判定用の最終タップ要素ID
+    var lastTapElementId: UUID?
+    /// ダブルタップ判定用の最終タップ時刻
+    var lastTapTimestamp: TimeInterval?
 }
 
 /// エディタビュー - アプリのメインエディタ画面
@@ -36,56 +82,29 @@ struct EditorView: View {
     /// これにより循環参照を避けつつ、選択された要素の編集機能を提供。                    ||   EditorView → EditorViewModel（強参照）
     @StateObject private var elementViewModel: ElementViewModel
     
-    /// 以下State群をenumで列挙型としてまとめとくと整理になるかもなので検討
-    /// ツールパネルの表示フラグ
-    @State private var isShowingToolPanel = true
-    
-    /// エクスポートシートの表示フラグ
-    @State private var isShowingExportSheet = false
-    
-    /// プロジェクト設定シートの表示フラグ
-    @State private var isShowingProjectSettings = false
-    
-    /// 画像ピッカーの表示フラグ
-    @State private var selectedImage: UIImage? = nil
-    
+    // MARK: - UI状態（グルーピング済み）
+
+    /// 純粋なUI表示状態
+    @State private var uiState = EditorUIState()
+
+    /// アラート・確認ダイアログの状態
+    @State private var alertState = EditorAlertState()
+
+    /// 一時的なタップ判定状態
+    @State private var tapState = EditorTapState()
+
+    // MARK: - 画面遷移・シート制御
+
     /// 画像ピッカーやクロップビューの表示を切り替えるために使用
     @State private var activeSheet: ActiveSheet?
-    
+
     /// 手動背景除去画面への遷移フラグ
     @State private var isNavigatingToManualRemoval = false
-    
-    /// グリッド表示フラグ
-    @State private var showGrid = true
-    
-    /// グリッドスナップフラグ
-    @State private var snapToGrid = false
-    
-    /// 確認ダイアログの表示フラグ
-    @State private var isShowingConfirmation = false
-    
-    /// 確認ダイアログのメッセージ
-    @State private var confirmationMessage = ""
-    
-    /// 確認ダイアログのアクション
-    @State private var confirmationAction: () -> Void = {}
-    
-    /// アラートの表示フラグ
-    @State private var isShowingAlert = false
-    
-    /// アラートのタイトル
-    @State private var alertTitle = ""
 
-    /// アラートのメッセージ
+    // MARK: - 永続化
 
-    /// 画像要素の選択タブ（0=プロパティ、1=カーブ）
-    @State private var selectedImageTab: Int = 0
-    @State private var alertMessage = ""
-
-
-    /// ダブルタップ判定用の最終タップ情報（同一要素・短時間のみ編集開始とみなす）
-    @State private var lastTapElementId: UUID?
-    @State private var lastTapTimestamp: TimeInterval?
+    /// 初回ガイド表示の判定
+    @AppStorage("hasSeenEditorIntro") private var hasSeenEditorIntro = false
     
     // MARK: - イニシャライザ
     
@@ -123,6 +142,22 @@ struct EditorView: View {
                 // ツールバーアイテム
                 toolbarItems
             }
+            .overlay {
+                if uiState.isShowingEditorIntro {
+                    EditorIntroOverlay(
+                        isPresented: $uiState.isShowingEditorIntro,
+                        stepIndex: $uiState.editorIntroStepIndex,
+                        steps: Self.editorIntroSteps
+                    ) {
+                        hasSeenEditorIntro = true
+                    }
+                }
+            }
+            .onAppear {
+                if !hasSeenEditorIntro {
+                    uiState.isShowingEditorIntro = true
+                }
+            }
             // 画像ピッカー内でクロップ画面への遷移を追加
             .sheet(item: $activeSheet) { item in
                 switch item {
@@ -158,23 +193,23 @@ struct EditorView: View {
                 }
             }
             // 保存オプション（iOS16+はconfirmationDialogに統一）
-            .alert(isPresented: $isShowingAlert) {
+            .alert(isPresented: $alertState.isShowingAlert) {
                 Alert(
-                    title: Text(alertTitle),
-                    message: Text(alertMessage),
+                    title: Text(alertState.alertTitle),
+                    message: Text(alertState.alertMessage),
                     primaryButton: .destructive(Text("はい")) {
-                        confirmationAction()
+                        alertState.confirmationAction()
                     },
                     secondaryButton: .cancel(Text("いいえ"))
                 )
             }
             .confirmationDialog(
-                confirmationMessage,
-                isPresented: $isShowingConfirmation,
+                alertState.confirmationMessage,
+                isPresented: $alertState.isShowingConfirmation,
                 titleVisibility: .visible
             ) {
                 Button("OK", role: .destructive) {
-                    confirmationAction()
+                    alertState.confirmationAction()
                 }
                 Button("キャンセル", role: .cancel) {}
             }
@@ -199,7 +234,7 @@ struct EditorView: View {
                     case .shape:
                         ShapeEditorPanel(viewModel: elementViewModel)
                     case .image:
-                        if selectedImageTab == 0 {
+                        if uiState.selectedImageTab == 0 {
                             ImageEditorPanel(viewModel: elementViewModel)
                         } else {
                             // カーブタブ
@@ -232,26 +267,26 @@ struct EditorView: View {
     private var tabSelector: some View {
         HStack(spacing: 0) {
             Button(action: {
-                selectedImageTab = 0
+                uiState.selectedImageTab = 0
             }) {
                 Text("プロパティ")
                     .font(.headline)
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity)
-                    .background(selectedImageTab == 0 ? Color(UIColor.tertiarySystemBackground) : Color.clear)
-                    .foregroundColor(selectedImageTab == 0 ? .primary : .secondary)
+                    .background(uiState.selectedImageTab == 0 ? Color(UIColor.tertiarySystemBackground) : Color.clear)
+                    .foregroundColor(uiState.selectedImageTab == 0 ? .primary : .secondary)
             }
             .buttonStyle(PlainButtonStyle())
 
             Button(action: {
-                selectedImageTab = 1
+                uiState.selectedImageTab = 1
             }) {
                 Text("カーブ")
                     .font(.headline)
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity)
-                    .background(selectedImageTab == 1 ? Color(UIColor.tertiarySystemBackground) : Color.clear)
-                    .foregroundColor(selectedImageTab == 1 ? .primary : .secondary)
+                    .background(uiState.selectedImageTab == 1 ? Color(UIColor.tertiarySystemBackground) : Color.clear)
+                    .foregroundColor(uiState.selectedImageTab == 1 ? .primary : .secondary)
             }
             .buttonStyle(PlainButtonStyle())
         }
@@ -269,8 +304,8 @@ struct EditorView: View {
             // キャンバスビュー
             CanvasViewRepresentable(
                 viewModel: viewModel,
-                showGrid: showGrid,
-                snapToGrid: snapToGrid
+                showGrid: uiState.showGrid,
+                snapToGrid: uiState.snapToGrid
             )
             
             if viewModel.editorMode == .select {
@@ -484,11 +519,11 @@ struct EditorView: View {
             Button(action: {
                 if viewModel.selectedElement != nil {
                     // 選択中の要素がある場合は削除の確認
-                    alertTitle = "削除の確認"
-                    alertMessage = "選択した要素を削除しますか？"
-                    isShowingAlert = true
+                    alertState.alertTitle = "削除の確認"
+                    alertState.alertMessage = "選択した要素を削除しますか？"
+                    alertState.isShowingAlert = true
                     // 削除アクションの設定（アラートの「はい」ボタンで実行される）
-                    confirmationAction = {
+                    alertState.confirmationAction = {
                         viewModel.deleteSelectedElement()
                     }
                 } else {
@@ -538,9 +573,9 @@ struct EditorView: View {
     private var viewControls: some View {
         HStack(spacing: 12) {
             // グリッド表示切替
-            Button(action: { showGrid.toggle() }) {
-                Image(systemName: showGrid ? "grid" : "grid.circle")
-                    .foregroundColor(showGrid ? .blue : .primary)
+            Button(action: { uiState.showGrid.toggle() }) {
+                Image(systemName: uiState.showGrid ? "grid" : "grid.circle")
+                    .foregroundColor(uiState.showGrid ? .blue : .primary)
             }
             .help("グリッド表示")
             
@@ -574,7 +609,7 @@ struct EditorView: View {
                 Text("プロパティ")
                     .font(.headline)
                 Spacer()
-                Button(action: { isShowingToolPanel = false }) {
+                Button(action: { uiState.isShowingToolPanel = false }) {
                     Image(systemName: "chevron.down")
                         .font(.body)
                 }
@@ -623,8 +658,42 @@ struct EditorView: View {
                 }
             }
 
+            // 使い方ガイド
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    uiState.editorIntroStepIndex = 0
+                    uiState.isShowingEditorIntro = true
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                }
+                .help("使い方ガイド")
+            }
+
         }
     }
+
+    private static let editorIntroSteps: [EditorIntroStep] = [
+        EditorIntroStep(
+            title: "画像を追加",
+            message: "写真アイコンをタップして編集を始めます。",
+            systemImageName: "photo.on.rectangle"
+        ),
+        EditorIntroStep(
+            title: "ベース画像を決める",
+            message: "画像を複数インポートしてる時に星アイコンを押すとベース画像を切り替えます。",
+            systemImageName: "star.fill"
+        ),
+        EditorIntroStep(
+            title: "編集する",
+            message: "ペンで背景除去、プロパティで色調整ができます。",
+            systemImageName: "pencil.tip"
+        ),
+        EditorIntroStep(
+            title: "保存",
+            message: "左上の保存ボタンで書き出します。",
+            systemImageName: "square.and.arrow.down"
+        )
+    ]
     
     // MARK: - アクション処理
     
@@ -659,16 +728,16 @@ struct EditorView: View {
     
     /// アラートを表示
     private func showAlert(title: String, message: String) {
-        alertTitle = title
-        alertMessage = message
-        isShowingAlert = true
+        alertState.alertTitle = title
+        alertState.alertMessage = message
+        alertState.isShowingAlert = true
     }
-    
+
     /// 確認ダイアログを表示
     private func showConfirmation(message: String, action: @escaping () -> Void) {
-        confirmationMessage = message
-        confirmationAction = action
-        isShowingConfirmation = true
+        alertState.confirmationMessage = message
+        alertState.confirmationAction = action
+        alertState.isShowingConfirmation = true
     }
     
     /// 選択された画像のリバートが可能かどうかを判断
@@ -694,20 +763,20 @@ struct EditorView: View {
     private func handleTextDoubleTapIfNeeded(for element: LogoElement) -> Bool {
         let now = Date().timeIntervalSinceReferenceDate
 
-        if let lastId = lastTapElementId,
-           let lastTime = lastTapTimestamp,
+        if let lastId = tapState.lastTapElementId,
+           let lastTime = tapState.lastTapTimestamp,
            lastId == element.id,
            now - lastTime < 0.35,
            let textElement = element as? TextElement {
             print("DEBUG: Manual double tap detected for TextElement")
             viewModel.startTextEditing(for: textElement)
-            lastTapElementId = nil
-            lastTapTimestamp = nil
+            tapState.lastTapElementId = nil
+            tapState.lastTapTimestamp = nil
             return true
         }
 
-        lastTapElementId = element.id
-        lastTapTimestamp = now
+        tapState.lastTapElementId = element.id
+        tapState.lastTapTimestamp = now
         return false
     }
 

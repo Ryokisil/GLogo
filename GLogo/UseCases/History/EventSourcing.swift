@@ -206,13 +206,13 @@ struct ElementMovedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) {
+        if let element = project.element(for: elementId) {
             element.position = newPosition
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) {
+        if let element = project.element(for: elementId) {
             element.position = oldPosition
         }
     }
@@ -231,13 +231,13 @@ struct ElementResizedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) {
+        if let element = project.element(for: elementId) {
             element.size = newSize
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) {
+        if let element = project.element(for: elementId) {
             element.size = oldSize
         }
     }
@@ -256,13 +256,13 @@ struct ElementRotatedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) {
+        if let element = project.element(for: elementId) {
             element.rotation = newRotation
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) {
+        if let element = project.element(for: elementId) {
             element.rotation = oldRotation
         }
     }
@@ -281,13 +281,13 @@ struct TextContentChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? TextElement {
+        if let element = project.element(for: elementId, as: TextElement.self) {
             element.text = newText
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? TextElement {
+        if let element = project.element(for: elementId, as: TextElement.self) {
             element.text = oldText
         }
     }
@@ -356,14 +356,14 @@ struct TextColorChangedEvent: EditorEvent {
     
     func apply(to project: LogoProject) {
         
-        if let element = project.elements.first(where: { $0.id == elementId }) as? TextElement {
+        if let element = project.element(for: elementId, as: TextElement.self) {
             element.textColor = newColor
         }
     }
     
     func revert(from project: LogoProject) {
 
-        if let element = project.elements.first(where: { $0.id == elementId }) as? TextElement {
+        if let element = project.element(for: elementId, as: TextElement.self) {
             element.textColor = oldColor
         }
     }
@@ -385,7 +385,7 @@ struct FontChangedEvent: EditorEvent {
     
     func apply(to project: LogoProject) {
         
-        if let element = project.elements.first(where: { $0.id == elementId }) as? TextElement {
+        if let element = project.element(for: elementId, as: TextElement.self) {
             element.fontName = newFontName
             element.fontSize = newFontSize
             print("DEBUG: フォントを\(newFontName)、サイズを\(newFontSize)に変更しました")
@@ -394,7 +394,7 @@ struct FontChangedEvent: EditorEvent {
     
     func revert(from project: LogoProject) {
         
-        if let element = project.elements.first(where: { $0.id == elementId }) as? TextElement {
+        if let element = project.element(for: elementId, as: TextElement.self) {
             print("DEBUG: 要素が見つかりました: \(element.name)")
             element.fontName = oldFontName
             element.fontSize = oldFontSize
@@ -419,7 +419,7 @@ struct ShapeTypeChangedEvent: EditorEvent {
     
     func apply(to project: LogoProject) {
         print("DEBUG: ShapeTypeChangedEvent.apply開始")
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.shapeType = newType
             print("DEBUG: 図形タイプを\(newType)に変更しました")
         } else {
@@ -432,7 +432,7 @@ struct ShapeTypeChangedEvent: EditorEvent {
         print("DEBUG: ShapeTypeChangedEvent.revert開始")
         print("DEBUG: 対象要素ID: \(elementId)")
         
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             print("DEBUG: 要素が見つかりました: \(element.name)")
             element.shapeType = oldType
             print("DEBUG: 図形タイプを\(oldType)に戻しました")
@@ -506,13 +506,13 @@ struct ShapeFillColorChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.fillColor = newColor
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.fillColor = oldColor
         }
     }
@@ -531,13 +531,13 @@ struct ShapeFillModeChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.fillMode = newMode
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.fillMode = oldMode
         }
     }
@@ -605,13 +605,13 @@ struct ShapeStrokeColorChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.strokeColor = newColor
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.strokeColor = oldColor
         }
     }
@@ -630,13 +630,13 @@ struct ShapeStrokeWidthChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.strokeWidth = newWidth
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.strokeWidth = oldWidth
         }
     }
@@ -655,13 +655,13 @@ struct ShapeStrokeModeChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.strokeMode = newMode
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.strokeMode = oldMode
         }
     }
@@ -680,13 +680,13 @@ struct ShapeCornerRadiusChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.cornerRadius = newRadius
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.cornerRadius = oldRadius
         }
     }
@@ -705,13 +705,13 @@ struct ShapeSidesChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.sides = newSides
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.sides = oldSides
         }
     }
@@ -794,14 +794,14 @@ struct ShapeGradientColorsChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.gradientStartColor = newStartColor
             element.gradientEndColor = newEndColor
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.gradientStartColor = oldStartColor
             element.gradientEndColor = oldEndColor
         }
@@ -821,13 +821,13 @@ struct ShapeGradientAngleChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.gradientAngle = newAngle
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ShapeElement {
+        if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.gradientAngle = oldAngle
         }
     }
@@ -850,13 +850,13 @@ struct ImageSaturationChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.saturationAdjustment = newSaturation
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.saturationAdjustment = oldSaturation
         }
     }
@@ -875,13 +875,13 @@ struct ImageBrightnessChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.brightnessAdjustment = newBrightness
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.brightnessAdjustment = oldBrightness
         }
     }
@@ -900,13 +900,13 @@ struct ImageContrastChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.contrastAdjustment = newContrast
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.contrastAdjustment = oldContrast
         }
     }
@@ -925,13 +925,13 @@ struct ImageHighlightsChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.highlightsAdjustment = newHighlights
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.highlightsAdjustment = oldHighlights
         }
     }
@@ -950,13 +950,13 @@ struct ImageShadowsChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.shadowsAdjustment = newShadows
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.shadowsAdjustment = oldShadows
         }
     }
@@ -975,13 +975,13 @@ struct ImageHueChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.hueAdjustment = newHue
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.hueAdjustment = oldHue
         }
     }
@@ -1000,13 +1000,13 @@ struct ImageSharpnessChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.sharpnessAdjustment = newSharpness
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.sharpnessAdjustment = oldSharpness
         }
     }
@@ -1025,13 +1025,13 @@ struct ImageGaussianBlurChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.gaussianBlurRadius = newRadius
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.gaussianBlurRadius = oldRadius
         }
     }
@@ -1117,14 +1117,14 @@ struct ImageTintColorChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.tintColor = newColor
             element.tintIntensity = newIntensity
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.tintColor = oldColor
             element.tintIntensity = oldIntensity
         }
@@ -1304,7 +1304,7 @@ struct ImageContentReplacedEvent: EditorEvent {
     ///   - project: 対象プロジェクト
     /// - Returns: なし
     func apply(to project: LogoProject) {
-        guard let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement else {
+        guard let element = project.element(for: elementId, as: ImageElement.self) else {
             return
         }
         element.replaceImageSource(
@@ -1319,7 +1319,7 @@ struct ImageContentReplacedEvent: EditorEvent {
     ///   - project: 対象プロジェクト
     /// - Returns: なし
     func revert(from project: LogoProject) {
-        guard let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement else {
+        guard let element = project.element(for: elementId, as: ImageElement.self) else {
             return
         }
 
@@ -1358,13 +1358,13 @@ struct ImageShowFrameChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.showFrame = newValue
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.showFrame = oldValue
         }
     }
@@ -1432,13 +1432,13 @@ struct ImageFrameColorChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameColor = newColor
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameColor = oldColor
         }
     }
@@ -1457,13 +1457,13 @@ struct ImageFrameWidthChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameWidth = newWidth
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameWidth = oldWidth
         }
     }
@@ -1488,14 +1488,14 @@ struct ImageRoundedCornersChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.roundedCorners = isRounded
             element.cornerRadius = newRadius
         }
     }
     
     func revert(from project: LogoProject) {
-        if let element = project.elements.first(where: { $0.id == elementId }) as? ImageElement {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
             element.roundedCorners = wasRounded
             element.cornerRadius = oldRadius
         }
@@ -1586,7 +1586,7 @@ struct ElementTransformedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        guard let element = project.elements.first(where: { $0.id == elementId }) else { return }
+        guard let element = project.element(for: elementId) else { return }
         
         if let newPosition = newPosition {
             element.position = newPosition
@@ -1602,7 +1602,7 @@ struct ElementTransformedEvent: EditorEvent {
     }
     
     func revert(from project: LogoProject) {
-        guard let element = project.elements.first(where: { $0.id == elementId }) else { return }
+        guard let element = project.element(for: elementId) else { return }
         
         if let oldPosition = oldPosition {
             element.position = oldPosition
@@ -1631,12 +1631,12 @@ struct ElementZIndexChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        guard let element = project.elements.first(where: { $0.id == elementId }) else { return }
+        guard let element = project.element(for: elementId) else { return }
         element.zIndex = newZIndex
     }
     
     func revert(from project: LogoProject) {
-        guard let element = project.elements.first(where: { $0.id == elementId }) else { return }
+        guard let element = project.element(for: elementId) else { return }
         element.zIndex = oldZIndex
     }
 }

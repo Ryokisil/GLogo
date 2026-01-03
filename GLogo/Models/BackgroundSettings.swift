@@ -1,6 +1,5 @@
 //
 //  BackgroundSettings.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはロゴプロジェクトの背景設定を管理するモデルクラスを定義しています。
