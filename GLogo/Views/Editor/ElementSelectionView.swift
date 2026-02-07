@@ -180,7 +180,6 @@ struct ElementSelectionView: View {
             TapGesture(count: 2)
                 .onEnded {
                     guard element is TextElement else {
-                        print("DEBUG: ダブルタップ検出したが、TextElementではないのでスキップ")
                         return
                     }
                     onDoubleTap?()

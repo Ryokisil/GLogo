@@ -149,9 +149,6 @@ class ImageCropViewModel: ObservableObject {
         abs(cropRect.height - imageViewFrame.height) < tolerance
         
         hasCropped = !isEqual
-        print("DEBUG: クロップ領域変更: hasCropped = \(hasCropped)")
-        print("DEBUG: cropRect = \(cropRect)")
-        print("DEBUG: imageViewFrame = \(imageViewFrame)")
     }
     
     func resetCropRect() {
@@ -190,7 +187,6 @@ class ImageCropViewModel: ObservableObject {
     // MARK: - ヘルパーメソッド
     
     func updateImageFrame(_ frame: CGRect) {
-        print("DEBUG: updateImageFrame called with frame: \(frame)")
         
         self.imageViewFrame = frame
         
@@ -200,8 +196,6 @@ class ImageCropViewModel: ObservableObject {
             self.imageIsLoaded = true
             self.hasCropped = false
             
-            print("DEBUG: 初期クロップ領域を設定: \(cropRect)")
-            print("DEBUG: 画像フレーム: \(imageViewFrame)")
         }
     }
     

@@ -184,7 +184,6 @@ struct BackgroundRemovalUseCase {
         let scaleY = targetSize.height / currentSize.height
 
         guard let scaleFilter = CIFilter(name: "CILanczosScaleTransform") else {
-            print("WARNING: CILanczosScaleTransform が利用不可 - バイリニア補間を使用")
             return lowResMask.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
         }
 
@@ -193,7 +192,6 @@ struct BackgroundRemovalUseCase {
         scaleFilter.setValue(1.0, forKey: kCIInputAspectRatioKey)
 
         guard let scaledMask = scaleFilter.outputImage else {
-            print("WARNING: Lanczosスケーリングに失敗 - アフィン変換を使用")
             return lowResMask.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
         }
 
@@ -211,7 +209,6 @@ struct BackgroundRemovalUseCase {
     /// - Returns: ぼかし・ガンマ調整後のマスク画像
     private func createFeatheredMask(from originalMask: CIImage) -> CIImage {
         guard let blurFilter = CIFilter(name: "CIGaussianBlur") else {
-            print("WARNING: CIGaussianBlur が利用できません - 元のマスクを使用")
             return originalMask
         }
 
@@ -225,7 +222,6 @@ struct BackgroundRemovalUseCase {
         // blurFilter.setValue(adjustedRadius, forKey: kCIInputRadiusKey)
 
         guard let blurredMask = blurFilter.outputImage else {
-            print("WARNING: ブラー処理に失敗 - 元のマスクを使用")
             return originalMask
         }
 

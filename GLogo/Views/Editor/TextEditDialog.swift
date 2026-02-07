@@ -146,14 +146,16 @@ struct TextEditDialog: View {
 }
 
 /// プレビュー
-#Preview {
-    TextEditDialog(
-        initialText: "サンプルテキスト",
-        onEditComplete: { text in
-            print("編集完了: \(text)")
-        },
-        onCancel: {
-            print("キャンセル")
-        }
-    )
+struct TextEditDialog_Previews: PreviewProvider {
+    static var previews: some View {
+        TextEditDialog(
+            initialText: "サンプルテキスト",
+            onEditComplete: { text in
+                print("編集完了: \(text)")
+            },
+            onCancel: {
+                print("キャンセル")
+            }
+        )
+    }
 }

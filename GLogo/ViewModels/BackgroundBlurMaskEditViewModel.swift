@@ -1,19 +1,18 @@
 //
-//  ManualBackgroundRemovalViewModel.swift
+//  BackgroundBlurMaskEditViewModel.swift
 //  GLogo
 //
 //  概要:
-//  手動背景除去機能のビューモデルです。
-//  選択された画像要素に対してブラシベースの背景除去編集を提供し、
-//  undo/redo機能とメモリ安全な状態管理を行います。
+//  背景ぼかし用マスク編集機能のビューモデルです。
+//  ブラシ編集・AIマスク生成・プレビュー合成を管理します。
 //
 
 import SwiftUI
 import UIKit
 
-/// 手動背景除去用のビューモデル
+/// 背景ぼかしマスク編集用のビューモデル
 @MainActor
-class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditingViewModeling {
+class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling {
     // MARK: - プロパティ
 
     /// 編集状態
@@ -22,8 +21,14 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
     /// 元画像（編集開始時の状態）
     let originalImage: UIImage
 
-    /// 完了時のコールバック（画像を返す）
-    private let completion: (UIImage) -> Void
+    /// 背景ぼかし半径（プレビュー用）
+    let blurRadius: CGFloat
+
+    /// 編集開始時のマスクデータ
+    private let originalMaskData: Data?
+
+    /// 完了時のコールバック（マスクデータを返す）
+    private let completion: (Data?) -> Void
 
     /// 画像処理ユースケース
     private let useCase: ManualBackgroundRemovalUseCase
@@ -33,24 +38,31 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
 
     // MARK: - イニシャライザ
 
-    /// 背景除去モード用イニシャライザ
+    /// 背景ぼかしマスク編集モード用イニシャライザ
     /// - Parameters:
     ///   - imageElement: 編集対象の画像要素
-    ///   - completion: 編集完了時の処理（背景除去後の画像を返す）
+    ///   - initialMaskData: 初期マスクデータ（既存のマスクがある場合）
+    ///   - blurRadius: 背景ぼかし半径（プレビュー用）
+    ///   - completion: 編集完了時の処理（マスクデータを返す）
     ///   - useCase: 画像処理ユースケース
     ///   - backgroundRemovalUseCase: AI背景除去ユースケース
     /// - Returns: なし
     init(
         imageElement: ImageElement,
-        completion: @escaping (UIImage) -> Void,
+        initialMaskData: Data?,
+        blurRadius: CGFloat,
+        completion: @escaping (Data?) -> Void,
         useCase: ManualBackgroundRemovalUseCase = ManualBackgroundRemovalUseCase(),
         backgroundRemovalUseCase: BackgroundRemovalUseCase = BackgroundRemovalUseCase()
     ) {
+        self.originalMaskData = initialMaskData
+        self.blurRadius = blurRadius
         self.completion = completion
         self.useCase = useCase
         self.backgroundRemovalUseCase = backgroundRemovalUseCase
-        // ImageElementから現在の表示用画像を取得
-        let resolvedImage = imageElement.image ?? imageElement.originalImage
+
+        // ImageElementから元画像を取得（フィルタ適用前）
+        let resolvedImage = imageElement.originalImage
         let isSourceImageAvailable = (resolvedImage != nil)
         self.originalImage = resolvedImage ?? Self.makeFallbackImage()
 
@@ -60,12 +72,15 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
         if !isSourceImageAvailable {
             initialState.sourceImageErrorMessage = "画像の読み込みに失敗しました"
         }
-
-        // SwiftUIマスキングでは履歴管理も簡素化
         self.state = initialState
 
-        // selfが完全に初期化された後にマスクを作成
-        let initialMask = useCase.createInitialMask(for: originalImage)
+        // 初期マスクの設定
+        let initialMask: UIImage
+        if let maskData = initialMaskData, let mask = UIImage(data: maskData) {
+            initialMask = mask
+        } else {
+            initialMask = useCase.createInitialMask(for: originalImage)
+        }
         self.state.maskImage = initialMask
         self.state.baseMaskImage = initialMask
         self.state.targetPoint = CGPoint(x: originalImage.size.width / 2, y: originalImage.size.height / 2)
@@ -81,10 +96,13 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
             context.cgContext.fill(CGRect(origin: .zero, size: CGSize(width: 1, height: 1)))
         }
     }
-    
+
     // MARK: - ブラシ編集
-    
+
     /// 指定座標にブラシストロークを適用
+    /// - Parameters:
+    ///   - point: ブラシ適用位置
+    /// - Returns: なし
     func applyBrushStroke(at point: CGPoint) {
         guard let currentMask = state.maskImage else { return }
 
@@ -98,11 +116,15 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
         state.maskImage = updatedMask
         state.maskUpdateId = UUID()
     }
-    
+
     /// 2点間に線を描画
+    /// - Parameters:
+    ///   - startPoint: 始点
+    ///   - endPoint: 終点
+    /// - Returns: なし
     func applyBrushLine(from startPoint: CGPoint, to endPoint: CGPoint) {
         guard let currentMask = state.maskImage else { return }
-        
+
         let updatedMask = useCase.drawLine(
             on: currentMask,
             from: startPoint,
@@ -114,35 +136,45 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
         state.maskImage = updatedMask
         state.maskUpdateId = UUID()
     }
-    
+
     /// ブラシサイズを変更
+    /// - Parameters:
+    ///   - size: ブラシサイズ
+    /// - Returns: なし
     func setBrushSize(_ size: CGFloat) {
         state.brushSize = max(5, min(50, size))
     }
-    
+
     /// 編集モードを切り替え
+    /// - Parameters: なし
+    /// - Returns: なし
     func toggleMode() {
         state.mode = state.mode == .erase ? .restore : .erase
     }
-    
+
     /// プレビューモードを切り替え
+    /// - Parameters: なし
+    /// - Returns: なし
     func togglePreview() {
         state.isShowingPreview.toggle()
     }
-    
+
     // MARK: - 履歴管理（Undo/Redo）
-    
+
     /// 履歴に追加
+    /// - Parameters:
+    ///   - image: 履歴に追加する画像
+    /// - Returns: なし
     private func addToHistory(_ image: UIImage) {
         // 現在位置より後の履歴を削除（新しい分岐）
         if state.historyIndex < state.history.count - 1 {
             state.history.removeSubrange((state.historyIndex + 1)...)
         }
-        
+
         // 新しい状態を追加
         state.history.append(image)
         state.historyIndex = state.history.count - 1
-        
+
         // 履歴サイズ制限（メモリ管理）
         let maxHistorySize = 20
         if state.history.count > maxHistorySize {
@@ -151,30 +183,36 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
             state.historyIndex -= removeCount
         }
     }
-    
+
     /// Undo実行
+    /// - Parameters: なし
+    /// - Returns: なし
     func undo() {
         guard state.canUndo else { return }
-        
+
         state.historyIndex -= 1
         state.editedImage = state.history[state.historyIndex]
-        
+
         // マスクも再生成
         regenerateMaskFromImage()
     }
-    
+
     /// Redo実行
+    /// - Parameters: なし
+    /// - Returns: なし
     func redo() {
         guard state.canRedo else { return }
-        
+
         state.historyIndex += 1
         state.editedImage = state.history[state.historyIndex]
-        
+
         // マスクも再生成
         regenerateMaskFromImage()
     }
-    
+
     /// リセット（初期状態に戻す）
+    /// - Parameters: なし
+    /// - Returns: なし
     func reset() {
         if let baseMask = state.baseMaskImage {
             state.maskImage = baseMask
@@ -185,32 +223,46 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
         state.history = [originalImage]
         state.historyIndex = 0
     }
-    
+
     // MARK: - 完了・キャンセル
 
     /// 編集完了
+    /// - Parameters: なし
+    /// - Returns: なし
     func complete() {
-        // マスクを適用した最終画像を生成
         if let maskImage = state.maskImage,
-           let finalImage = useCase.applyMask(maskImage, to: originalImage) {
-            completion(finalImage)
+           let maskData = maskImage.pngData() {
+            completion(maskData)
         } else {
-            completion(originalImage)
+            completion(nil)
         }
     }
 
     /// 編集キャンセル
+    /// - Parameters: なし
+    /// - Returns: なし
     func cancel() {
-        completion(originalImage)
+        completion(originalMaskData)
     }
 
-    /// マスクを適用した画像を取得
-    func getMaskedImage() -> UIImage? {
-        guard let maskImage = state.maskImage else { return nil }
-        return useCase.applyMask(maskImage, to: originalImage)
+    /// 背景ぼかしプレビュー画像を取得
+    /// - Parameters: なし
+    /// - Returns: 背景ぼかしプレビュー画像
+    func getBackgroundBlurPreview() -> UIImage? {
+        guard let maskImage = state.maskImage,
+              let maskData = maskImage.pngData() else {
+            return originalImage
+        }
+        return ImageFilterUtility.applyBackgroundBlur(
+            to: originalImage,
+            maskData: maskData,
+            radius: blurRadius
+        )
     }
 
     /// AIで生成したマスクを適用する
+    /// - Parameters: なし
+    /// - Returns: なし
     func applyAIMask() async {
         state.isProcessingAI = true
         defer { state.isProcessingAI = false }
@@ -225,13 +277,18 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
     }
 
     /// ターゲット位置を更新（画像内にクランプ）
+    /// - Parameters:
+    ///   - point: 更新する座標
+    /// - Returns: なし
     func setTargetPoint(_ point: CGPoint) {
         state.targetPoint = clampedImagePoint(point)
     }
-    
+
     // MARK: - プライベートメソッド
-    
+
     /// 編集済み画像からマスクを再生成
+    /// - Parameters: なし
+    /// - Returns: なし
     private func regenerateMaskFromImage() {
         // 実装の簡略化のため、履歴管理時は既存マスクを維持
         // より高度な実装では画像差分からマスクを逆算

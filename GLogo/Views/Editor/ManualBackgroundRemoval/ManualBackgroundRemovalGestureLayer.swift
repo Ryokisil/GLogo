@@ -3,16 +3,16 @@
 //  GLogo
 //
 //  概要:
-//  手動背景除去のターゲットUIとズーム・パンのジェスチャーを担当します。
+//  マスク編集用のターゲットUIとズーム・パンのジェスチャーを担当します。
 //
 
 import SwiftUI
 import UIKit
 
 /// ターゲット操作用のオーバーレイ
-struct ManualRemovalTargetOverlay: View {
-    /// 手動背景除去の状態を管理するViewModel
-    @ObservedObject var viewModel: ManualBackgroundRemovalViewModel
+struct ManualRemovalTargetOverlay<ViewModel: MaskEditingViewModeling>: View {
+    /// マスク編集の状態を管理するViewModel
+    @ObservedObject var viewModel: ViewModel
     /// 直前のブラシ適用点（ドラッグ中の線描画用）
     @State private var lastImagePoint: CGPoint?
     /// 現在のズーム倍率

@@ -262,7 +262,6 @@ class ImageFilterUtility {
         
         // CISharpenLuminanceが失敗した場合、CIUnsharpMaskを使用
         guard let filter = CIFilter(name: "CIUnsharpMask") else {
-            print("DEBUG: シャープネスフィルターが使用できません")
             return image
         }
         
@@ -280,28 +279,99 @@ class ImageFilterUtility {
         if radius == 0 {
             return image
         }
-        
+
         // 入力値を0.0〜10.0の範囲に制限（ロゴ制作に適した範囲）
         let clampedRadius = max(0.0, min(10.0, radius))
-        
+
         // 元の画像の範囲を保存
         let originalExtent = image.extent
-        
+
         // ガウシアンブラーフィルターを作成
         guard let filter = CIFilter(name: "CIGaussianBlur") else {
-            print("DEBUG: CIGaussianBlurフィルターが使用できません")
             return image
         }
-        
+
         filter.setValue(image, forKey: kCIInputImageKey)
         filter.setValue(clampedRadius, forKey: kCIInputRadiusKey)
-        
+
         guard let blurredImage = filter.outputImage else {
             return image
         }
-        
+
         // 元の画像サイズにクロップして範囲を復元
         return blurredImage.cropped(to: originalExtent)
+    }
+
+    /// 背景ぼかし合成を適用
+    /// - Parameters:
+    ///   - image: 元画像（CIImage）
+    ///   - maskImage: 前景マスク画像（白＝前景、黒＝背景）
+    ///   - radius: ぼかし半径
+    /// - Returns: 背景がぼかされた合成画像
+    static func applyBackgroundBlur(to image: CIImage, mask maskImage: CIImage, radius: CGFloat) -> CIImage? {
+        // 半径が0の場合は変更なし
+        if radius == 0 {
+            return image
+        }
+
+        // ぼかし半径を0〜50の範囲に制限（背景ぼかし用により広い範囲）
+        let clampedRadius = max(0.0, min(50.0, radius))
+
+        // 元の画像の範囲を保存
+        let originalExtent = image.extent
+
+        // 背景用にぼかした画像を生成
+        guard let blurFilter = CIFilter(name: "CIGaussianBlur") else {
+            return image
+        }
+        blurFilter.setValue(image, forKey: kCIInputImageKey)
+        blurFilter.setValue(clampedRadius, forKey: kCIInputRadiusKey)
+
+        guard let blurredImage = blurFilter.outputImage?.cropped(to: originalExtent) else {
+            return image
+        }
+
+        // マスクを画像サイズにスケーリング
+        let scaledMask = maskImage.transformed(by: CGAffineTransform(
+            scaleX: originalExtent.width / maskImage.extent.width,
+            y: originalExtent.height / maskImage.extent.height
+        ))
+
+        // CIBlendWithMaskで合成
+        // input: 前景画像（元画像）
+        // background: 背景画像（ぼかし画像）
+        // mask: マスク（白＝前景、黒＝背景）
+        guard let blendFilter = CIFilter(name: "CIBlendWithMask") else {
+            return image
+        }
+        blendFilter.setValue(image, forKey: kCIInputImageKey)
+        blendFilter.setValue(blurredImage, forKey: kCIInputBackgroundImageKey)
+        blendFilter.setValue(scaledMask, forKey: kCIInputMaskImageKey)
+
+        return blendFilter.outputImage?.cropped(to: originalExtent)
+    }
+
+    /// 背景ぼかし合成を適用（UIImage版）
+    /// - Parameters:
+    ///   - image: 元画像
+    ///   - maskData: 前景マスクのPNGデータ
+    ///   - radius: ぼかし半径
+    /// - Returns: 背景がぼかされた合成画像
+    static func applyBackgroundBlur(to image: UIImage, maskData: Data, radius: CGFloat) -> UIImage? {
+        guard let cgImage = image.cgImage,
+              let maskUIImage = UIImage(data: maskData),
+              let maskCGImage = maskUIImage.cgImage else {
+            return image
+        }
+
+        let ciImage = CIImage(cgImage: cgImage)
+        let maskCIImage = CIImage(cgImage: maskCGImage)
+
+        guard let resultCIImage = applyBackgroundBlur(to: ciImage, mask: maskCIImage, radius: radius) else {
+            return image
+        }
+
+        return convertToUIImage(resultCIImage, scale: image.scale, orientation: image.imageOrientation)
     }
     
     /// ティントカラーオーバーレイを適用

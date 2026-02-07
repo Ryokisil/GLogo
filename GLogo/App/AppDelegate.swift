@@ -1,6 +1,5 @@
 //
 //  AppDelegate.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはアプリのエントリーポイントとなるAppDelegateクラスを定義しています。

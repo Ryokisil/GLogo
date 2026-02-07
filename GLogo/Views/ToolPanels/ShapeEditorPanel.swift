@@ -109,7 +109,7 @@ struct ShapeEditorPanel: View {
                 Text("半径:")
                 Slider(value: Binding(
                     get: { shapeElement?.cornerRadius ?? 10 },
-                    set: { viewModel.updateCornerRadius($0) }
+                    set: { viewModel.updateShapeCornerRadius($0) }
                 ), in: 0...50, step: 1)
                 Text("\(Int(shapeElement?.cornerRadius ?? 0))")
                     .frame(width: 30, alignment: .trailing)

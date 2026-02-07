@@ -390,7 +390,6 @@ class CanvasView: UIView {
 
         let distance = hypot(touchStartPoint.x - location.x, touchStartPoint.y - location.y)
 
-        print("DEBUG: touchesEnded - tapCount: \(touch.tapCount), distance: \(distance), mode: \(editorMode)")
 
         guard distance < 5 else { return }
 
@@ -597,26 +596,19 @@ struct CanvasViewRepresentable: UIViewRepresentable {
         // 要素作成時のコールバック
         canvasView.onCreateElement = { [viewModel = parent.viewModel] point in
             Task { @MainActor in
-                print("DEBUG: onCreateElementコールバック開始 - 位置: \(point)")
-                print("DEBUG: 現在のモード: \(viewModel.editorMode)")
                 switch viewModel.editorMode {
                 case .textCreate:
-                    print("DEBUG: テキスト要素作成中...")
                     viewModel.addTextElement(text: "Double tap here to change text", position: point)
                 case .shapeCreate:
-                    print("DEBUG: 図形要素作成中... 図形タイプ: \(viewModel.nextShapeType)")
                     viewModel.addShapeElement(type: viewModel.nextShapeType, position: point)
                 case .imageImport:
-                    print("DEBUG: 画像インポート処理")
                     // 画像インポートは別処理（ファイル選択ダイアログ等）
                     break
                 default:
-                    print("DEBUG: 未対応のエディタモード: \(viewModel.editorMode)")
                     break
                 }
                 
                 // 要素を作成したら選択モードに戻る
-                print("DEBUG: 選択モードに戻る")
                 viewModel.editorMode = .select
             }
         }

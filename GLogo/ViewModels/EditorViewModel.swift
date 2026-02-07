@@ -95,11 +95,9 @@ class EditorViewModel: ObservableObject {
     /// 新しいプロジェクトでエディタを初期化
     init(project: LogoProject = LogoProject()) {
         self.project = project
-        print("DEBUG: ViewModel初期化時のプロジェクト要素数: \(project.elements.count)")
         
         // 履歴管理の初期化
         history = EditorHistory(project: project)
-        print("DEBUG: 履歴管理初期化完了")
 
         memoryWarningObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification,
@@ -163,7 +161,6 @@ class EditorViewModel: ObservableObject {
     
     /// 要素を追加
     func addElement(_ element: LogoElement) {
-        print("DEBUG: 要素追加前のプロジェクト要素数: \(project.elements.count)")
         
         // 自動Z-Index設定
         setAutoZIndex(for: element)
@@ -171,8 +168,6 @@ class EditorViewModel: ObservableObject {
         let event = ElementAddedEvent(element: element)
         history.recordAndApply(event)
         
-        print("DEBUG: 要素追加後のプロジェクト要素数: \(project.elements.count)")
-        print("DEBUG: 追加された要素ID: \(element.id), zIndex: \(element.zIndex)")
         
         selectedElement = element
         isProjectModified = true
@@ -184,7 +179,6 @@ class EditorViewModel: ObservableObject {
         let nextZIndex = elementPriority.nextAvailableZIndex(existingElements: project.elements)
         element.zIndex = nextZIndex
         
-        print("DEBUG: 要素タイプ: \(element.type), 優先度: \(elementPriority), 設定されたzIndex: \(nextZIndex)")
     }
     
     /// テキスト要素を追加
@@ -256,13 +250,11 @@ class EditorViewModel: ObservableObject {
         isEditingText = true
         selectedElement = textElement
         
-        print("DEBUG: テキスト編集開始 - 要素ID: \(textElement.id)")
     }
     
     /// テキスト編集を終了
     func endTextEditing() {
         if isEditingText {
-            print("DEBUG: テキスト編集終了")
             isEditingText = false
             editingTextElement = nil
         }
@@ -450,12 +442,9 @@ class EditorViewModel: ObservableObject {
     
     /// テキスト色の更新
     func updateTextColor(_ textElement: TextElement, newColor: UIColor) {
-        print("DEBUG: テキスト色変更開始 - 要素ID: \(textElement.id)")
-        print("DEBUG: 色変更前のイベントスタック: \(history.getEventNames())")
         
         // 現在と同じ色なら何もしない
         if textElement.textColor.isEqual(newColor) {
-            print("DEBUG: 色が同じなので変更をスキップします")
             return
         }
         
@@ -469,14 +458,10 @@ class EditorViewModel: ObservableObject {
         // イベントを履歴に記録して適用
         applyEventAndRefreshSelection(event, elementId: textElement.id)
         
-        print("DEBUG: 色変更後のイベントスタック: \(history.getEventNames())")
-        print("DEBUG: テキスト色変更完了")
     }
     
     /// フォントの更新
     func updateFont(_ textElement: TextElement, fontName: String, fontSize: CGFloat) {
-        print("DEBUG: フォント更新開始 - 要素ID: \(textElement.id)")
-        print("DEBUG: 更新前のフォント: \(textElement.fontName), サイズ: \(textElement.fontSize)")
         
         // フォント変更イベントの作成
         let event = FontChangedEvent(
@@ -489,14 +474,12 @@ class EditorViewModel: ObservableObject {
         
         // イベントを履歴に記録して適用
         applyEventAndRefreshSelection(event, elementId: textElement.id)
-        print("DEBUG: フォント更新完了: \(fontName), サイズ: \(fontSize)")
     }
     
     // MARK: - 図形の操作
     
     /// 図形タイプの更新
     func updateShapeType(_ shapeElement: ShapeElement, newType: ShapeType) {
-        print("DEBUG: 図形タイプ変更開始 - 要素ID: \(shapeElement.id)")
         
         // 図形タイプ変更イベントの作成
         let event = ShapeTypeChangedEvent(
@@ -507,12 +490,10 @@ class EditorViewModel: ObservableObject {
         
         // イベントを履歴に記録して適用
         applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-        print("DEBUG: 図形タイプ変更完了: \(newType)")
     }
     
     /// 図形の塗りつぶし色を更新
     func updateShapeFillColor(_ shapeElement: ShapeElement, newColor: UIColor) {
-        print("DEBUG: 塗りつぶし色変更開始 - 要素ID: \(shapeElement.id)")
         
         let event = ShapeFillColorChangedEvent(
             elementId: shapeElement.id,
@@ -521,12 +502,10 @@ class EditorViewModel: ObservableObject {
         )
         
         applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-        print("DEBUG: 塗りつぶし色変更完了")
     }
     
     /// 図形の塗りつぶしモードを更新
     func updateShapeFillMode(_ shapeElement: ShapeElement, newMode: FillMode) {
-        print("DEBUG: 塗りつぶしモード変更開始 - 要素ID: \(shapeElement.id)")
         
         let event = ShapeFillModeChangedEvent(
             elementId: shapeElement.id,
@@ -535,12 +514,10 @@ class EditorViewModel: ObservableObject {
         )
         
         applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-        print("DEBUG: 塗りつぶしモード変更完了")
     }
     
     /// 図形の枠線色を更新
     func updateShapeStrokeColor(_ shapeElement: ShapeElement, newColor: UIColor) {
-        print("DEBUG: 枠線色変更開始 - 要素ID: \(shapeElement.id)")
         
         let event = ShapeStrokeColorChangedEvent(
             elementId: shapeElement.id,
@@ -549,12 +526,10 @@ class EditorViewModel: ObservableObject {
         )
         
         applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-        print("DEBUG: 枠線色変更完了")
     }
     
     /// 図形の枠線太さを更新
     func updateShapeStrokeWidth(_ shapeElement: ShapeElement, newWidth: CGFloat) {
-        print("DEBUG: 枠線太さ変更開始 - 要素ID: \(shapeElement.id)")
         
         let event = ShapeStrokeWidthChangedEvent(
             elementId: shapeElement.id,
@@ -563,12 +538,10 @@ class EditorViewModel: ObservableObject {
         )
         
         applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-        print("DEBUG: 枠線太さ変更完了")
     }
     
     /// 図形の枠線モードを更新
     func updateShapeStrokeMode(_ shapeElement: ShapeElement, newMode: StrokeMode) {
-        print("DEBUG: 枠線モード変更開始 - 要素ID: \(shapeElement.id)")
         
         let event = ShapeStrokeModeChangedEvent(
             elementId: shapeElement.id,
@@ -577,12 +550,10 @@ class EditorViewModel: ObservableObject {
         )
         
         applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-        print("DEBUG: 枠線モード変更完了")
     }
     
     /// 図形の角丸半径を更新
     func updateShapeCornerRadius(_ shapeElement: ShapeElement, newRadius: CGFloat) {
-        print("DEBUG: 角丸半径変更開始 - 要素ID: \(shapeElement.id)")
         
         let event = ShapeCornerRadiusChangedEvent(
             elementId: shapeElement.id,
@@ -591,12 +562,10 @@ class EditorViewModel: ObservableObject {
         )
         
         applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-        print("DEBUG: 角丸半径変更完了")
     }
     
     /// 図形の辺の数を更新
     func updateShapeSides(_ shapeElement: ShapeElement, newSides: Int) {
-        print("DEBUG: 辺の数変更開始 - 要素ID: \(shapeElement.id)")
         
         let event = ShapeSidesChangedEvent(
             elementId: shapeElement.id,
@@ -605,12 +574,10 @@ class EditorViewModel: ObservableObject {
         )
         
         applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-        print("DEBUG: 辺の数変更完了")
     }
     
     /// 図形のグラデーション色を更新
     func updateShapeGradientColors(_ shapeElement: ShapeElement, oldStartColor: UIColor, newStartColor: UIColor, oldEndColor: UIColor, newEndColor: UIColor) {
-        print("DEBUG: グラデーション色変更開始 - 要素ID: \(shapeElement.id)")
         
         let event = ShapeGradientColorsChangedEvent(
             elementId: shapeElement.id,
@@ -621,11 +588,9 @@ class EditorViewModel: ObservableObject {
         )
         
         applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-        print("DEBUG: グラデーション色変更完了")
     }
     
     func updateShapeGradientAngle(_ shapeElement: ShapeElement, newAngle: CGFloat) {
-        print("DEBUG: グラデーション角度変更開始 - 要素ID: \(shapeElement.id)")
         
         let event = ShapeGradientAngleChangedEvent(
             elementId: shapeElement.id,
@@ -634,126 +599,12 @@ class EditorViewModel: ObservableObject {
         )
         
         applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-        print("DEBUG: グラデーション角度変更完了")
     }
     
     // MARK: - 画像要素の操作
     
-    /// 画像の彩度を更新
-    func updateImageSaturation(_ imageElement: ImageElement, newSaturation: CGFloat) {
-        print("DEBUG: 画像彩度変更開始 - 要素ID: \(imageElement.id)")
-        
-        let event = ImageSaturationChangedEvent(
-            elementId: imageElement.id,
-            oldSaturation: imageElement.saturationAdjustment,
-            newSaturation: newSaturation
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-        print("DEBUG: 画像彩度変更完了")
-    }
-    
-    /// 画像の明度を更新
-    func updateImageBrightness(_ imageElement: ImageElement, newBrightness: CGFloat) {
-        print("DEBUG: 画像明度変更開始 - 要素ID: \(imageElement.id)")
-        
-        let event = ImageBrightnessChangedEvent(
-            elementId: imageElement.id,
-            oldBrightness: imageElement.brightnessAdjustment,
-            newBrightness: newBrightness
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-        print("DEBUG: 画像明度変更完了")
-    }
-    
-    /// 画像のコントラストを更新
-    func updateImageContrast(_ imageElement: ImageElement, newContrast: CGFloat) {
-        print("DEBUG: 画像コントラスト変更開始 - 要素ID: \(imageElement.id)")
-        
-        let event = ImageContrastChangedEvent(
-            elementId: imageElement.id,
-            oldContrast: imageElement.contrastAdjustment,
-            newContrast: newContrast
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-        print("DEBUG: 画像コントラスト変更完了")
-    }
-    
-    /// 画像のハイライトを更新
-    func updateImageHighlights(_ imageElement: ImageElement, newHighlights: CGFloat) {
-        print("DEBUG: 画像ハイライト変更開始 - 要素ID: \(imageElement.id)")
-        
-        let event = ImageHighlightsChangedEvent(
-            elementId: imageElement.id,
-            oldHighlights: imageElement.highlightsAdjustment,
-            newHighlights: newHighlights
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-        print("DEBUG: 画像ハイライト変更完了")
-    }
-    
-    /// 画像のシャドウを更新
-    func updateImageShadows(_ imageElement: ImageElement, newShadows: CGFloat) {
-        print("DEBUG: 画像シャドウ変更開始 - 要素ID: \(imageElement.id)")
-        
-        let event = ImageShadowsChangedEvent(
-            elementId: imageElement.id,
-            oldShadows: imageElement.shadowsAdjustment,
-            newShadows: newShadows
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-        print("DEBUG: 画像シャドウ変更完了")
-    }
-    
-    /// 画像の色相を更新
-    func updateImageHue(_ imageElement: ImageElement, newHue: CGFloat) {
-        print("DEBUG: 画像色相変更開始 - 要素ID: \(imageElement.id)")
-        
-        let event = ImageHueChangedEvent(
-            elementId: imageElement.id,
-            oldHue: imageElement.hueAdjustment,
-            newHue: newHue
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-        print("DEBUG: 画像色相変更完了")
-    }
-    
-    /// 画像のシャープネスを更新
-    func updateImageSharpness(_ imageElement: ImageElement, newSharpness: CGFloat) {
-        print("DEBUG: 画像シャープネス変更開始 - 要素ID: \(imageElement.id)")
-        
-        let event = ImageSharpnessChangedEvent(
-            elementId: imageElement.id,
-            oldSharpness: imageElement.sharpnessAdjustment,
-            newSharpness: newSharpness
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-        print("DEBUG: 画像シャープネス変更完了")
-    }
-    
-    /// 画像のガウシアンブラーを更新
-    func updateImageGaussianBlur(_ imageElement: ImageElement, newRadius: CGFloat) {
-        print("DEBUG: 画像ガウシアンブラー変更開始 - 要素ID: \(imageElement.id)")
-        
-        let event = ImageGaussianBlurChangedEvent(
-            elementId: imageElement.id,
-            oldRadius: imageElement.gaussianBlurRadius,
-            newRadius: newRadius
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-        print("DEBUG: 画像ガウシアンブラー変更完了")
-    }
-    
     /// 画像のティントカラーを更新
     func updateImageTintColor(_ imageElement: ImageElement, oldColor: UIColor?, newColor: UIColor?, oldIntensity: CGFloat, newIntensity: CGFloat) {
-        print("DEBUG: 画像ティントカラー変更開始 - 要素ID: \(imageElement.id)")
         
         let event = ImageTintColorChangedEvent(
             elementId: imageElement.id,
@@ -764,12 +615,10 @@ class EditorViewModel: ObservableObject {
         )
         
         applyEventAndRefreshSelection(event, elementId: imageElement.id)
-        print("DEBUG: 画像ティントカラー変更完了")
     }
     
     /// 画像のフレーム表示を更新
     func updateImageShowFrame(_ imageElement: ImageElement, newValue: Bool) {
-        print("DEBUG: 画像フレーム表示変更開始 - 要素ID: \(imageElement.id)")
         
         let event = ImageShowFrameChangedEvent(
             elementId: imageElement.id,
@@ -778,12 +627,10 @@ class EditorViewModel: ObservableObject {
         )
         
         applyEventAndRefreshSelection(event, elementId: imageElement.id)
-        print("DEBUG: 画像フレーム表示変更完了")
     }
     
     /// 画像のフレーム色を更新
     func updateImageFrameColor(_ imageElement: ImageElement, newColor: UIColor) {
-        print("DEBUG: 画像フレーム色変更開始 - 要素ID: \(imageElement.id)")
         
         let event = ImageFrameColorChangedEvent(
             elementId: imageElement.id,
@@ -792,27 +639,11 @@ class EditorViewModel: ObservableObject {
         )
         
         applyEventAndRefreshSelection(event, elementId: imageElement.id)
-        print("DEBUG: 画像フレーム色変更完了")
-    }
-    
-    /// 画像のフレーム太さを更新
-    func updateImageFrameWidth(_ imageElement: ImageElement, newWidth: CGFloat) {
-        print("DEBUG: 画像フレーム太さ変更開始 - 要素ID: \(imageElement.id)")
-        
-        let event = ImageFrameWidthChangedEvent(
-            elementId: imageElement.id,
-            oldWidth: imageElement.frameWidth,
-            newWidth: newWidth
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-        print("DEBUG: 画像フレーム太さ変更完了")
     }
     
     /// 画像の角丸設定を更新
     func updateImageRoundedCorners(_ imageElement: ImageElement, wasRounded: Bool, isRounded: Bool, oldRadius: CGFloat, newRadius: CGFloat) {
-        print("DEBUG: 画像角丸設定変更開始 - 要素ID: \(imageElement.id)")
-        
+
         let event = ImageRoundedCornersChangedEvent(
             elementId: imageElement.id,
             wasRounded: wasRounded,
@@ -820,11 +651,172 @@ class EditorViewModel: ObservableObject {
             oldRadius: oldRadius,
             newRadius: newRadius
         )
-        
+
         applyEventAndRefreshSelection(event, elementId: imageElement.id)
-        print("DEBUG: 画像角丸設定変更完了")
     }
-    
+
+    /// 背景ぼかし系の反映後に選択要素と更新通知を同期
+    /// - Parameters:
+    ///   - elementId: 同期対象の要素ID
+    /// - Returns: なし
+    private func refreshSelectionAndNotifyAfterBackgroundBlur(elementId: UUID) {
+        if selectedElement?.id == elementId {
+            if let updatedElement = project.elements.first(where: { $0.id == elementId }) {
+                selectedElement = updatedElement
+            }
+        }
+
+        isProjectModified = true
+        objectWillChange.send()
+    }
+
+    // MARK: - 背景ぼかし
+
+    /// AI背景ぼかし用のユースケース
+    private let backgroundRemovalUseCase = BackgroundRemovalUseCase()
+
+    /// 背景ぼかしマスク編集画面への遷移フラグ
+    @Published var isNavigatingToBackgroundBlurMaskEdit: Bool = false
+
+    /// 背景ぼかしマスク編集対象の画像要素
+    @Published var backgroundBlurMaskEditTarget: ImageElement?
+
+    /// AI処理中フラグ
+    @Published private(set) var isProcessingAI: Bool = false
+
+    /// AI背景ぼかしをリクエスト
+    /// - Parameter imageElement: 対象の画像要素
+    func requestAIBackgroundBlur(for imageElement: ImageElement) {
+        guard !isProcessingAI else { return }
+        isProcessingAI = true
+
+        Task {
+            defer { isProcessingAI = false }
+
+            guard let originalImage = imageElement.originalImage else {
+                return
+            }
+
+            do {
+                let maskImage = try await backgroundRemovalUseCase.generateMask(from: originalImage)
+                guard let maskData = maskImage.pngData() else {
+                    return
+                }
+
+                let oldMaskData = imageElement.backgroundBlurMaskData
+                let oldRadius = imageElement.backgroundBlurRadius
+                let defaultBlurRadius: CGFloat = 12.0
+
+                // マスクとデフォルト半径を設定
+                imageElement.backgroundBlurMaskData = maskData
+                imageElement.backgroundBlurRadius = defaultBlurRadius
+                imageElement.invalidateRenderedImageCache()
+
+                // 履歴に記録
+                let maskEvent = ImageBackgroundBlurMaskChangedEvent(
+                    elementId: imageElement.id,
+                    oldMaskData: oldMaskData,
+                    newMaskData: maskData
+                )
+                history.recordAndApply(maskEvent)
+
+                if oldRadius != defaultBlurRadius {
+                    let radiusEvent = ImageBackgroundBlurRadiusChangedEvent(
+                        elementId: imageElement.id,
+                        oldRadius: oldRadius,
+                        newRadius: defaultBlurRadius
+                    )
+                    history.recordAndApply(radiusEvent)
+                }
+
+                refreshSelectionAndNotifyAfterBackgroundBlur(elementId: imageElement.id)
+
+            } catch {
+            }
+        }
+    }
+
+    /// 背景ぼかしマスク編集をリクエスト
+    /// - Parameter imageElement: 対象の画像要素
+    func requestBackgroundBlurMaskEdit(for imageElement: ImageElement) {
+        backgroundBlurMaskEditTarget = imageElement
+        isNavigatingToBackgroundBlurMaskEdit = true
+    }
+
+    /// 背景ぼかしマスク編集の結果を適用
+    /// - Parameters:
+    ///   - maskData: 編集後のマスクデータ（nilの場合は変更なし）
+    ///   - imageElement: 対象の画像要素
+    func applyBackgroundBlurMaskResult(_ maskData: Data?, to imageElement: ImageElement) {
+        let oldMaskData = imageElement.backgroundBlurMaskData
+
+        // nilの場合は変更なし
+        guard maskData != oldMaskData else { return }
+
+        // マスクを設定
+        imageElement.backgroundBlurMaskData = maskData
+        imageElement.invalidateRenderedImageCache()
+
+        // 半径が未設定（0）の場合はデフォルト値を適用
+        let oldRadius = imageElement.backgroundBlurRadius
+        let defaultBlurRadius: CGFloat = 12.0
+        if maskData != nil && oldRadius == 0 {
+            imageElement.backgroundBlurRadius = defaultBlurRadius
+        }
+
+        // 履歴に記録
+        let event = ImageBackgroundBlurMaskChangedEvent(
+            elementId: imageElement.id,
+            oldMaskData: oldMaskData,
+            newMaskData: maskData
+        )
+        history.recordAndApply(event)
+
+        // 半径変更も履歴に記録
+        if maskData != nil && oldRadius == 0 {
+            let radiusEvent = ImageBackgroundBlurRadiusChangedEvent(
+                elementId: imageElement.id,
+                oldRadius: oldRadius,
+                newRadius: defaultBlurRadius
+            )
+            history.recordAndApply(radiusEvent)
+        }
+
+        refreshSelectionAndNotifyAfterBackgroundBlur(elementId: imageElement.id)
+
+    }
+
+    /// 背景ぼかしマスクを削除
+    /// - Parameter imageElement: 対象の画像要素
+    func removeBackgroundBlurMask(from imageElement: ImageElement) {
+        let oldMaskData = imageElement.backgroundBlurMaskData
+        let oldRadius = imageElement.backgroundBlurRadius
+
+        // マスクと半径をクリア
+        imageElement.backgroundBlurMaskData = nil
+        imageElement.backgroundBlurRadius = 0
+        imageElement.invalidateRenderedImageCache()
+
+        // 履歴に記録
+        let maskEvent = ImageBackgroundBlurMaskChangedEvent(
+            elementId: imageElement.id,
+            oldMaskData: oldMaskData,
+            newMaskData: nil
+        )
+        history.recordAndApply(maskEvent)
+
+        if oldRadius != 0 {
+            let radiusEvent = ImageBackgroundBlurRadiusChangedEvent(
+                elementId: imageElement.id,
+                oldRadius: oldRadius,
+                newRadius: 0
+            )
+            history.recordAndApply(radiusEvent)
+        }
+
+        refreshSelectionAndNotifyAfterBackgroundBlur(elementId: imageElement.id)
+    }
+
     /// 画像の役割を変更（ベース/オーバーレイの切り替え）
     func toggleImageRole(_ imageElement: ImageElement) {
         let oldRole = imageElement.imageRole
@@ -862,8 +854,6 @@ class EditorViewModel: ObservableObject {
         objectWillChange.send()
         isProjectModified = true
         
-        print("DEBUG: 画像役割変更: \(oldRole.displayName) → \(newRole.displayName)")
-        print("DEBUG: zIndex変更: \(imageElement.zIndex)")
     }
     
     // MARK: - 要素の操作(移動)
@@ -968,16 +958,7 @@ class EditorViewModel: ObservableObject {
     func undo() {
         if history.canUndo {
             history.undo()
-            
-            print("DEBUG: 各イベントの詳細:")
-            for (index, event) in history.eventStack.enumerated() {
-                if let colorEvent = event as? TextColorChangedEvent {
-                    print("DEBUG: イベント[\(index)]: \(event.eventName) - 旧色:\(colorEvent.oldColor) 新色:\(colorEvent.newColor)")
-                } else {
-                    print("DEBUG: イベント[\(index)]: \(event.eventName)")
-                }
-            }
-            
+
             // 選択要素の状態を適切に更新
             if let selectedElement = selectedElement {
                 
@@ -1069,23 +1050,13 @@ class EditorViewModel: ObservableObject {
     
     /// 画像要素をデータから追加
     func addImageElement(imageData: Data, position: CGPoint, phAsset: PHAsset? = nil, assetIdentifier: String? = nil) {
-        print("DEBUG: addImageElement開始 - PHAsset: \(phAsset != nil), 識別子: \(assetIdentifier ?? "なし")")
-        guard let (result, viewportSize) = importImageElement(
+        guard let (result, _) = importImageElement(
             source: .imageData(imageData),
             canvasSize: nil,
             assetIdentifier: assetIdentifier
         ) else {
             return
         }
-
-        if let assetIdentifier = result.assetIdentifier {
-            print("DEBUG: 受け取った識別子を設定: \(assetIdentifier)")
-        } else {
-            print("DEBUG: 内部生成のUUIDを設定: \(result.element.originalImageIdentifier ?? "なし")")
-        }
-
-        print("DEBUG: 配置位置 - X: \(result.element.position.x), Y: \(result.element.position.y)")
-        print("DEBUG: ビューポートサイズ: \(viewportSize)")
 
         applyImportedImage(result.element)
     }
@@ -1100,7 +1071,6 @@ class EditorViewModel: ObservableObject {
             return
         }
 
-        print("DEBUG: クロップ済み画像配置位置 - X: \(result.element.position.x), Y: \(result.element.position.y)")
         applyImportedImage(result.element)
     }
 
@@ -1151,7 +1121,6 @@ class EditorViewModel: ObservableObject {
             y: element.position.y + element.size.height / 2
         )
         
-        print("DEBUG: カメラを中央に移動: \(centerPoint)")
         
         // 通知を送信して、ビューコントローラーにカメラ移動を要求
         NotificationCenter.default.post(

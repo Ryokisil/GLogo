@@ -3,7 +3,7 @@
 //  GLogo
 //
 //  概要:
-//  手動背景除去編集画面のSwiftUIビューです。
+//  手動背景除去（透明化）編集画面のSwiftUIビューです。
 //  選択された画像要素に対してブラシベースの背景除去編集を提供し、
 //  直感的なタッチ操作とリアルタイムプレビューを実現します。
 //
@@ -21,22 +21,19 @@ struct ManualBackgroundRemovalView: View {
     @State private var zoomScale: CGFloat = 1.0
     /// 現在のパンオフセット
     @State private var panOffset: CGSize = .zero
-    /// 編集完了時に呼び出すコールバック
-    private let onComplete: (UIImage) -> Void
-    
-    /// イニシャライザ
+
+    /// 背景除去モード用イニシャライザ
     /// - Parameters:
     ///   - imageElement: 編集対象の画像要素
-    ///   - onComplete: 編集完了時の処理
+    ///   - onComplete: 編集完了時の処理（背景除去後の画像を返す）
     /// - Returns: なし
     init(imageElement: ImageElement, onComplete: @escaping (UIImage) -> Void = { _ in }) {
-        self.onComplete = onComplete
         self._viewModel = StateObject(wrappedValue: ManualBackgroundRemovalViewModel(
             imageElement: imageElement,
             completion: onComplete
         ))
     }
-    
+
     /// 編集画面の本体ビュー
     /// - Parameters: なし
     /// - Returns: 手動背景除去の編集UI
@@ -50,7 +47,7 @@ struct ManualBackgroundRemovalView: View {
                 // 編集エリア
                 GeometryReader { geometry in
                     let imageSize = viewModel.originalImage.size
-                    let displayFrame = ManualRemovalTargetOverlay.calculateDisplayFrame(
+                    let displayFrame = ManualRemovalTargetOverlay<ManualBackgroundRemovalViewModel>.calculateDisplayFrame(
                         imageSize: imageSize,
                         containerSize: geometry.size
                     )
@@ -60,8 +57,8 @@ struct ManualBackgroundRemovalView: View {
                         
                         // マスク適用済み画像を表示
                         ZStack {
-                            if let maskedImage = viewModel.getMaskedImage() {
-                                Image(uiImage: maskedImage)
+                            if let previewImage = viewModel.getMaskedImage() {
+                                Image(uiImage: previewImage)
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
                                     .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
@@ -73,7 +70,7 @@ struct ManualBackgroundRemovalView: View {
                                     .frame(maxWidth: geometry.size.width, maxHeight: geometry.size.height)
                             }
                             
-                            // 除去領域の可視化オーバーレイ（赤色）
+                            // 除去領域の可視化オーバーレイ（赤）
                             if let maskImage = viewModel.state.maskImage {
                                 Image(uiImage: maskImage)
                                     .resizable()

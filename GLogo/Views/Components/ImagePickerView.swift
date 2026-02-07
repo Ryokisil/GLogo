@@ -117,7 +117,6 @@ struct PhotoPicker: UIViewControllerRepresentable {
             var selectedAsset: PHAsset?
             if #available(iOS 15.0, *) {
                 if let identifier = results.first?.assetIdentifier {
-                    print("DEBUG: PHPicker - 取得した識別子: \(identifier)")
                     assetIdentifier = identifier
                     let assets = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
                     selectedAsset = assets.firstObject

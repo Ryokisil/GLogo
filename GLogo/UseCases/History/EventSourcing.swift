@@ -89,7 +89,6 @@ class EditorHistory {
         // ここでプロジェクトの要素数をチェック
         let afterCount = project.elements.count
         if beforeCount != afterCount {
-            print("DEBUG: 警告 - revert前後で要素数が変化: \(beforeCount) -> \(afterCount)")
         }
         
         // 取り消し履歴に追加
@@ -388,17 +387,14 @@ struct FontChangedEvent: EditorEvent {
         if let element = project.element(for: elementId, as: TextElement.self) {
             element.fontName = newFontName
             element.fontSize = newFontSize
-            print("DEBUG: フォントを\(newFontName)、サイズを\(newFontSize)に変更しました")
         }
     }
     
     func revert(from project: LogoProject) {
         
         if let element = project.element(for: elementId, as: TextElement.self) {
-            print("DEBUG: 要素が見つかりました: \(element.name)")
             element.fontName = oldFontName
             element.fontSize = oldFontSize
-            print("DEBUG: フォントを\(oldFontName)、サイズを\(oldFontSize)に戻しました")
         }
     }
 }
@@ -418,29 +414,19 @@ struct ShapeTypeChangedEvent: EditorEvent {
     }
     
     func apply(to project: LogoProject) {
-        print("DEBUG: ShapeTypeChangedEvent.apply開始")
         if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.shapeType = newType
-            print("DEBUG: 図形タイプを\(newType)に変更しました")
         } else {
-            print("DEBUG: 警告 - 対象の要素がプロジェクト内に見つかりません")
         }
-        print("DEBUG: ShapeTypeChangedEvent.apply終了")
     }
     
     func revert(from project: LogoProject) {
-        print("DEBUG: ShapeTypeChangedEvent.revert開始")
-        print("DEBUG: 対象要素ID: \(elementId)")
         
         if let element = project.element(for: elementId, as: ShapeElement.self) {
-            print("DEBUG: 要素が見つかりました: \(element.name)")
             element.shapeType = oldType
-            print("DEBUG: 図形タイプを\(oldType)に戻しました")
         } else {
-            print("DEBUG: 警告 - 対象の要素がプロジェクト内に見つかりません")
         }
         
-        print("DEBUG: ShapeTypeChangedEvent.revert終了")
     }
 }
 
@@ -852,12 +838,14 @@ struct ImageSaturationChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.saturationAdjustment = newSaturation
+            element.invalidateRenderedImageCache()
         }
     }
     
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.saturationAdjustment = oldSaturation
+            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -877,12 +865,14 @@ struct ImageBrightnessChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.brightnessAdjustment = newBrightness
+            element.invalidateRenderedImageCache()
         }
     }
     
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.brightnessAdjustment = oldBrightness
+            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -902,12 +892,14 @@ struct ImageContrastChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.contrastAdjustment = newContrast
+            element.invalidateRenderedImageCache()
         }
     }
     
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.contrastAdjustment = oldContrast
+            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -927,12 +919,14 @@ struct ImageHighlightsChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.highlightsAdjustment = newHighlights
+            element.invalidateRenderedImageCache()
         }
     }
     
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.highlightsAdjustment = oldHighlights
+            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -952,12 +946,14 @@ struct ImageShadowsChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.shadowsAdjustment = newShadows
+            element.invalidateRenderedImageCache()
         }
     }
     
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.shadowsAdjustment = oldShadows
+            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -977,12 +973,14 @@ struct ImageHueChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.hueAdjustment = newHue
+            element.invalidateRenderedImageCache()
         }
     }
     
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.hueAdjustment = oldHue
+            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -1002,12 +1000,14 @@ struct ImageSharpnessChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.sharpnessAdjustment = newSharpness
+            element.invalidateRenderedImageCache()
         }
     }
     
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.sharpnessAdjustment = oldSharpness
+            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -1027,12 +1027,14 @@ struct ImageGaussianBlurChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.gaussianBlurRadius = newRadius
+            element.invalidateRenderedImageCache()
         }
     }
     
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.gaussianBlurRadius = oldRadius
+            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -1120,6 +1122,7 @@ struct ImageTintColorChangedEvent: EditorEvent {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.tintColor = newColor
             element.tintIntensity = newIntensity
+            element.invalidateRenderedImageCache()
         }
     }
     
@@ -1127,6 +1130,7 @@ struct ImageTintColorChangedEvent: EditorEvent {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.tintColor = oldColor
             element.tintIntensity = oldIntensity
+            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -1360,12 +1364,14 @@ struct ImageShowFrameChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.showFrame = newValue
+            element.invalidateRenderedImageCache()
         }
     }
     
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.showFrame = oldValue
+            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -1434,12 +1440,14 @@ struct ImageFrameColorChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameColor = newColor
+            element.invalidateRenderedImageCache()
         }
     }
     
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameColor = oldColor
+            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -1459,12 +1467,14 @@ struct ImageFrameWidthChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameWidth = newWidth
+            element.invalidateRenderedImageCache()
         }
     }
     
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameWidth = oldWidth
+            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -1491,6 +1501,7 @@ struct ImageRoundedCornersChangedEvent: EditorEvent {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.roundedCorners = isRounded
             element.cornerRadius = newRadius
+            element.invalidateRenderedImageCache()
         }
     }
     
@@ -1498,6 +1509,7 @@ struct ImageRoundedCornersChangedEvent: EditorEvent {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.roundedCorners = wasRounded
             element.cornerRadius = oldRadius
+            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -1625,18 +1637,78 @@ struct ElementZIndexChangedEvent: EditorEvent {
     let elementId: UUID
     let oldZIndex: Int
     let newZIndex: Int
-    
+
     var description: String {
         return "要素の描画順序を変更しました"
     }
-    
+
     func apply(to project: LogoProject) {
         guard let element = project.element(for: elementId) else { return }
         element.zIndex = newZIndex
     }
-    
+
     func revert(from project: LogoProject) {
         guard let element = project.element(for: elementId) else { return }
         element.zIndex = oldZIndex
+    }
+}
+
+// MARK: - 背景ぼかし関連イベント
+
+/// 背景ぼかしマスク変更イベント
+struct ImageBackgroundBlurMaskChangedEvent: EditorEvent {
+    var eventName = "ImageBackgroundBlurMaskChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldMaskData: Data?
+    let newMaskData: Data?
+
+    var description: String {
+        if newMaskData != nil {
+            return "背景ぼかしマスクを設定しました"
+        } else {
+            return "背景ぼかしマスクを削除しました"
+        }
+    }
+
+    func apply(to project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.backgroundBlurMaskData = newMaskData
+            element.invalidateRenderedImageCache()
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.backgroundBlurMaskData = oldMaskData
+            element.invalidateRenderedImageCache()
+        }
+    }
+}
+
+/// 背景ぼかし半径変更イベント
+struct ImageBackgroundBlurRadiusChangedEvent: EditorEvent {
+    var eventName = "ImageBackgroundBlurRadiusChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldRadius: CGFloat
+    let newRadius: CGFloat
+
+    var description: String {
+        return "背景ぼかしの強度を変更しました"
+    }
+
+    func apply(to project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.backgroundBlurRadius = newRadius
+            element.invalidateRenderedImageCache()
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.backgroundBlurRadius = oldRadius
+            element.invalidateRenderedImageCache()
+        }
     }
 }

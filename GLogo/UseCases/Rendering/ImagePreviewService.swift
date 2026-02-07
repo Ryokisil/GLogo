@@ -32,6 +32,41 @@ struct ImageFilterParams {
     let tintColor: UIColor?
     /// ティント強度
     let tintIntensity: CGFloat
+    /// 背景ぼかし半径
+    let backgroundBlurRadius: CGFloat
+    /// 背景ぼかしマスクデータ（PNG形式）
+    let backgroundBlurMaskData: Data?
+
+    /// 便利イニシャライザ（背景ぼかしパラメータなしの場合）
+    init(
+        toneCurveData: ToneCurveData,
+        saturation: CGFloat,
+        brightness: CGFloat,
+        contrast: CGFloat,
+        highlights: CGFloat,
+        shadows: CGFloat,
+        hue: CGFloat,
+        sharpness: CGFloat,
+        gaussianBlurRadius: CGFloat,
+        tintColor: UIColor?,
+        tintIntensity: CGFloat,
+        backgroundBlurRadius: CGFloat = 0.0,
+        backgroundBlurMaskData: Data? = nil
+    ) {
+        self.toneCurveData = toneCurveData
+        self.saturation = saturation
+        self.brightness = brightness
+        self.contrast = contrast
+        self.highlights = highlights
+        self.shadows = shadows
+        self.hue = hue
+        self.sharpness = sharpness
+        self.gaussianBlurRadius = gaussianBlurRadius
+        self.tintColor = tintColor
+        self.tintIntensity = tintIntensity
+        self.backgroundBlurRadius = backgroundBlurRadius
+        self.backgroundBlurMaskData = backgroundBlurMaskData
+    }
 }
 
 /// プレビュー・フィルタ適用を提供するプロトコル
@@ -138,7 +173,7 @@ final class ImagePreviewService: ImagePreviewing {
         let policy: RenderPolicy = (quality == .preview) ? .preview : .full
 
         let adjustments = AdjustmentStages.makeClosure(params: Self.makeAdjustmentParams(from: params))
-        guard let base = filterPipeline.applyAllFilters(
+        guard var base = filterPipeline.applyAllFilters(
             to: image,
             toneCurveData: params.toneCurveData,
             policy: policy,
@@ -147,6 +182,18 @@ final class ImagePreviewService: ImagePreviewing {
             return image
         }
 
+        // 背景ぼかし合成を適用（マスクがある場合のみ）
+        if params.backgroundBlurRadius > 0,
+           let maskData = params.backgroundBlurMaskData,
+           let blurred = ImageFilterUtility.applyBackgroundBlur(
+            to: base,
+            maskData: maskData,
+            radius: params.backgroundBlurRadius
+           ) {
+            base = blurred
+        }
+
+        // ティントカラーを適用
         if let tintColor = params.tintColor, params.tintIntensity > 0,
            let tinted = ImageFilterUtility.applyTintOverlay(
             to: base,
@@ -173,13 +220,25 @@ final class ImagePreviewService: ImagePreviewing {
         await Task.detached(priority: .userInitiated) { [filterPipeline, params] in
             let policy: RenderPolicy = (quality == .preview) ? .preview : .full
             let adjustments = AdjustmentStages.makeClosure(params: Self.makeAdjustmentParams(from: params))
-            let result = filterPipeline.applyAllFilters(
+            var result = filterPipeline.applyAllFilters(
                 to: image,
                 toneCurveData: params.toneCurveData,
                 policy: policy,
                 adjustments: adjustments
             ) ?? image
 
+            // 背景ぼかし合成を適用（マスクがある場合のみ）
+            if params.backgroundBlurRadius > 0,
+               let maskData = params.backgroundBlurMaskData,
+               let blurred = ImageFilterUtility.applyBackgroundBlur(
+                to: result,
+                maskData: maskData,
+                radius: params.backgroundBlurRadius
+               ) {
+                result = blurred
+            }
+
+            // ティントカラーを適用
             if let tintColor = params.tintColor, params.tintIntensity > 0,
                let tinted = ImageFilterUtility.applyTintOverlay(
                 to: result,
@@ -236,6 +295,8 @@ final class ImagePreviewService: ImagePreviewing {
         hasher.combine(params.sharpness)
         hasher.combine(params.gaussianBlurRadius)
         hasher.combine(params.tintIntensity)
+        hasher.combine(params.backgroundBlurRadius)
+        hasher.combine(params.backgroundBlurMaskData)
         return hasher.finalize()
     }
 

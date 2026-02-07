@@ -156,8 +156,10 @@ class ImageElement: LogoElement {
 
     /// 編集用の低解像度プロキシ画像（高解像度時のみ生成・注入）
     private var proxyImage: UIImage?
+    
     /// プロキシ生成時の長辺目安（約2MP相当）
     private let proxyTargetLongSide: CGFloat = 1920
+    
     /// 高解像度判定の閾値（MP）
     private let highResThresholdMP: CGFloat = 18.0
 
@@ -193,6 +195,12 @@ class ImageElement: LogoElement {
     
     /// ガウシアンブラー半径
     var gaussianBlurRadius: CGFloat = 0.0
+
+    /// 背景ぼかし半径（前景マスク使用時）
+    var backgroundBlurRadius: CGFloat = 0.0
+
+    /// 背景ぼかし用マスクデータ（PNG形式）
+    var backgroundBlurMaskData: Data?
 
     /// トーンカーブデータ
     var toneCurveData: ToneCurveData = ToneCurveData()
@@ -239,7 +247,6 @@ class ImageElement: LogoElement {
                     return UIImage(contentsOfFile: url.path)
                 }
                 // 非ファイルURLは対象外（将来の拡張時に検討）
-                print("DEBUG: 非ファイルURLのため読み込みをスキップ: \(url.absoluteString)")
                 return nil
             case .fileName(let fileName):
                 return UIImage(named: fileName)
@@ -336,6 +343,8 @@ class ImageElement: LogoElement {
         case saturationAdjustment, brightnessAdjustment, contrastAdjustment
         case highlightsAdjustment, shadowsAdjustment, hueAdjustment, sharpnessAdjustment, gaussianBlurRadius
         case toneCurveData
+        // 背景ぼかし
+        case backgroundBlurRadius, backgroundBlurMaskData
         // 効果・フレーム
         case tintColorData, tintIntensity
         case showFrame, frameColorData, frameWidth
@@ -365,6 +374,8 @@ class ImageElement: LogoElement {
         try container.encode(sharpnessAdjustment, forKey: .sharpnessAdjustment)
         try container.encode(gaussianBlurRadius, forKey: .gaussianBlurRadius)
         try container.encode(toneCurveData, forKey: .toneCurveData)
+        try container.encode(backgroundBlurRadius, forKey: .backgroundBlurRadius)
+        try container.encodeIfPresent(backgroundBlurMaskData, forKey: .backgroundBlurMaskData)
         try container.encode(tintIntensity, forKey: .tintIntensity)
         try container.encode(showFrame, forKey: .showFrame)
         try container.encode(frameWidth, forKey: .frameWidth)
@@ -401,7 +412,6 @@ class ImageElement: LogoElement {
         originalImageURL = try container.decodeIfPresent(URL.self, forKey: .originalImageURL)
         originalImagePath = try container.decodeIfPresent(String.self, forKey: .originalImagePath)
         originalImageIdentifier = try container.decodeIfPresent(String.self, forKey: .originalImageIdentifier)
-        // fitMode は廃止。旧データがあれば無視し、キャンバスに収まる初期スケールを維持する。
         saturationAdjustment = try container.decode(CGFloat.self, forKey: .saturationAdjustment)
         brightnessAdjustment = try container.decode(CGFloat.self, forKey: .brightnessAdjustment)
         contrastAdjustment = try container.decode(CGFloat.self, forKey: .contrastAdjustment)
@@ -411,6 +421,8 @@ class ImageElement: LogoElement {
         sharpnessAdjustment = try container.decode(CGFloat.self, forKey: .sharpnessAdjustment)
         gaussianBlurRadius = try container.decode(CGFloat.self, forKey: .gaussianBlurRadius)
         toneCurveData = try container.decodeIfPresent(ToneCurveData.self, forKey: .toneCurveData) ?? ToneCurveData()
+        backgroundBlurRadius = try container.decodeIfPresent(CGFloat.self, forKey: .backgroundBlurRadius) ?? 0.0
+        backgroundBlurMaskData = try container.decodeIfPresent(Data.self, forKey: .backgroundBlurMaskData)
         tintIntensity = try container.decode(CGFloat.self, forKey: .tintIntensity)
         showFrame = try container.decode(Bool.self, forKey: .showFrame)
         frameWidth = try container.decode(CGFloat.self, forKey: .frameWidth)
@@ -509,7 +521,6 @@ class ImageElement: LogoElement {
             // メタデータを抽出
             metadata = extractMetadataFromImageData(data)
         } catch {
-            print("DEBUG: URLからの画像読み込みに失敗: \(error.localizedDescription)")
         }
     }
     
@@ -540,7 +551,6 @@ class ImageElement: LogoElement {
         
         // isDynamicSizingフラグによってサイズ調整の実行を制御
         if let image = UIImage(data: imageData) {
-            print("DEBUG: 初期化時の画像サイズ: \(image.size)")
             
             if isDynamicSizing {
                 // 新規画像のインポート時はサイズを調整
@@ -548,10 +558,8 @@ class ImageElement: LogoElement {
             } else {
                 // クロップ済み画像は元のサイズを維持
                 size = image.size
-                print("DEBUG: クロップ済み画像のサイズを維持: \(size)")
             }
         } else {
-            print("DEBUG: エラー: UIImageの作成に失敗しました")
         }
     }
     
@@ -568,10 +576,8 @@ class ImageElement: LogoElement {
         
         // 画像のサイズに合わせて要素のサイズを調整（必要なら外部でプロキシ生成）
         if let image = UIImage(data: imageData) {
-            print("DEBUG: 初期化時の画像サイズ: \(image.size)")
             updateSizeFromImage(image)
         } else {
-            print("DEBUG: エラー: UIImageの作成に失敗しました")
         }
     }
     
@@ -601,11 +607,13 @@ class ImageElement: LogoElement {
         hueAdjustment = 0.0
         sharpnessAdjustment = 0.0
         gaussianBlurRadius = 0.0
+        backgroundBlurRadius = 0.0
+        backgroundBlurMaskData = nil
         toneCurveData = ToneCurveData()
         tintColor = nil
         tintIntensity = 0.0
         editHistory.removeAll()
-        
+
         // キャッシュをクリアして再描画を促す
         cachedImage = nil
         previewImage = nil  // プレビューもリセット
@@ -713,6 +721,13 @@ class ImageElement: LogoElement {
         ImageElement.previewService.resetCache()
     }
 
+    /// レンダリング済み画像のキャッシュを無効化
+    ///
+    /// 画像調整の値だけが更新された場合に、表示の再描画を確実に行うために使用します。
+    func invalidateRenderedImageCache() {
+        cachedImage = nil
+    }
+
     /// メモリ警告時に画像キャッシュを解放する
     func handleMemoryWarning() {
         cachedImage = nil
@@ -787,7 +802,9 @@ class ImageElement: LogoElement {
             sharpness: sharpnessAdjustment,
             gaussianBlurRadius: gaussianBlurRadius,
             tintColor: tintColor,
-            tintIntensity: tintIntensity
+            tintIntensity: tintIntensity,
+            backgroundBlurRadius: backgroundBlurRadius,
+            backgroundBlurMaskData: backgroundBlurMaskData
         )
     }
 
@@ -840,6 +857,8 @@ class ImageElement: LogoElement {
         copy.hueAdjustment = hueAdjustment
         copy.sharpnessAdjustment = sharpnessAdjustment
         copy.gaussianBlurRadius = gaussianBlurRadius
+        copy.backgroundBlurRadius = backgroundBlurRadius
+        copy.backgroundBlurMaskData = backgroundBlurMaskData
         copy.toneCurveData = toneCurveData
         copy.tintColor = tintColor
         copy.tintIntensity = tintIntensity
@@ -883,20 +902,17 @@ class ImageElement: LogoElement {
         if let frameWidthString = metadata.additionalMetadata["frameWidth"],
            let frameWidthValue = Double(frameWidthString) {
             self.frameWidth = CGFloat(frameWidthValue)
-            print("DEBUG: フレーム太さを復元: \(frameWidthValue)")
         }
         
         // 角丸の復元
         if let roundedCornersString = metadata.additionalMetadata["roundedCorners"] {
             self.roundedCorners = roundedCornersString == "true"
-            print("DEBUG: 角丸設定を復元: \(roundedCorners)")
         }
         
         // 角丸半径の復元
         if let cornerRadiusString = metadata.additionalMetadata["cornerRadius"],
            let cornerRadiusValue = Double(cornerRadiusString) {
             self.cornerRadius = CGFloat(cornerRadiusValue)
-            print("DEBUG: 角丸半径を復元: \(cornerRadiusValue)")
         }
         
         // フレーム表示の復元
@@ -960,7 +976,9 @@ struct ImageEditOperation: Codable {
         self.parameters = parameters
     }
 }
+
 // MARK: - メタデータ関連の実装
+
 /// 画像メタデータを表す構造体
 struct ImageMetadata: Codable {
     // 基本メタデータ

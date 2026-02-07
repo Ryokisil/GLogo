@@ -192,6 +192,18 @@ struct EditorView: View {
                     }
                 }
             }
+            // 背景ぼかしマスク編集画面への遷移
+            .navigationDestination(isPresented: $viewModel.isNavigatingToBackgroundBlurMaskEdit) {
+                if let imageElement = viewModel.backgroundBlurMaskEditTarget {
+                    BackgroundBlurMaskEditView(
+                        imageElement: imageElement,
+                        initialMaskData: imageElement.backgroundBlurMaskData,
+                        blurRadius: imageElement.backgroundBlurRadius
+                    ) { maskData in
+                        viewModel.applyBackgroundBlurMaskResult(maskData, to: imageElement)
+                    }
+                }
+            }
             // 保存オプション（iOS16+はconfirmationDialogに統一）
             .alert(isPresented: $alertState.isShowingAlert) {
                 Alert(
@@ -316,7 +328,6 @@ struct EditorView: View {
                         SpatialTapGesture(count: 2)
                             .onEnded { value in
                                 let point = value.location
-                                print("DEBUG: Canvas double tap at \(point)")
                                 if let textElement = hitTestElement(at: point, in: viewModel.project.elements) as? TextElement {
                                     viewModel.selectElement(textElement)
                                     viewModel.startTextEditing(for: textElement)
@@ -326,13 +337,10 @@ struct EditorView: View {
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 0, coordinateSpace: .named("canvas"))
                             .onEnded { value in
-                                print("DEBUG: Color.clear tap at \(value.startLocation)")
                                 let hit = hitTestElement(at: value.startLocation, in: viewModel.project.elements)
                                 if let element = hit {
-                                    print("DEBUG: Hit element: \(type(of: element))")
                                     viewModel.selectElement(element)
                                 } else {
-                                    print("DEBUG: Hit element: nil")
                                     viewModel.clearSelection()
                                 }
                             }
@@ -367,21 +375,16 @@ struct EditorView: View {
                     },
                     onTapSelect: { globalPoint in
                         DispatchQueue.main.async {
-                            print("DEBUG: ElementSelectionView onTapSelect at \(globalPoint)")
                             // まず最前面をヒットテスト
                             if let primary = hitTestElement(at: globalPoint, in: viewModel.project.elements) {
-                                print("DEBUG: Primary hit: \(type(of: primary)), id: \(primary.id)")
                                 if handleTextDoubleTapIfNeeded(for: primary) {
                                     return
                                 }
                                 if let selected = viewModel.selectedElement {
-                                    print("DEBUG: Currently selected: \(type(of: selected)), id: \(selected.id)")
                                     if primary.id == selected.id {
-                                        print("DEBUG: Same element tapped; keeping current selection")
                                         return // 同じ要素なら切り替えない
                                     }
                                 }
-                                print("DEBUG: Selecting primary element")
                                 viewModel.selectElement(primary)
                             } else {
                                 viewModel.clearSelection()
@@ -389,10 +392,8 @@ struct EditorView: View {
                         }
                     },
                     onDoubleTap: {
-                        print("DEBUG: EditorView - ダブルタップコールバック")
                         // テキスト要素の場合は編集を開始
                         if let textElement = selected as? TextElement {
-                            print("DEBUG: テキスト要素のダブルタップ - 編集開始")
                             viewModel.startTextEditing(for: textElement)
                         }
                     }
@@ -600,34 +601,6 @@ struct EditorView: View {
         }
     }
     
-    // MARK: - ツールパネル
-    
-    private var toolPanel: some View {
-        VStack(spacing: 0) {
-            // ツールパネルのヘッダー
-            HStack {
-                Text("プロパティ")
-                    .font(.headline)
-                Spacer()
-                Button(action: { uiState.isShowingToolPanel = false }) {
-                    Image(systemName: "chevron.down")
-                        .font(.body)
-                }
-            }
-            .padding()
-            .background(Color(UIColor.secondarySystemBackground))
-            
-            // 要素が選択されている場合は要素編集パネル、そうでなければ背景設定パネル
-            if viewModel.selectedElement != nil {
-                ElementEditorPanel(viewModel: elementViewModel)
-            } else {
-                BackgroundEditorPanel(viewModel: viewModel)
-            }
-        }
-        .frame(width: 300)
-        .background(Color(UIColor.systemBackground))
-    }
-    
     // MARK: - ツールバーアイテム
     
     private var toolbarItems: some ToolbarContent {
@@ -768,7 +741,6 @@ struct EditorView: View {
            lastId == element.id,
            now - lastTime < 0.35,
            let textElement = element as? TextElement {
-            print("DEBUG: Manual double tap detected for TextElement")
             viewModel.startTextEditing(for: textElement)
             tapState.lastTapElementId = nil
             tapState.lastTapTimestamp = nil

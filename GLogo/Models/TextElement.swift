@@ -321,7 +321,6 @@ class TextElement: LogoElement {
         let attrString = attributedString()
         let rect = CGRect(origin: position, size: size)
         
-        print("DEBUG: テキスト描画 - rect: \(rect), 実際の位置: \(position), サイズ: \(size)")
         
         // NSStringDrawingOptionsで描画方法を明示的に制御
         let options: NSStringDrawingOptions = [
@@ -336,7 +335,6 @@ class TextElement: LogoElement {
             context: nil
         )
         
-        print("DEBUG: 計算されたテキスト境界: \(boundingRect)")
         
         // 描画領域を調整（マージンを追加して切り欠けを防ぐ）
         var drawRect = rect
@@ -352,7 +350,6 @@ class TextElement: LogoElement {
             )
         }
         
-        print("DEBUG: 最終描画領域: \(drawRect)")
         
         // テキストを描画
         attrString.draw(with: drawRect, options: options, context: nil)

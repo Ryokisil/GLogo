@@ -375,14 +375,9 @@ class ImageMetadataManager {
     
     /// アセットの詳細情報を出力
     private func debugAssetStatus(_ asset: PHAsset) {
-        print("DEBUG: 写真の編集可能性: \(asset.canPerform(.content) ? "編集可能" : "読み取り専用")")
-        print("DEBUG: アセット作成日: \(asset.creationDate?.description ?? "なし")")
-        print("DEBUG: アセット変更日: \(asset.modificationDate?.description ?? "なし")")
-        print("DEBUG: アセット場所: \(asset.location?.description ?? "なし")")
         
         // 可能であればiCloud状態も確認
         if asset.responds(to: NSSelectorFromString("locallyAvailable")) {
-            print("DEBUG: ローカル可用性: \(asset.value(forKey: "locallyAvailable") ?? "不明")")
         }
     }
     
@@ -390,20 +385,16 @@ class ImageMetadataManager {
     private func readImageAndApplyMetadata(url: URL, contentEditingInput: PHContentEditingInput, metadata: ImageMetadata, asset: PHAsset, completion: @escaping (Bool, Error?) -> Void) {
         do {
             let imageData = try Data(contentsOf: url)
-            print("DEBUG: 元画像データを取得: \(ByteCountFormatter.string(fromByteCount: Int64(imageData.count), countStyle: .file))")
             
-            guard let updatedImageData = self.applyMetadataToImageData(imageData, metadata: metadata) else {
-                print("DEBUG: メタデータの適用に失敗しました")
+            guard self.applyMetadataToImageData(imageData, metadata: metadata) != nil else {
                 DispatchQueue.main.async {
                     completion(false, MetadataError.metadataApplicationFailed)
                 }
                 return
             }
             
-            print("DEBUG: メタデータを適用しました: \(ByteCountFormatter.string(fromByteCount: Int64(updatedImageData.count), countStyle: .file))")
             
         } catch {
-            print("DEBUG: 元画像データの読み込みに失敗: \(error.localizedDescription)")
             DispatchQueue.main.async {
                 completion(false, error)
             }
@@ -416,7 +407,6 @@ class ImageMetadataManager {
         let canEdit = PHPhotoLibrary.authorizationStatus() == .authorized &&
         asset.canPerform(.content)
         
-        print("DEBUG: 写真の編集可能性: \(canEdit ? "編集可能" : "読み取り専用")")
         return canEdit
     }
     
@@ -824,10 +814,8 @@ class ImageMetadataManager {
             // ファイルに書き込み
             try data.write(to: fileURL)
             
-            print("DEBUG: メタデータをストレージに保存しました: \(fileURL.path)")
             return true
         } catch {
-            print("DEBUG: メタデータの保存に失敗: \(error.localizedDescription)")
             return false
         }
     }
@@ -861,7 +849,6 @@ class ImageMetadataManager {
             
             return metadata
         } catch {
-            print("DEBUG: メタデータの読み込みに失敗: \(error.localizedDescription)")
             return nil
         }
     }
@@ -894,10 +881,8 @@ class ImageMetadataManager {
             // ファイルに書き込み
             try data.write(to: fileURL)
             
-            print("DEBUG: 編集履歴をストレージに保存しました: \(fileURL.path)")
             return true
         } catch {
-            print("DEBUG: 編集履歴の保存に失敗: \(error.localizedDescription)")
             return false
         }
     }
@@ -931,7 +916,6 @@ class ImageMetadataManager {
             
             return history
         } catch {
-            print("DEBUG: 編集履歴の読み込みに失敗: \(error.localizedDescription)")
             return nil
         }
     }
@@ -939,16 +923,13 @@ class ImageMetadataManager {
     /// 画像データにメタデータを適用
     private func applyMetadataToImageData(_ imageData: Data, metadata: ImageMetadata) -> Data? {
         guard let source = CGImageSourceCreateWithData(imageData as CFData, nil) else {
-            print("DEBUG: CGImageSourceの作成に失敗")
             return nil
         }
         
         let sourceType = CGImageSourceGetType(source)
-        print("DEBUG: 画像タイプ: \(sourceType as Any)")
         
         // メタデータをCFDictionaryに変換
         let metadataDict = createMetadataDictionary(from: metadata)
-        print("DEBUG: メタデータディクショナリを作成: \(metadataDict.keys)")
         
         // 出力データの作成
         let mutableData = NSMutableData()
@@ -959,7 +940,6 @@ class ImageMetadataManager {
             1,
             nil
         ) else {
-            print("DEBUG: CGImageDestinationの作成に失敗")
             return nil
         }
         
@@ -978,10 +958,8 @@ class ImageMetadataManager {
         )
         
         if CGImageDestinationFinalize(destination) {
-            print("DEBUG: メタデータの書き込みに成功")
             return mutableData as Data
         } else {
-            print("DEBUG: メタデータの書き込みに失敗")
             return nil
         }
     }
@@ -1218,26 +1196,22 @@ extension ImageElement {
         if let frameWidthString = metadata.additionalMetadata["frameWidth"], // additionalMetadataの辞書型から"frameWidth"キーで値を取得 オプショナルではないことを確認（値が存在する場合のみ処理を続行）
             let frameWidthDouble = Double(frameWidthString) { // 取得した文字列をDouble型の数値に変換 変換が成功した場合のみ（文字列が有効な数値だった場合のみ）処理を続行
             self.frameWidth = CGFloat(frameWidthDouble) // DoubleをCGFloatにキャストしてframeWidthプロパティに代入 CGFloatは直接文字列から生成できないため、Double経由で変換が必要
-            print("DEBUG: リバート - フレーム太さ: \(frameWidth)")
         }
         
         // 角丸設定
         if let roundedCornersString = metadata.additionalMetadata["roundedCorners"] {
             self.roundedCorners = roundedCornersString == "true"
-            print("DEBUG: リバート - 角丸設定: \(roundedCorners)")
         }
         
         // 角丸半径
         if let cornerRadiusString = metadata.additionalMetadata["cornerRadius"],
            let cornerRadiusDouble = Double(cornerRadiusString) {
             self.cornerRadius = CGFloat(cornerRadiusDouble)
-            print("DEBUG: リバート - 角丸半径: \(cornerRadius)")
         }
         
         // フレーム表示
         if let showFrameString = metadata.additionalMetadata["showFrame"] {
             self.showFrame = showFrameString == "true"
-            print("DEBUG: リバート - フレーム表示: \(showFrame)")
         }
         
         // フレーム色（これはより複雑な処理が必要）
