@@ -202,7 +202,7 @@ struct ToneCurveView: View {
         }) {
             HStack {
                 Image(systemName: "arrow.counterclockwise")
-                Text("リセット")
+                Text("Reset")
             }
             .font(.subheadline)
             .foregroundColor(.red)

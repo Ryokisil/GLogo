@@ -1156,6 +1156,8 @@ struct ImageContentReplacedEvent: EditorEvent {
     let oldGaussianBlurRadius: CGFloat
     let oldTintIntensity: CGFloat
     var oldTintColor: UIColor?
+    let oldAppliedFilterRecipe: FilterRecipe?
+    let oldAppliedFilterPresetId: String?
     let newImageData: Data
     let newOriginalImageIdentifier: String
 
@@ -1182,6 +1184,8 @@ struct ImageContentReplacedEvent: EditorEvent {
     ///   - oldGaussianBlurRadius: 以前のガウシアンブラー半径
     ///   - oldTintIntensity: 以前のティント強度
     ///   - oldTintColor: 以前のティントカラー
+    ///   - oldAppliedFilterRecipe: 以前のフィルターレシピ
+    ///   - oldAppliedFilterPresetId: 以前のフィルタープリセットID
     ///   - newImageData: 差し替え後の画像データ
     ///   - newOriginalImageIdentifier: 差し替え後の画像識別子
     /// - Returns: なし
@@ -1203,6 +1207,8 @@ struct ImageContentReplacedEvent: EditorEvent {
         oldGaussianBlurRadius: CGFloat,
         oldTintIntensity: CGFloat,
         oldTintColor: UIColor?,
+        oldAppliedFilterRecipe: FilterRecipe?,
+        oldAppliedFilterPresetId: String?,
         newImageData: Data,
         newOriginalImageIdentifier: String
     ) {
@@ -1223,6 +1229,8 @@ struct ImageContentReplacedEvent: EditorEvent {
         self.oldGaussianBlurRadius = oldGaussianBlurRadius
         self.oldTintIntensity = oldTintIntensity
         self.oldTintColor = oldTintColor
+        self.oldAppliedFilterRecipe = oldAppliedFilterRecipe
+        self.oldAppliedFilterPresetId = oldAppliedFilterPresetId
         self.newImageData = newImageData
         self.newOriginalImageIdentifier = newOriginalImageIdentifier
     }
@@ -1233,6 +1241,7 @@ struct ImageContentReplacedEvent: EditorEvent {
         case oldToneCurveData, oldSaturation, oldBrightness, oldContrast, oldHighlights, oldShadows
         case oldHue, oldSharpness, oldGaussianBlurRadius, oldTintIntensity
         case oldTintColorData, hasOldTintColor
+        case oldAppliedFilterRecipe, oldAppliedFilterPresetId
         case newImageData, newOriginalImageIdentifier
     }
 
@@ -1267,6 +1276,9 @@ struct ImageContentReplacedEvent: EditorEvent {
             let colorData = try NSKeyedArchiver.archivedData(withRootObject: oldTintColor, requiringSecureCoding: false)
             try container.encode(colorData, forKey: .oldTintColorData)
         }
+
+        try container.encodeIfPresent(oldAppliedFilterRecipe, forKey: .oldAppliedFilterRecipe)
+        try container.encodeIfPresent(oldAppliedFilterPresetId, forKey: .oldAppliedFilterPresetId)
     }
 
     /// デコード処理（UIColorの復元を含む）
@@ -1301,6 +1313,10 @@ struct ImageContentReplacedEvent: EditorEvent {
             let colorData = try container.decode(Data.self, forKey: .oldTintColorData)
             oldTintColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: colorData)
         }
+
+        // フィルタープリセット（旧データ互換: nil = フィルター未適用）
+        oldAppliedFilterRecipe = try container.decodeIfPresent(FilterRecipe.self, forKey: .oldAppliedFilterRecipe)
+        oldAppliedFilterPresetId = try container.decodeIfPresent(String.self, forKey: .oldAppliedFilterPresetId)
     }
 
     /// 画像内容を差し替える
@@ -1346,6 +1362,8 @@ struct ImageContentReplacedEvent: EditorEvent {
         element.gaussianBlurRadius = oldGaussianBlurRadius
         element.tintColor = oldTintColor
         element.tintIntensity = oldTintIntensity
+        element.appliedFilterRecipe = oldAppliedFilterRecipe
+        element.appliedFilterPresetId = oldAppliedFilterPresetId
     }
 }
 
@@ -1710,5 +1728,40 @@ struct ImageBackgroundBlurRadiusChangedEvent: EditorEvent {
             element.backgroundBlurRadius = oldRadius
             element.invalidateRenderedImageCache()
         }
+    }
+}
+
+// MARK: - フィルタープリセット関連イベント
+
+/// フィルタープリセット変更イベント
+struct FilterPresetChangedEvent: EditorEvent {
+    var eventName = "FilterPresetChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldRecipe: FilterRecipe?
+    let newRecipe: FilterRecipe?
+    let oldPresetId: String?
+    let newPresetId: String?
+
+    var description: String {
+        if newPresetId != nil {
+            return "フィルタープリセットを変更しました"
+        } else {
+            return "フィルタープリセットを解除しました"
+        }
+    }
+
+    func apply(to project: LogoProject) {
+        guard let element = project.element(for: elementId, as: ImageElement.self) else { return }
+        element.appliedFilterRecipe = newRecipe
+        element.appliedFilterPresetId = newPresetId
+        element.invalidateRenderedImageCache()
+    }
+
+    func revert(from project: LogoProject) {
+        guard let element = project.element(for: elementId, as: ImageElement.self) else { return }
+        element.appliedFilterRecipe = oldRecipe
+        element.appliedFilterPresetId = oldPresetId
+        element.invalidateRenderedImageCache()
     }
 }

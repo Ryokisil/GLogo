@@ -17,7 +17,6 @@ import Photos
 /// エディタモード
 enum EditorMode {
     case select      // 要素の選択・移動
-    case textCreate  // テキスト作成
     case shapeCreate // 図形作成
     case imageImport // 画像インポート
     case delete      // 削除
@@ -182,7 +181,7 @@ class EditorViewModel: ObservableObject {
     }
     
     /// テキスト要素を追加
-    func addTextElement(text: String = "Double tap here to change text", position: CGPoint) {
+    func addTextElement(text: String = "Text", position: CGPoint) {
         let textElement = TextElement(text: text)
         textElement.position = position
         addElement(textElement)
@@ -414,6 +413,8 @@ class EditorViewModel: ObservableObject {
             oldGaussianBlurRadius: imageElement.gaussianBlurRadius,
             oldTintIntensity: imageElement.tintIntensity,
             oldTintColor: imageElement.tintColor,
+            oldAppliedFilterRecipe: imageElement.appliedFilterRecipe,
+            oldAppliedFilterPresetId: imageElement.appliedFilterPresetId,
             newImageData: newImageData,
             newOriginalImageIdentifier: newOriginalIdentifier
         )
@@ -683,6 +684,27 @@ class EditorViewModel: ObservableObject {
 
     /// AI処理中フラグ
     @Published private(set) var isProcessingAI: Bool = false
+
+    /// AI背景除去をリクエスト（ワンタップで背景を透過に置換）
+    /// - Parameter imageElement: 対象の画像要素
+    func requestAIBackgroundRemoval(for imageElement: ImageElement) {
+        guard !isProcessingAI else { return }
+        isProcessingAI = true
+
+        Task {
+            defer { isProcessingAI = false }
+
+            guard let originalImage = imageElement.originalImage else {
+                return
+            }
+
+            do {
+                let resultImage = try await backgroundRemovalUseCase.removeBackground(from: originalImage)
+                applyManualBackgroundRemovalResult(resultImage, to: imageElement)
+            } catch {
+            }
+        }
+    }
 
     /// AI背景ぼかしをリクエスト
     /// - Parameter imageElement: 対象の画像要素

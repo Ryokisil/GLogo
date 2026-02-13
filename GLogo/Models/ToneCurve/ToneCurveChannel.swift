@@ -26,6 +26,15 @@ enum ToneCurveChannel: String, CaseIterable, Codable {
 
     /// 表示名
     var displayName: String {
-        return self.rawValue
+        switch self {
+        case .rgb:
+            return "RGB"
+        case .red:
+            return "Red"
+        case .green:
+            return "Green"
+        case .blue:
+            return "Blue"
+        }
     }
 }

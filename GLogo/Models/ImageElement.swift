@@ -210,7 +210,13 @@ class ImageElement: LogoElement {
     
     /// カラーフィルターの強度
     var tintIntensity: CGFloat = 0.0
-    
+
+    /// 適用中のフィルターレシピ（nil = フィルター未適用）
+    var appliedFilterRecipe: FilterRecipe?
+
+    /// 適用中のフィルタープリセットID
+    var appliedFilterPresetId: String?
+
     /// 画像フレーム表示
     var showFrame: Bool = false
     
@@ -351,6 +357,8 @@ class ImageElement: LogoElement {
         case roundedCorners, cornerRadius
         // 履歴・メタデータ
         case editHistory, metadata
+        // フィルタープリセット
+        case appliedFilterRecipe, appliedFilterPresetId
         // インポート順
         case originalImportOrder, imageRole
     }
@@ -393,6 +401,10 @@ class ImageElement: LogoElement {
         let frameColorData = try NSKeyedArchiver.archivedData(withRootObject: frameColor, requiringSecureCoding: false)
         try container.encode(frameColorData, forKey: .frameColorData)
         
+        // フィルタープリセット
+        try container.encodeIfPresent(appliedFilterRecipe, forKey: .appliedFilterRecipe)
+        try container.encodeIfPresent(appliedFilterPresetId, forKey: .appliedFilterPresetId)
+
         // インポート順番管理用のプロパティをエンコード
         try container.encode(originalImportOrder, forKey: .originalImportOrder)
         try container.encode(imageRole, forKey: .imageRole)
@@ -441,6 +453,10 @@ class ImageElement: LogoElement {
            let decodedFrameColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: frameColorData) {
             frameColor = decodedFrameColor
         }
+
+        // フィルタープリセット（旧データ互換: nil = フィルター未適用）
+        appliedFilterRecipe = try container.decodeIfPresent(FilterRecipe.self, forKey: .appliedFilterRecipe)
+        appliedFilterPresetId = try container.decodeIfPresent(String.self, forKey: .appliedFilterPresetId)
     }
     
     /// 共通の初期化処理
@@ -612,6 +628,8 @@ class ImageElement: LogoElement {
         toneCurveData = ToneCurveData()
         tintColor = nil
         tintIntensity = 0.0
+        appliedFilterRecipe = nil
+        appliedFilterPresetId = nil
         editHistory.removeAll()
 
         // キャッシュをクリアして再描画を促す
@@ -789,20 +807,45 @@ class ImageElement: LogoElement {
         )
     }
 
-    /// 現在のフィルタ設定をまとめてサービスに渡す
+    /// 現在のフィルタ設定をまとめてサービスに渡す（filter + manual を合成）
     private func currentFilterParams() -> ImageFilterParams {
-        ImageFilterParams(
+        let recipe = appliedFilterRecipe
+
+        // 乗算系: filter_val * manual_val（デフォルト1.0同士 = 1.0）
+        let effectiveSaturation = (recipe?.saturation ?? 1.0) * saturationAdjustment
+        let effectiveContrast = (recipe?.contrast ?? 1.0) * contrastAdjustment
+
+        // 加算系: filter_val + manual_val（デフォルト0.0同士 = 0.0）
+        let effectiveBrightness = (recipe?.brightness ?? 0.0) + brightnessAdjustment
+        let effectiveHighlights = (recipe?.highlights ?? 0.0) + highlightsAdjustment
+        let effectiveShadows = (recipe?.shadows ?? 0.0) + shadowsAdjustment
+        let effectiveHue = (recipe?.hue ?? 0.0) + hueAdjustment
+        let effectiveSharpness = (recipe?.sharpness ?? 0.0) + sharpnessAdjustment
+        let effectiveBlur = (recipe?.gaussianBlur ?? 0.0) + gaussianBlurRadius
+
+        // ティント: filter が設定されていれば filter 側を使用
+        let effectiveTintColor: UIColor?
+        let effectiveTintIntensity: CGFloat
+        if let recipe = recipe, recipe.affectsTint {
+            effectiveTintColor = recipe.tintColorHex.flatMap { UIColor(hex: $0) }
+            effectiveTintIntensity = recipe.tintIntensity ?? 0.0
+        } else {
+            effectiveTintColor = tintColor
+            effectiveTintIntensity = tintIntensity
+        }
+
+        return ImageFilterParams(
             toneCurveData: toneCurveData,
-            saturation: saturationAdjustment,
-            brightness: brightnessAdjustment,
-            contrast: contrastAdjustment,
-            highlights: highlightsAdjustment,
-            shadows: shadowsAdjustment,
-            hue: hueAdjustment,
-            sharpness: sharpnessAdjustment,
-            gaussianBlurRadius: gaussianBlurRadius,
-            tintColor: tintColor,
-            tintIntensity: tintIntensity,
+            saturation: effectiveSaturation,
+            brightness: effectiveBrightness,
+            contrast: effectiveContrast,
+            highlights: effectiveHighlights,
+            shadows: effectiveShadows,
+            hue: effectiveHue,
+            sharpness: effectiveSharpness,
+            gaussianBlurRadius: effectiveBlur,
+            tintColor: effectiveTintColor,
+            tintIntensity: effectiveTintIntensity,
             backgroundBlurRadius: backgroundBlurRadius,
             backgroundBlurMaskData: backgroundBlurMaskData
         )
@@ -862,7 +905,9 @@ class ImageElement: LogoElement {
         copy.toneCurveData = toneCurveData
         copy.tintColor = tintColor
         copy.tintIntensity = tintIntensity
-        
+        copy.appliedFilterRecipe = appliedFilterRecipe
+        copy.appliedFilterPresetId = appliedFilterPresetId
+
         copy.showFrame = showFrame
         copy.frameColor = frameColor
         copy.frameWidth = frameWidth

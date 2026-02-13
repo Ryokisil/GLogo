@@ -122,9 +122,6 @@ struct ElementSelectionView: View {
     /// タップで選択を切り替えるためのコールバック（座標付き）
     var onTapSelect: ((CGPoint) -> Void)?
 
-    /// ダブルタップ時のコールバック（テキスト編集など）
-    var onDoubleTap: (() -> Void)?
-
     var body: some View {
         let localFrame = CGRect(origin: .zero, size: element.frame.size)
         ZStack {
@@ -176,15 +173,6 @@ struct ElementSelectionView: View {
         .frame(width: element.frame.width, height: element.frame.height)
         .position(x: element.frame.midX, y: element.frame.midY)
         .contentShape(Rectangle())
-        .highPriorityGesture(
-            TapGesture(count: 2)
-                .onEnded {
-                    guard element is TextElement else {
-                        return
-                    }
-                    onDoubleTap?()
-                }
-        )
         // タップを処理して選択切替
         .simultaneousGesture(
             DragGesture(minimumDistance: 0, coordinateSpace: .named("canvas"))

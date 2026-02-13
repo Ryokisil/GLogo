@@ -53,6 +53,11 @@ class ElementViewModel: ObservableObject {
     /// 画像調整スライダーの開始値（ドラッグ開始時）
     private var imageAdjustmentStartValues: [ImageAdjustmentKey: CGFloat] = [:]
 
+    /// 現在適用中のフィルタープリセットID（ImageElement から読み出す）
+    var appliedFilterPresetId: String? {
+        imageElement?.appliedFilterPresetId
+    }
+
     /// ジェスチャー変形用の基準値
     private var gestureBasePosition: CGPoint?
     private var gestureBaseSize: CGSize?
@@ -84,7 +89,7 @@ class ElementViewModel: ObservableObject {
 
     /// 要素の更新
     private func updateElement(_ element: LogoElement?) {
-        // 要素切り替え時に開始値キャッシュをクリアして、別要素への値持ち越しを防ぐ
+        // 要素切り替え時にキャッシュをクリアして、別要素への状態持ち越しを防ぐ
         if self.element?.id != element?.id {
             imageAdjustmentStartValues.removeAll()
         }
@@ -591,7 +596,99 @@ class ElementViewModel: ObservableObject {
         }
     }
 
-    // MARK: - 背景ぼかし
+    // MARK: - フィルタープリセット適用
+
+    /// フィルタープリセットを適用（レシピを ImageElement に直接設定）
+    /// - Parameter preset: 適用するフィルタープリセット
+    func applyFilterPreset(_ preset: FilterPreset) {
+        guard let imageElement = imageElement else { return }
+
+        let oldRecipe = imageElement.appliedFilterRecipe
+        let oldPresetId = imageElement.appliedFilterPresetId
+
+        // 同一プリセットが既に適用済みなら何もしない
+        guard oldPresetId != preset.id || oldRecipe != preset.recipe else { return }
+
+        // ImageElement に直接設定
+        imageElement.appliedFilterRecipe = preset.recipe
+        imageElement.appliedFilterPresetId = preset.id
+        imageElement.invalidateRenderedImageCache()
+
+        // イベント記録
+        let event = FilterPresetChangedEvent(
+            elementId: imageElement.id,
+            oldRecipe: oldRecipe,
+            newRecipe: preset.recipe,
+            oldPresetId: oldPresetId,
+            newPresetId: preset.id
+        )
+        editorViewModel?.applyEvent(event)
+        editorViewModel?.updateImageElement(imageElement)
+        objectWillChange.send()
+    }
+
+    /// フィルタープリセットを解除（manual 調整値は維持）
+    func resetFilterPresets() {
+        guard let imageElement = imageElement else { return }
+
+        let oldRecipe = imageElement.appliedFilterRecipe
+        let oldPresetId = imageElement.appliedFilterPresetId
+        guard oldRecipe != nil || oldPresetId != nil else { return }
+
+        imageElement.appliedFilterRecipe = nil
+        imageElement.appliedFilterPresetId = nil
+        imageElement.invalidateRenderedImageCache()
+
+        let event = FilterPresetChangedEvent(
+            elementId: imageElement.id,
+            oldRecipe: oldRecipe,
+            newRecipe: nil,
+            oldPresetId: oldPresetId,
+            newPresetId: nil
+        )
+        editorViewModel?.applyEvent(event)
+        editorViewModel?.updateImageElement(imageElement)
+        objectWillChange.send()
+    }
+
+    /// フィルタープリセットのプレビュー画像を生成
+    /// - Parameters:
+    ///   - preset: プレビューを生成するフィルタープリセット
+    ///   - targetSize: サムネイルの目標サイズ
+    /// - Returns: 生成したプレビュー画像。生成失敗時は nil
+    func generateFilterPreview(for preset: FilterPreset, targetSize: CGSize) async -> UIImage? {
+        guard let imageElement = imageElement,
+              let sourceImage = imageElement.originalImage else {
+            return nil
+        }
+
+        return await FilterPreviewUseCase.generatePreview(
+            sourceImage: sourceImage,
+            toneCurveData: imageElement.toneCurveData,
+            manualSaturation: imageElement.saturationAdjustment,
+            manualBrightness: imageElement.brightnessAdjustment,
+            manualContrast: imageElement.contrastAdjustment,
+            manualHighlights: imageElement.highlightsAdjustment,
+            manualShadows: imageElement.shadowsAdjustment,
+            manualHue: imageElement.hueAdjustment,
+            manualSharpness: imageElement.sharpnessAdjustment,
+            manualGaussianBlur: imageElement.gaussianBlurRadius,
+            manualTintColor: imageElement.tintColor,
+            manualTintIntensity: imageElement.tintIntensity,
+            backgroundBlurRadius: imageElement.backgroundBlurRadius,
+            backgroundBlurMaskData: imageElement.backgroundBlurMaskData,
+            preset: preset,
+            targetSize: targetSize
+        )
+    }
+
+    // MARK: - 背景除去・背景ぼかし
+
+    /// AI背景除去をリクエスト（ワンタップ）
+    func requestAIBackgroundRemoval() {
+        guard let imageElement = imageElement else { return }
+        editorViewModel?.requestAIBackgroundRemoval(for: imageElement)
+    }
 
     /// AI背景ぼかしをリクエスト
     func requestAIBackgroundBlur() {

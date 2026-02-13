@@ -57,7 +57,7 @@ struct TextEditDialog: View {
                         .foregroundColor(.primary)
                     
                     // テキスト入力フィールド
-                    TextField("Double tap here to change text", text: $editingText, axis: .vertical)
+                    TextField("テキストを入力", text: $editingText, axis: .vertical)
                         .font(.system(size: 16))
                         .foregroundColor(.primary)
                         .textFieldStyle(PlainTextFieldStyle())

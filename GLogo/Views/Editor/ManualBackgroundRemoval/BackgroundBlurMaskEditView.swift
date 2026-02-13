@@ -108,7 +108,7 @@ struct BackgroundBlurMaskEditView: View {
                         if viewModel.state.isProcessingAI {
                             Color.black.opacity(0.2)
                                 .ignoresSafeArea()
-                            ProgressView("AI処理中...")
+                            ProgressView("Processing AI...")
                                 .padding(12)
                                 .background(Color.white.opacity(0.9))
                                 .cornerRadius(8)
@@ -119,7 +119,7 @@ struct BackgroundBlurMaskEditView: View {
                                 Image(systemName: "exclamationmark.triangle")
                                     .font(.title2)
                                     .foregroundColor(.orange)
-                                Text(viewModel.state.sourceImageErrorMessage ?? "画像の読み込みに失敗しました")
+                                Text(viewModel.state.sourceImageErrorMessage ?? "Failed to load image.")
                                     .font(.subheadline)
                                     .multilineTextAlignment(.center)
                                     .foregroundColor(.primary)
@@ -139,10 +139,10 @@ struct BackgroundBlurMaskEditView: View {
 
                     // モード切り替え
                     HStack(spacing: 12) {
-                        Text("モード:")
+                        Text("Mode:")
                             .font(.headline)
 
-                        Picker("編集モード", selection: $viewModel.state.mode) {
+                        Picker("Edit Mode", selection: $viewModel.state.mode) {
                             ForEach(RemovalMode.allCases, id: \.self) { mode in
                                 Text(mode.rawValue).tag(mode)
                             }
@@ -154,7 +154,7 @@ struct BackgroundBlurMaskEditView: View {
 
                     // ブラシサイズ
                     HStack {
-                        Text("ブラシサイズ:")
+                        Text("Brush Size:")
                             .font(.subheadline)
 
                         Slider(value: Binding(
@@ -180,7 +180,7 @@ struct BackgroundBlurMaskEditView: View {
                         .disabled(!viewModel.state.canRedo)
 
                         // AIマスク生成
-                        Button("AIマスク生成") {
+                        Button("Generate AI Mask") {
                             Task {
                                 await viewModel.applyAIMask()
                             }
@@ -190,14 +190,14 @@ struct BackgroundBlurMaskEditView: View {
                         Spacer()
 
                         // リセット
-                        Button("リセット") {
+                        Button("Reset") {
                             viewModel.reset()
                         }
                         .foregroundColor(.red)
                         .disabled(!viewModel.state.isSourceImageAvailable)
 
                         // 完了
-                        Button("完了") {
+                        Button("Done") {
                             viewModel.complete()
                             presentationMode.wrappedValue.dismiss()
                         }
@@ -210,14 +210,24 @@ struct BackgroundBlurMaskEditView: View {
                 .background(Color(.systemBackground))
             }
         }
-        .navigationBarTitle("背景ぼかしマスク編集", displayMode: .inline)
+        .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .navigationBarItems(
-            leading: Button("キャンセル") {
-                viewModel.cancel()
-                presentationMode.wrappedValue.dismiss()
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button("Cancel") {
+                    viewModel.cancel()
+                    presentationMode.wrappedValue.dismiss()
+                }
             }
-        )
+
+            ToolbarItem(placement: .principal) {
+                Text("Background Blur Mask Edit")
+                    .font(.headline)
+                    .foregroundStyle(Color(uiColor: .label))
+            }
+        }
+        .toolbarBackground(Color(uiColor: .systemBackground), for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .onReceive(NotificationCenter.default.publisher(for: .manualRemovalResetZoom)) { _ in
             withAnimation(.easeOut(duration: 0.2)) {
                 zoomScale = 1.0

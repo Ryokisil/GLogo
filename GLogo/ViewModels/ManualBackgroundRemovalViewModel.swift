@@ -58,7 +58,7 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
         var initialState = ManualBackgroundRemovalState()
         initialState.isSourceImageAvailable = isSourceImageAvailable
         if !isSourceImageAvailable {
-            initialState.sourceImageErrorMessage = "画像の読み込みに失敗しました"
+            initialState.sourceImageErrorMessage = "Failed to load image."
         }
 
         // SwiftUIマスキングでは履歴管理も簡素化

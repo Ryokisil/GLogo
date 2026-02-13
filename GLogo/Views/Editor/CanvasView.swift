@@ -370,7 +370,7 @@ class CanvasView: UIView {
         switch editorMode {
         case .select:
             break
-        case .textCreate, .shapeCreate, .imageImport:
+        case .shapeCreate, .imageImport:
             break
         case .delete:
             handleDeleteTouchBegan(at: transformedLocation)
@@ -397,7 +397,7 @@ class CanvasView: UIView {
         switch editorMode {
         case .select:
             break
-        case .textCreate, .shapeCreate, .imageImport:
+        case .shapeCreate, .imageImport:
             onCreateElement?(transformedLocation)
         case .delete:
             break
@@ -478,8 +478,6 @@ class CanvasView: UIView {
         switch editorMode {
         case .select:
             NSCursor.arrow.set()
-        case .textCreate:
-            NSCursor.iBeam.set()
         case .shapeCreate:
             NSCursor.crosshair.set()
         case .imageImport:
@@ -597,8 +595,6 @@ struct CanvasViewRepresentable: UIViewRepresentable {
         canvasView.onCreateElement = { [viewModel = parent.viewModel] point in
             Task { @MainActor in
                 switch viewModel.editorMode {
-                case .textCreate:
-                    viewModel.addTextElement(text: "Double tap here to change text", position: point)
                 case .shapeCreate:
                     viewModel.addShapeElement(type: viewModel.nextShapeType, position: point)
                 case .imageImport:

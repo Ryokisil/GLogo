@@ -38,12 +38,14 @@ private struct EditorUIState {
     var showGrid = true
     /// グリッドスナップフラグ
     var snapToGrid = false
-    /// 画像要素の選択タブ（0=プロパティ、1=カーブ）
-    var selectedImageTab: Int = 0
+    /// 下部ツールバーの選択状態
+    var selectedBottomTool: EditorBottomTool = .select
     /// 初回ガイドの表示フラグ
     var isShowingEditorIntro = false
     /// 初回ガイドの現在ステップ
     var editorIntroStepIndex = 0
+    /// テキストプロパティパネルの表示フラグ
+    var isTextPanelVisible = false
 }
 
 /// アラート・確認ダイアログの状態
@@ -60,14 +62,6 @@ private struct EditorAlertState {
     var alertTitle = ""
     /// アラートのメッセージ
     var alertMessage = ""
-}
-
-/// 一時的なタップ判定状態
-private struct EditorTapState {
-    /// ダブルタップ判定用の最終タップ要素ID
-    var lastTapElementId: UUID?
-    /// ダブルタップ判定用の最終タップ時刻
-    var lastTapTimestamp: TimeInterval?
 }
 
 /// エディタビュー - アプリのメインエディタ画面
@@ -90,9 +84,6 @@ struct EditorView: View {
     /// アラート・確認ダイアログの状態
     @State private var alertState = EditorAlertState()
 
-    /// 一時的なタップ判定状態
-    @State private var tapState = EditorTapState()
-
     // MARK: - 画面遷移・シート制御
 
     /// 画像ピッカーやクロップビューの表示を切り替えるために使用
@@ -100,6 +91,12 @@ struct EditorView: View {
 
     /// 手動背景除去画面への遷移フラグ
     @State private var isNavigatingToManualRemoval = false
+
+    /// 現在表示中のキャンバス領域サイズ（表示中心への要素追加に使用）
+    @State private var canvasViewportSize: CGSize = .zero
+
+    /// キーボード非表示時のキャンバスサイズ（テキスト編集中のリサイズ防止用）
+    @State private var stableCanvasSize: CGSize = .zero
 
     // MARK: - 永続化
 
@@ -119,28 +116,105 @@ struct EditorView: View {
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
-                VStack(spacing: 0) {
-                    // キャンバスエリア（固定サイズ）
-                    canvasArea
-                        .frame(
-                            width: geometry.size.width,
-                            height: max(200, geometry.size.height - 300)
-                        )
-                    
-                    // プロパティパネル（固定位置）
-                    bottomPropertyPanel
-                        .frame(
-                            width: geometry.size.width,
-                            height: 300
-                        )
-                }
+                // テキスト編集中（キーボード表示中）はサイズを固定して画像縮小を防止
+                let effectiveSize = viewModel.isEditingText ? stableCanvasSize : geometry.size
+                canvasArea
+                    .frame(
+                        width: effectiveSize.width,
+                        height: effectiveSize.height
+                    )
+                    .onAppear {
+                        stableCanvasSize = geometry.size
+                        canvasViewportSize = geometry.size
+                    }
+                    .onChange(of: geometry.size) { newSize in
+                        if !viewModel.isEditingText {
+                            stableCanvasSize = newSize
+                        }
+                        canvasViewportSize = newSize
+                    }
             }
-            .ignoresSafeArea(.keyboard) // キーボードエリアを無視
             .navigationTitle(viewModel.project.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // ツールバーアイテム
                 toolbarItems
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                EditorBottomToolStrip(
+                    selectedTool: $uiState.selectedBottomTool,
+                    onSelectTool: { tool in
+                        handleBottomToolSelection(tool)
+                    }
+                )
+                .opacity(isBottomToolStripHidden ? 0 : 1)
+                .allowsHitTesting(!isBottomToolStripHidden)
+                .accessibilityHidden(isBottomToolStripHidden)
+            }
+            .overlay(alignment: .bottom) {
+                if uiState.selectedBottomTool == .adjust {
+                    AdjustBasicPanelView(
+                        viewModel: elementViewModel,
+                        onClose: {
+                            uiState.selectedBottomTool = .select
+                        }
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if uiState.selectedBottomTool == .magicStudio {
+                    AIToolsPanelView(
+                        viewModel: elementViewModel,
+                        onClose: {
+                            uiState.selectedBottomTool = .select
+                        },
+                        onOpenManualBackgroundRemoval: {
+                            if viewModel.selectedElement is ImageElement {
+                                isNavigatingToManualRemoval = true
+                            }
+                        }
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if uiState.selectedBottomTool == .filters {
+                    FiltersPanelView(
+                        viewModel: elementViewModel,
+                        onClose: {
+                            uiState.selectedBottomTool = .select
+                        }
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if uiState.isTextPanelVisible && !viewModel.isEditingText {
+                    TextPropertyPanelView(
+                        viewModel: elementViewModel,
+                        onClose: {
+                            uiState.isTextPanelVisible = false
+                            viewModel.clearSelection()
+                            viewModel.editorMode = .select
+                        },
+                        onOpenTextEditor: {
+                            if let textElement = viewModel.selectedElement as? TextElement {
+                                viewModel.startTextEditing(for: textElement)
+                            }
+                        }
+                    )
+                    .ignoresSafeArea(.keyboard, edges: .bottom)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
             .overlay {
                 if uiState.isShowingEditorIntro {
@@ -157,6 +231,10 @@ struct EditorView: View {
                 if !hasSeenEditorIntro {
                     uiState.isShowingEditorIntro = true
                 }
+            }
+            .onChange(of: viewModel.selectedElement?.id) { _ in
+                // テキスト要素選択時にパネルを自動表示、それ以外で非表示
+                uiState.isTextPanelVisible = viewModel.selectedElement is TextElement
             }
             // 画像ピッカー内でクロップ画面への遷移を追加
             .sheet(item: $activeSheet) { item in
@@ -209,10 +287,7 @@ struct EditorView: View {
                 Alert(
                     title: Text(alertState.alertTitle),
                     message: Text(alertState.alertMessage),
-                    primaryButton: .destructive(Text("はい")) {
-                        alertState.confirmationAction()
-                    },
-                    secondaryButton: .cancel(Text("いいえ"))
+                    dismissButton: .default(Text("OK"))
                 )
             }
             .confirmationDialog(
@@ -223,88 +298,57 @@ struct EditorView: View {
                 Button("OK", role: .destructive) {
                     alertState.confirmationAction()
                 }
-                Button("キャンセル", role: .cancel) {}
+                Button("Cancel", role: .cancel) {}
             }
+            .applySystemOverlayVisibility(isHidden: isSystemOverlayHidden)
         }
+        .ignoresSafeArea(.keyboard, edges: .bottom) // キーボードによるレイアウト変化を画面全体で抑制
     }
-    
-    private var bottomPropertyPanel: some View {
-        VStack(spacing: 0) {
-            // 上部の境界線
-            Divider()
-            
-            // タブ選択部分
-            tabSelector
-            
-            // パネルコンテンツ
-            if let elementType = elementViewModel.elementType {
-                // 要素が選択されている場合
-                Group {
-                    switch elementType {
-                    case .text:
-                        TextEditorPanel(viewModel: elementViewModel)
-                    case .shape:
-                        ShapeEditorPanel(viewModel: elementViewModel)
-                    case .image:
-                        if uiState.selectedImageTab == 0 {
-                            ImageEditorPanel(viewModel: elementViewModel)
-                        } else {
-                            // カーブタブ
-                            if let imageElement = elementViewModel.imageElement {
-                                ScrollView {
-                                    ToneCurveView(curveData: Binding(
-                                        get: { imageElement.toneCurveData },
-                                        set: { newValue in
-                                            elementViewModel.updateToneCurveData(newValue)
-                                        }
-                                    ))
-                                    .padding()
-                                }
-                            } else {
-                                Text("画像要素が選択されていません")
-                                    .foregroundColor(.secondary)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            }
-                        }
-                    }
-                }
-            } else {
-                // 要素が選択されていない場合は背景設定
-                BackgroundEditorPanel(viewModel: viewModel)
-            }
-        }
-        .background(Color(UIColor.systemBackground))
-    }
-    
-    private var tabSelector: some View {
-        HStack(spacing: 0) {
-            Button(action: {
-                uiState.selectedImageTab = 0
-            }) {
-                Text("プロパティ")
-                    .font(.headline)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity)
-                    .background(uiState.selectedImageTab == 0 ? Color(UIColor.tertiarySystemBackground) : Color.clear)
-                    .foregroundColor(uiState.selectedImageTab == 0 ? .primary : .secondary)
-            }
-            .buttonStyle(PlainButtonStyle())
 
-            Button(action: {
-                uiState.selectedImageTab = 1
-            }) {
-                Text("カーブ")
-                    .font(.headline)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity)
-                    .background(uiState.selectedImageTab == 1 ? Color(UIColor.tertiarySystemBackground) : Color.clear)
-                    .foregroundColor(uiState.selectedImageTab == 1 ? .primary : .secondary)
-            }
-            .buttonStyle(PlainButtonStyle())
-        }
-        .background(Color(UIColor.secondarySystemBackground))
+    private var isBottomToolStripHidden: Bool {
+        uiState.selectedBottomTool == .adjust ||
+        uiState.selectedBottomTool == .magicStudio ||
+        uiState.selectedBottomTool == .filters ||
+        uiState.isTextPanelVisible ||
+        viewModel.isEditingText
     }
-    
+
+    private var isSystemOverlayHidden: Bool {
+        uiState.selectedBottomTool == .adjust ||
+        uiState.selectedBottomTool == .magicStudio ||
+        uiState.selectedBottomTool == .filters ||
+        uiState.isTextPanelVisible
+    }
+
+    private func handleBottomToolSelection(_ tool: EditorBottomTool) {
+        if tool == .select {
+            // テキスト要素を現在表示中のキャンバス中心に新規作成
+            let center = visibleCanvasCenter()
+            viewModel.addTextElement(text: "Text", position: center)
+            viewModel.editorMode = .select
+            // addElementが自動選択 → onChange連動でパネル表示
+        } else {
+            uiState.isTextPanelVisible = false
+            if tool == .adjust || tool == .magicStudio || tool == .filters {
+                viewModel.editorMode = .select
+            }
+        }
+    }
+
+    /// 現在表示されているキャンバス領域の中心座標（キャンバス座標系）
+    private func visibleCanvasCenter() -> CGPoint {
+        let canvasSize = viewModel.project.canvasSize
+
+        guard canvasViewportSize.width > 0, canvasViewportSize.height > 0 else {
+            return CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
+        }
+
+        return CGPoint(
+            x: min(canvasViewportSize.width / 2, canvasSize.width),
+            y: min(canvasViewportSize.height / 2, canvasSize.height)
+        )
+    }
+
     // MARK: - キャンバスエリア
     
     private var canvasArea: some View {
@@ -323,17 +367,6 @@ struct EditorView: View {
             if viewModel.editorMode == .select {
                 Color.clear
                     .contentShape(Rectangle())
-                    // ダブルタップ優先でテキスト編集を開始（他ジェスチャーより優先度を高くする）
-                    .highPriorityGesture(
-                        SpatialTapGesture(count: 2)
-                            .onEnded { value in
-                                let point = value.location
-                                if let textElement = hitTestElement(at: point, in: viewModel.project.elements) as? TextElement {
-                                    viewModel.selectElement(textElement)
-                                    viewModel.startTextEditing(for: textElement)
-                                }
-                            }
-                    )
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 0, coordinateSpace: .named("canvas"))
                             .onEnded { value in
@@ -349,6 +382,7 @@ struct EditorView: View {
             
             // オーバーレイは選択モードのみ表示（作成モードでは入力を塞がない）
             if viewModel.editorMode == .select,
+               !viewModel.isEditingText,
                let selected = viewModel.selectedElement {
                 ElementSelectionView(
                     element: selected,
@@ -377,9 +411,6 @@ struct EditorView: View {
                         DispatchQueue.main.async {
                             // まず最前面をヒットテスト
                             if let primary = hitTestElement(at: globalPoint, in: viewModel.project.elements) {
-                                if handleTextDoubleTapIfNeeded(for: primary) {
-                                    return
-                                }
                                 if let selected = viewModel.selectedElement {
                                     if primary.id == selected.id {
                                         return // 同じ要素なら切り替えない
@@ -389,12 +420,6 @@ struct EditorView: View {
                             } else {
                                 viewModel.clearSelection()
                             }
-                        }
-                    },
-                    onDoubleTap: {
-                        // テキスト要素の場合は編集を開始
-                        if let textElement = selected as? TextElement {
-                            viewModel.startTextEditing(for: textElement)
                         }
                     }
                 )
@@ -412,8 +437,10 @@ struct EditorView: View {
                         viewModel.endTextEditing()
                     }
                 )
+                .ignoresSafeArea(.keyboard, edges: .bottom)
+                .zIndex(1000)
+                .offset(y: -110)
             }
-
 
             // ツールバー
             VStack {
@@ -448,13 +475,6 @@ struct EditorView: View {
     
     private var modeSelector: some View {
         HStack(spacing: 12) {
-            // テキスト作成モード
-            Button(action: { viewModel.editorMode = .textCreate }) {
-                Image(systemName: "textformat")
-                    .foregroundColor(viewModel.editorMode == .textCreate ? .blue : .primary)
-            }
-            .help("テキストツール")
-            
             // 図形作成モード
             Menu {
                 // 各図形タイプのメニュー項目
@@ -520,13 +540,12 @@ struct EditorView: View {
             Button(action: {
                 if viewModel.selectedElement != nil {
                     // 選択中の要素がある場合は削除の確認
-                    alertState.alertTitle = "削除の確認"
-                    alertState.alertMessage = "選択した要素を削除しますか？"
-                    alertState.isShowingAlert = true
-                    // 削除アクションの設定（アラートの「はい」ボタンで実行される）
-                    alertState.confirmationAction = {
+                    showConfirmation(
+                        message: "Delete the selected element?",
+                        action: {
                         viewModel.deleteSelectedElement()
-                    }
+                        }
+                    )
                 } else {
                     // 選択中の要素がない場合は削除モードに切り替え
                     viewModel.editorMode = .delete
@@ -536,19 +555,6 @@ struct EditorView: View {
                     .foregroundColor(viewModel.editorMode == .delete ? .red : .primary)
             }
             .help("削除ツール")
-            
-            // 手動背景除去
-            if let selectedElement = viewModel.selectedElement,
-               selectedElement is ImageElement {
-                Button(action: {
-                    // 手動背景除去画面への遷移
-                    isNavigatingToManualRemoval = true
-                }) {
-                    Image(systemName: "paintbrush.pointed")
-                        .foregroundColor(.orange)
-                }
-                .help("手動背景除去")
-            }
             
             // 画像役割切り替え（ベース/オーバーレイ）
             if let selectedElement = viewModel.selectedElement,
@@ -607,10 +613,10 @@ struct EditorView: View {
         Group {
             // 左側に保存ボタン
             ToolbarItem(placement: .navigationBarLeading) {
-                Button("保存") {
+                Button("Save") {
                     saveProjectAuto()
                 }
-                .help("保存")
+                .help("Save")
             }
             
             // 右側にリバートボタン
@@ -619,13 +625,13 @@ struct EditorView: View {
                     // リバート機能の確認ダイアログを表示
                     if canRevert() {
                         showConfirmation(
-                            message: "画像を初期状態に戻しますか？",
+                            message: "Do you want to revert the selected image to its original state?",
                             action: revertSelectedImageToInitial
                         )
                     } else {
                         showAlert(
-                            title: "リバートできません",
-                            message: "選択された画像に編集履歴がないか、画像が選択されていません。"
+                            title: "Cannot Revert",
+                            message: "No editable history was found, or no image is selected."
                         )
                     }
                 }
@@ -648,18 +654,18 @@ struct EditorView: View {
     private static let editorIntroSteps: [EditorIntroStep] = [
         EditorIntroStep(
             title: "画像を追加",
-            message: "写真アイコンをタップして編集を始めます。",
+            message: "写真アイコンをタップして画像を読み込みます。",
             systemImageName: "photo.on.rectangle"
         ),
         EditorIntroStep(
-            title: "ベース画像を決める",
-            message: "画像を複数インポートしてる時に星アイコンを押すとベース画像を切り替えます。",
-            systemImageName: "star.fill"
+            title: "要素を選択",
+            message: "キャンバス上の要素をタップして選択し、移動・拡大縮小・回転ができます。",
+            systemImageName: "hand.tap"
         ),
         EditorIntroStep(
-            title: "編集する",
-            message: "ペンで背景除去、プロパティで色調整ができます。",
-            systemImageName: "pencil.tip"
+            title: "下部ツールで編集",
+            message: "Textで文字追加、Adjustで色調整、AI Toolsで背景関連の編集ができます。",
+            systemImageName: "slider.horizontal.3"
         ),
         EditorIntroStep(
             title: "保存",
@@ -674,9 +680,9 @@ struct EditorView: View {
     private func saveProjectAuto() {
         viewModel.saveProject { success in
             if success {
-                showAlert(title: "保存完了", message: "写真が保存されました。")
+                showAlert(title: "Saved", message: "The image was saved to Photos.")
             } else {
-                showAlert(title: "保存エラー", message: "写真の保存に失敗しました。写真へのアクセス権限確認。または写真が選択されていません。")
+                showAlert(title: "Save Failed", message: "Unable to save the image. Check Photos permission or selected content.")
             }
         }
     }
@@ -731,27 +737,6 @@ struct EditorView: View {
         }
     }
 
-    /// 同一要素に対する短時間の連続タップのみをダブルタップとみなし、テキスト編集を開始する
-    /// - Returns: ダブルタップとして処理した場合は true
-    private func handleTextDoubleTapIfNeeded(for element: LogoElement) -> Bool {
-        let now = Date().timeIntervalSinceReferenceDate
-
-        if let lastId = tapState.lastTapElementId,
-           let lastTime = tapState.lastTapTimestamp,
-           lastId == element.id,
-           now - lastTime < 0.35,
-           let textElement = element as? TextElement {
-            viewModel.startTextEditing(for: textElement)
-            tapState.lastTapElementId = nil
-            tapState.lastTapTimestamp = nil
-            return true
-        }
-
-        tapState.lastTapElementId = element.id
-        tapState.lastTapTimestamp = now
-        return false
-    }
-
     /// zIndex降順でヒットテスト
     private func hitTestElement(at location: CGPoint, in elements: [LogoElement], excluding excludeId: UUID? = nil) -> LogoElement? {
         elements
@@ -760,6 +745,17 @@ struct EditorView: View {
                 if let excludeId = excludeId, element.id == excludeId { return false }
                 return element.hitTest(location)
             }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func applySystemOverlayVisibility(isHidden: Bool) -> some View {
+        if #available(iOS 16.0, *) {
+            self.persistentSystemOverlays(isHidden ? .hidden : .visible)
+        } else {
+            self
+        }
     }
 }
 
