@@ -53,10 +53,10 @@ struct ImageProcessingService {
                 height: targetImageElement.size.height
             )
 
-        // キャンバス→保存画像へのスケール比率（縦横別々に適用、アスペクト比は維持）
-        let scaleX = imageSize.width / imageElementRect.width
-        let scaleY = imageSize.height / imageElementRect.height
-        print("[SaveDebug] scaleX: \(scaleX), scaleY: \(scaleY)")
+            // キャンバス→保存画像へのスケール比率（縦横別々に適用、アスペクト比は維持）
+            let scaleX = imageSize.width / imageElementRect.width
+            let scaleY = imageSize.height / imageElementRect.height
+            print("[SaveDebug] scaleX: \(scaleX), scaleY: \(scaleY)")
 
             // ZIndex順に要素を描画（ベース自身以外を対象）
             let visibleOverlayElements = project.elements.filter { $0.id != targetImageElement.id && $0.isVisible }
@@ -98,6 +98,7 @@ struct ImageProcessingService {
                 }
 
                 if let textElement = adjustedElement as? TextElement {
+                    // フォントの縦横比を維持するため、文字関連エフェクトも同じ最小倍率で統一スケールする
                     scaleTextRenderingAttributes(textElement, by: min(scaleX, scaleY))
                 }
 
@@ -185,6 +186,7 @@ struct ImageProcessingService {
                 return scaledStrokeEffect
             }
 
+            assertionFailure("未対応の TextEffect サブクラス: \(type(of: effect))")
             return effect
         }
     }

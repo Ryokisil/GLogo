@@ -371,7 +371,8 @@ class TextElement: LogoElement {
         copy.lineSpacing = lineSpacing
         copy.letterSpacing = letterSpacing
         
-        // 効果のコピー
+        // 効果のコピー（TextEffect は参照型のため現状は浅いコピー）
+        // 将来的に保存処理以外で個別編集する場合は deep copy 化を検討する
         copy.effects = effects
         
         return copy
