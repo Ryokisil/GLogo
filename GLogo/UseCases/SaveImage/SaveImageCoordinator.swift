@@ -100,13 +100,8 @@ struct SaveImageCoordinator {
                     return
                 }
 
-                let overlayElements = project.elements.filter { element in
-                    element.id != selectedBaseImageElement.id && element.isVisible
-                }
-
                 let finalImage = processingService.makeCompositeImage(
                     baseImage: baseImage,
-                    overlayElements: overlayElements,
                     project: project
                 ) ?? baseImage
 

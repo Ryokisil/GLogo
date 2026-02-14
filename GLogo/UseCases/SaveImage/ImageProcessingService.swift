@@ -13,7 +13,6 @@ struct ImageProcessingService {
     /// ベース画像の解像度を保ったままオーバーレイを合成する
     func makeCompositeImage(
         baseImage: UIImage,
-        overlayElements: [LogoElement],
         project: LogoProject
     ) -> UIImage? {
         print("[SaveDebug] makeCompositeImage input baseImage.size: \(baseImage.size), scale: \(baseImage.scale)")
@@ -60,8 +59,8 @@ struct ImageProcessingService {
         print("[SaveDebug] scaleX: \(scaleX), scaleY: \(scaleY)")
 
             // ZIndex順に要素を描画（ベース自身以外を対象）
-            let overlayElements = project.elements.filter { $0.id != targetImageElement.id && $0.isVisible }
-            let sortedElements = overlayElements.sorted { $0.zIndex < $1.zIndex }
+            let visibleOverlayElements = project.elements.filter { $0.id != targetImageElement.id && $0.isVisible }
+            let sortedElements = visibleOverlayElements.sorted { $0.zIndex < $1.zIndex }
 
             for element in sortedElements {
                 let elementRect = CGRect(
@@ -99,7 +98,7 @@ struct ImageProcessingService {
                 }
 
                 if let textElement = adjustedElement as? TextElement {
-                    textElement.fontSize *= min(scaleX, scaleY)
+                    scaleTextRenderingAttributes(textElement, by: min(scaleX, scaleY))
                 }
 
                 adjustedElement.draw(in: cgContext)
@@ -151,6 +150,43 @@ struct ImageProcessingService {
         }
 
         context.restoreGState()
+    }
+
+    /// 保存時の拡縮に合わせてテキスト描画属性（フォント・影・縁取り）を調整する
+    /// - Parameters:
+    ///   - textElement: 調整対象のテキスト要素
+    ///   - scale: 拡縮倍率
+    /// - Returns: なし
+    private func scaleTextRenderingAttributes(_ textElement: TextElement, by scale: CGFloat) {
+        guard scale > 0 else { return }
+
+        textElement.fontSize *= scale
+
+        textElement.effects = textElement.effects.map { effect in
+            if let shadowEffect = effect as? ShadowEffect {
+                let scaledShadowEffect = ShadowEffect(
+                    color: shadowEffect.color,
+                    offset: CGSize(
+                        width: shadowEffect.offset.width * scale,
+                        height: shadowEffect.offset.height * scale
+                    ),
+                    blurRadius: shadowEffect.blurRadius * scale
+                )
+                scaledShadowEffect.isEnabled = shadowEffect.isEnabled
+                return scaledShadowEffect
+            }
+
+            if let strokeEffect = effect as? StrokeEffect {
+                let scaledStrokeEffect = StrokeEffect(
+                    color: strokeEffect.color,
+                    width: strokeEffect.width * scale
+                )
+                scaledStrokeEffect.isEnabled = strokeEffect.isEnabled
+                return scaledStrokeEffect
+            }
+
+            return effect
+        }
     }
 
     /// 保存処理用の画像要素ログを出力
