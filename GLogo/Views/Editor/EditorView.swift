@@ -127,7 +127,7 @@ struct EditorView: View {
                         stableCanvasSize = geometry.size
                         canvasViewportSize = geometry.size
                     }
-                    .onChange(of: geometry.size) { newSize in
+                    .onChange(of: geometry.size) { oldSize, newSize in
                         if !viewModel.isEditingText {
                             stableCanvasSize = newSize
                         }
@@ -225,14 +225,17 @@ struct EditorView: View {
                     ) {
                         hasSeenEditorIntro = true
                     }
+                    .transition(.opacity)
                 }
             }
             .onAppear {
                 if !hasSeenEditorIntro {
-                    uiState.isShowingEditorIntro = true
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        uiState.isShowingEditorIntro = true
+                    }
                 }
             }
-            .onChange(of: viewModel.selectedElement?.id) { _ in
+            .onChange(of: viewModel.selectedElement?.id) {
                 // テキスト要素選択時にパネルを自動表示、それ以外で非表示
                 uiState.isTextPanelVisible = viewModel.selectedElement is TextElement
             }
@@ -641,7 +644,9 @@ struct EditorView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     uiState.editorIntroStepIndex = 0
-                    uiState.isShowingEditorIntro = true
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        uiState.isShowingEditorIntro = true
+                    }
                 } label: {
                     Image(systemName: "questionmark.circle")
                 }
@@ -767,3 +772,4 @@ struct EditorView_Previews: PreviewProvider {
         EditorView(viewModel: EditorViewModel())
     }
 }
+

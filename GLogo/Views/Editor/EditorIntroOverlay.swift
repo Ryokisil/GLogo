@@ -33,92 +33,175 @@ struct EditorIntroOverlay: View {
     /// ガイドの表示本体
     var body: some View {
         ZStack {
-            Color.black.opacity(0.45)
+            // 背景ディム
+            Color.black.opacity(0.5)
                 .ignoresSafeArea()
 
-            VStack(spacing: 16) {
+            // カード
+            VStack(spacing: 24) {
                 header
-                content
+                heroIcon
+                stepContent
+                progressDots
                 controls
             }
-            .padding(20)
-            .frame(maxWidth: 360)
-            .background(Color.white)
-            .cornerRadius(18)
-            .shadow(color: Color.black.opacity(0.2), radius: 12, x: 0, y: 6)
+            .padding(24)
+            .frame(maxWidth: 340)
+            .background {
+                ZStack {
+                    // パステルブルーのベース
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(Color(red: 0.76, green: 0.87, blue: 1.0))
+                    // パステルパープルをアルファで重ね、柔らかく混ぜ合わせる
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color(red: 0.80, green: 0.72, blue: 0.98).opacity(0.75), location: 0),
+                                    .init(color: Color(red: 0.80, green: 0.72, blue: 0.98).opacity(0.0), location: 0.7)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(.white.opacity(0.5), lineWidth: 0.5)
+            )
+            .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 10)
+            // 背景が常にパステル系のため、テキスト色をライトモード基準に固定
             .environment(\.colorScheme, .light)
         }
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: stepIndex)
     }
 
     // MARK: - Subviews
 
+    /// ガイドタイトルとスキップボタン
     private var header: some View {
         HStack {
             Text("使い方ガイド")
-                .font(.headline)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.5)
+
             Spacer()
+
             Button("スキップ") {
                 finishGuide()
             }
-            .font(.subheadline)
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(.secondary)
         }
     }
 
-    private var content: some View {
-        let step = steps[safe: stepIndex]
+    /// グラデーション背景のステップアイコン
+    private var heroIcon: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [.blue, .indigo],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 72, height: 72)
+                .shadow(color: .blue.opacity(0.3), radius: 8, y: 4)
 
-        return VStack(spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: step?.systemImageName ?? "questionmark")
-                    .font(.title2)
-                    .foregroundColor(.blue)
-                Text("ステップ \(stepIndex + 1) / \(steps.count)")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
+            Image(systemName: steps[safe: stepIndex]?.systemImageName ?? "questionmark")
+                .font(.system(size: 28, weight: .medium))
+                .foregroundStyle(.white)
+                .id("icon-\(stepIndex)")
+                .transition(.scale(scale: 0.5).combined(with: .opacity))
+        }
+    }
 
-            Text(step?.title ?? "")
-                .font(.title3)
-                .fontWeight(.semibold)
+    /// ステップのタイトルと説明
+    private var stepContent: some View {
+        VStack(spacing: 8) {
+            Text(steps[safe: stepIndex]?.title ?? "")
+                .font(.title3.weight(.bold))
                 .multilineTextAlignment(.center)
 
-            Text(step?.message ?? "")
+            Text(steps[safe: stepIndex]?.message ?? "")
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity)
+        .id("content-\(stepIndex)")
+        .transition(.opacity)
     }
 
-    private var controls: some View {
-        HStack {
-            Button("戻る") {
-                stepIndex = max(0, stepIndex - 1)
+    /// ステップ進捗のドットインジケーター
+    private var progressDots: some View {
+        HStack(spacing: 8) {
+            ForEach(0..<steps.count, id: \.self) { index in
+                Capsule()
+                    .fill(index == stepIndex ? Color.blue : Color.primary.opacity(0.15))
+                    .frame(width: index == stepIndex ? 20 : 8, height: 8)
             }
-            .disabled(stepIndex == 0)
+        }
+    }
 
-            Spacer()
+    /// 戻る・次へナビゲーションボタン
+    private var controls: some View {
+        HStack(spacing: 12) {
+            if stepIndex > 0 {
+                Button {
+                    stepIndex = max(0, stepIndex - 1)
+                } label: {
+                    Text("戻る")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(.primary.opacity(0.06))
+                        )
+                }
+                .transition(.move(edge: .leading).combined(with: .opacity))
+            }
 
-            Button(isLastStep ? "完了" : "次へ") {
+            Button {
                 if isLastStep {
                     finishGuide()
                 } else {
                     stepIndex = min(stepIndex + 1, steps.count - 1)
                 }
+            } label: {
+                Text(isLastStep ? "完了" : "次へ")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.blue)
+                    )
+                    .shadow(color: .blue.opacity(0.3), radius: 6, y: 3)
             }
-            .fontWeight(.semibold)
         }
-        .font(.subheadline)
+        .buttonStyle(.plain)
     }
 
     // MARK: - Helpers
 
+    /// 最終ステップかどうか
     private var isLastStep: Bool {
         stepIndex >= steps.count - 1
     }
 
+    /// ガイドを終了する
     private func finishGuide() {
-        isPresented = false
+        withAnimation(.easeOut(duration: 0.25)) {
+            isPresented = false
+        }
         stepIndex = 0
         onFinish()
     }
