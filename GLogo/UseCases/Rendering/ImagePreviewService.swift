@@ -8,6 +8,25 @@
 
 import UIKit
 
+/// レンダリング経路の種別
+enum ImageRenderMode: Equatable {
+    /// SDR向け経路
+    case sdr
+    /// HDR向け経路
+    case hdr
+
+    /// プリセットIDからレンダリング経路を判定
+    /// - Parameters:
+    ///   - presetId: 適用中プリセットID
+    /// - Returns: 判定したレンダリング経路
+    static func fromPresetId(_ presetId: String?) -> ImageRenderMode {
+        guard let presetId, presetId.hasPrefix("hdr_") else {
+            return .sdr
+        }
+        return .hdr
+    }
+}
+
 /// フィルタ適用に必要なパラメータをまとめた構造体
 struct ImageFilterParams {
     /// トーンカーブデータ
@@ -91,19 +110,26 @@ protocol ImagePreviewing {
     /// - Parameters:
     ///   - editingImage: 編集用プロキシ画像
     ///   - originalImage: オリジナル画像
+    ///   - mode: レンダリング経路
     /// - Returns: プレビューに使う元画像
-    func generatePreviewImage(editingImage: UIImage?, originalImage: UIImage?) -> UIImage?
+    func generatePreviewImage(
+        editingImage: UIImage?,
+        originalImage: UIImage?,
+        mode: ImageRenderMode
+    ) -> UIImage?
     
     /// 即時プレビューを生成（キャッシュ込み）
     /// - Parameters:
     ///   - baseImage: プレビューのベース画像
     ///   - params: フィルタパラメータ
     ///   - quality: プレビュー品質
+    ///   - mode: レンダリング経路
     /// - Returns: フィルタ適用済みプレビュー
     func instantPreview(
         baseImage: UIImage?,
         params: ImageFilterParams,
-        quality: ToneCurveFilter.Quality
+        quality: ToneCurveFilter.Quality,
+        mode: ImageRenderMode
     ) -> UIImage?
     
     /// フィルタ適用（同期）
@@ -111,11 +137,13 @@ protocol ImagePreviewing {
     ///   - image: 入力画像
     ///   - params: フィルタパラメータ
     ///   - quality: レンダリング品質
+    ///   - mode: レンダリング経路
     /// - Returns: フィルタ適用済み画像
     func applyFilters(
         to image: UIImage,
         params: ImageFilterParams,
-        quality: ToneCurveFilter.Quality
+        quality: ToneCurveFilter.Quality,
+        mode: ImageRenderMode
     ) -> UIImage?
     
     /// フィルタ適用（非同期）
@@ -123,11 +151,13 @@ protocol ImagePreviewing {
     ///   - image: 入力画像
     ///   - params: フィルタパラメータ
     ///   - quality: レンダリング品質
+    ///   - mode: レンダリング経路
     /// - Returns: フィルタ適用済み画像
     func applyFiltersAsync(
         to image: UIImage,
         params: ImageFilterParams,
-        quality: ToneCurveFilter.Quality
+        quality: ToneCurveFilter.Quality,
+        mode: ImageRenderMode
     ) async -> UIImage?
 
     /// プレビューキャッシュをリセットする
@@ -139,22 +169,50 @@ protocol ImagePreviewing {
 /// 既定のプレビュー・フィルタサービス（SDR実装へのファサード）
 final class ImagePreviewService: ImagePreviewing {
     private let sdrService: ImagePreviewing
+    private let hdrService: ImagePreviewing
 
     /// ファサードを初期化
     /// - Parameters:
     ///   - sdrService: SDR専用サービス
+    ///   - hdrService: HDR専用サービス
     /// - Returns: なし
-    init(sdrService: ImagePreviewing = SDRImagePreviewService()) {
+    init(
+        sdrService: ImagePreviewing = SDRImagePreviewService(),
+        hdrService: ImagePreviewing = HDRImagePreviewService()
+    ) {
         self.sdrService = sdrService
+        self.hdrService = hdrService
+    }
+
+    /// モードに応じて実体サービスを解決
+    /// - Parameters:
+    ///   - mode: レンダリング経路
+    /// - Returns: 使用する実体サービス
+    private func service(for mode: ImageRenderMode) -> ImagePreviewing {
+        switch mode {
+        case .sdr:
+            return sdrService
+        case .hdr:
+            return hdrService
+        }
     }
 
     /// プレビュー用のベース画像を返す
     /// - Parameters:
     ///   - editingImage: 編集用プロキシ画像
     ///   - originalImage: オリジナル画像
+    ///   - mode: レンダリング経路
     /// - Returns: プレビューに使う元画像
-    func generatePreviewImage(editingImage: UIImage?, originalImage: UIImage?) -> UIImage? {
-        sdrService.generatePreviewImage(editingImage: editingImage, originalImage: originalImage)
+    func generatePreviewImage(
+        editingImage: UIImage?,
+        originalImage: UIImage?,
+        mode: ImageRenderMode
+    ) -> UIImage? {
+        service(for: mode).generatePreviewImage(
+            editingImage: editingImage,
+            originalImage: originalImage,
+            mode: mode
+        )
     }
 
     /// 即時プレビューを生成（キャッシュ込み）
@@ -162,13 +220,20 @@ final class ImagePreviewService: ImagePreviewing {
     ///   - baseImage: プレビューのベース画像
     ///   - params: フィルタパラメータ
     ///   - quality: プレビュー品質
+    ///   - mode: レンダリング経路
     /// - Returns: フィルタ適用済みプレビュー
     func instantPreview(
         baseImage: UIImage?,
         params: ImageFilterParams,
-        quality: ToneCurveFilter.Quality
+        quality: ToneCurveFilter.Quality,
+        mode: ImageRenderMode
     ) -> UIImage? {
-        sdrService.instantPreview(baseImage: baseImage, params: params, quality: quality)
+        service(for: mode).instantPreview(
+            baseImage: baseImage,
+            params: params,
+            quality: quality,
+            mode: mode
+        )
     }
 
     /// フィルタ適用（同期）
@@ -176,13 +241,20 @@ final class ImagePreviewService: ImagePreviewing {
     ///   - image: 入力画像
     ///   - params: フィルタパラメータ
     ///   - quality: レンダリング品質
+    ///   - mode: レンダリング経路
     /// - Returns: フィルタ適用済み画像
     func applyFilters(
         to image: UIImage,
         params: ImageFilterParams,
-        quality: ToneCurveFilter.Quality
+        quality: ToneCurveFilter.Quality,
+        mode: ImageRenderMode
     ) -> UIImage? {
-        sdrService.applyFilters(to: image, params: params, quality: quality)
+        service(for: mode).applyFilters(
+            to: image,
+            params: params,
+            quality: quality,
+            mode: mode
+        )
     }
 
     /// フィルタ適用（非同期）
@@ -190,13 +262,20 @@ final class ImagePreviewService: ImagePreviewing {
     ///   - image: 入力画像
     ///   - params: フィルタパラメータ
     ///   - quality: レンダリング品質
+    ///   - mode: レンダリング経路
     /// - Returns: フィルタ適用済み画像
     func applyFiltersAsync(
         to image: UIImage,
         params: ImageFilterParams,
-        quality: ToneCurveFilter.Quality
+        quality: ToneCurveFilter.Quality,
+        mode: ImageRenderMode
     ) async -> UIImage? {
-        await sdrService.applyFiltersAsync(to: image, params: params, quality: quality)
+        await service(for: mode).applyFiltersAsync(
+            to: image,
+            params: params,
+            quality: quality,
+            mode: mode
+        )
     }
 
     /// プレビューキャッシュをリセットする
@@ -204,5 +283,6 @@ final class ImagePreviewService: ImagePreviewing {
     /// - Returns: なし
     func resetCache() {
         sdrService.resetCache()
+        hdrService.resetCache()
     }
 }

@@ -3,82 +3,45 @@
 //  GLogo
 //
 //  概要:
-//  下部ツールストリップの「Filters」から表示されるフィルターパネル。
-//  カテゴリタブで絞り込み、横スクロールのカード型UIでプリセットを選択し、
-//  既存の画像調整ロジックで決定的に適用する。
-//  選択状態は ElementViewModel に保持され、パネルの再表示でも維持される。
+//  フィルターパネルのモード選択シェル。
+//  Standard(SDR) と HDR の切替UIを提供し、実体ビューは各モード専用ファイルへ委譲する。
 //
 
 import SwiftUI
+
+private enum FilterPanelMode: String, CaseIterable, Identifiable {
+    case standard
+    case hdr
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .standard:
+            return "Standard"
+        case .hdr:
+            return "HDR"
+        }
+    }
+}
 
 struct FiltersPanelView: View {
     @ObservedObject var viewModel: ElementViewModel
     let onClose: () -> Void
 
-    /// カテゴリ絞り込み（nil = 全表示）
-    @State private var selectedCategory: FilterCategory?
-    /// プリセットIDごとのプレビュー画像
-    @State private var previewImages: [String: UIImage] = [:]
-    /// プレビュー生成中のプリセットID
-    @State private var loadingPresetIds: Set<String> = []
-    /// 前回プレビュー生成時の .task(id:) キー
-    @State private var loadedPreviewKey: String?
+    @State private var selectedMode: FilterPanelMode = .standard
 
-    // MARK: - 算出プロパティ
-
-    /// プリセットが1つ以上あるカテゴリのみ表示
-    private var availableCategories: [FilterCategory] {
-        FilterCatalog.categories.filter { !FilterCatalog.presets(for: $0).isEmpty }
-    }
-
-    /// 選択カテゴリで絞り込んだプリセット一覧
-    private var filteredPresets: [FilterPreset] {
-        if let category = selectedCategory {
-            return FilterCatalog.presets(for: category)
-        }
-        return FilterCatalog.allPresets
-    }
-
-    /// manual 調整値の変化を検知するフィンガープリント
-    private var adjustmentFingerprint: Int {
-        guard let img = viewModel.imageElement else { return 0 }
-        return Self.adjustmentFingerprint(for: img)
-    }
-
-    /// ImageElement の manual 調整値からフィンガープリントを算出
+    /// Expose adjustment fingerprint for tests and other callers.
+    /// This forwards to the SDR implementation, which hashes manual adjustment values.
     static func adjustmentFingerprint(for img: ImageElement) -> Int {
-        var hasher = Hasher()
-        hasher.combine(img.saturationAdjustment)
-        hasher.combine(img.brightnessAdjustment)
-        hasher.combine(img.contrastAdjustment)
-        hasher.combine(img.highlightsAdjustment)
-        hasher.combine(img.shadowsAdjustment)
-        hasher.combine(img.blacksAdjustment)
-        hasher.combine(img.whitesAdjustment)
-        hasher.combine(img.warmthAdjustment)
-        hasher.combine(img.vibranceAdjustment)
-        hasher.combine(img.hueAdjustment)
-        hasher.combine(img.sharpnessAdjustment)
-        hasher.combine(img.gaussianBlurRadius)
-        hasher.combine(img.tintColor?.description)
-        hasher.combine(img.tintIntensity)
-        return hasher.finalize()
+        FiltersPanelSDRView.adjustmentFingerprint(for: img)
     }
-
-    // MARK: - Body
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-
-            if viewModel.imageElement != nil {
-                categorySelector
-                presetCardsSection
-            } else {
-                Text("Select an image to apply filters.")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
+            modeSelector
+            modeContent
         }
         .padding(14)
         .background(
@@ -89,12 +52,7 @@ struct FiltersPanelView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Color.black.opacity(0.10), lineWidth: 1)
         )
-        .task(id: "\(viewModel.imageElement?.id.uuidString ?? "")_\(adjustmentFingerprint)") {
-            await loadPreviewImagesIfNeeded()
-        }
     }
-
-    // MARK: - ヘッダー
 
     private var header: some View {
         HStack {
@@ -121,131 +79,23 @@ struct FiltersPanelView: View {
         }
     }
 
-    // MARK: - カテゴリセレクター
-
-    private var categorySelector: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                categoryPill(title: "All", isSelected: selectedCategory == nil) {
-                    selectedCategory = nil
-                }
-                ForEach(availableCategories) { category in
-                    categoryPill(
-                        title: category.displayName,
-                        isSelected: selectedCategory == category
-                    ) {
-                        selectedCategory = category
-                    }
-                }
-            }
-            .padding(.horizontal, 1)
-        }
-    }
-
-    private func categoryPill(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(isSelected ? .blue : .primary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(isSelected ? Color.blue.opacity(0.16) : Color.gray.opacity(0.12))
-                )
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - プリセットカード
-
-    private var presetCardsSection: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(filteredPresets) { preset in
-                    presetCard(preset)
-                }
-            }
-            .padding(.horizontal, 1)
-        }
-    }
-
-    private func presetCard(_ preset: FilterPreset) -> some View {
-        let isSelected = viewModel.appliedFilterPresetId == preset.id
-
-        return Button {
-            viewModel.applyFilterPreset(preset)
-        } label: {
-            VStack(spacing: 6) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color(preset.previewColor))
-                        .frame(width: 72, height: 72)
-
-                    if let previewImage = previewImages[preset.id] {
-                        Image(uiImage: previewImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 72, height: 72)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    } else if loadingPresetIds.contains(preset.id) {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "photo")
-                            .foregroundColor(.white.opacity(0.8))
-                            .font(.system(size: 16, weight: .semibold))
-                    }
-                }
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2.5)
-                )
-
-                Text(preset.name)
-                    .font(.caption2.weight(.medium))
-                    .foregroundColor(isSelected ? .blue : .primary)
-                    .lineLimit(1)
+    private var modeSelector: some View {
+        Picker("Filter Mode", selection: $selectedMode) {
+            ForEach(FilterPanelMode.allCases) { mode in
+                Text(mode.title).tag(mode)
             }
         }
-        .buttonStyle(.plain)
+        .pickerStyle(.segmented)
     }
 
-    // MARK: - プレビュー生成
-
-    /// 選択中画像に対するプリセットプレビューを生成
-    /// - Parameters: なし
-    /// - Returns: なし
-    @MainActor
-    private func loadPreviewImagesIfNeeded() async {
-        guard viewModel.imageElement != nil else {
-            loadedPreviewKey = nil
-            previewImages.removeAll()
-            loadingPresetIds.removeAll()
-            return
-        }
-
-        let currentKey = "\(viewModel.imageElement?.id.uuidString ?? "")_\(adjustmentFingerprint)"
-        if loadedPreviewKey != currentKey {
-            loadedPreviewKey = currentKey
-            previewImages.removeAll()
-            loadingPresetIds.removeAll()
-        }
-
-        let targetSize = CGSize(width: 72, height: 72)
-        for preset in FilterCatalog.allPresets {
-            if Task.isCancelled { return }
-            if previewImages[preset.id] != nil { continue }
-
-            loadingPresetIds.insert(preset.id)
-            let preview = await viewModel.generateFilterPreview(for: preset, targetSize: targetSize)
-            loadingPresetIds.remove(preset.id)
-
-            if Task.isCancelled { return }
-            if let preview {
-                previewImages[preset.id] = preview
-            }
+    @ViewBuilder
+    private var modeContent: some View {
+        switch selectedMode {
+        case .standard:
+            FiltersPanelSDRView(viewModel: viewModel)
+        case .hdr:
+            FiltersPanelHDRView(viewModel: viewModel)
         }
     }
 }
+

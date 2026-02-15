@@ -784,7 +784,8 @@ class ImageElement: LogoElement {
     private func generatePreviewImage() -> UIImage? {
         ImageElement.previewService.generatePreviewImage(
             editingImage: editingImage,
-            originalImage: originalImage
+            originalImage: originalImage,
+            mode: currentRenderMode()
         )
     }
     
@@ -800,7 +801,8 @@ class ImageElement: LogoElement {
         return ImageElement.previewService.instantPreview(
             baseImage: preview,
             params: params,
-            quality: .preview
+            quality: .preview,
+            mode: currentRenderMode()
         )
     }
 
@@ -820,7 +822,8 @@ class ImageElement: LogoElement {
         ImageElement.previewService.applyFilters(
             to: image,
             params: currentFilterParams(),
-            quality: quality
+            quality: quality,
+            mode: currentRenderMode()
         )
     }
     
@@ -829,8 +832,16 @@ class ImageElement: LogoElement {
         await ImageElement.previewService.applyFiltersAsync(
             to: image,
             params: currentFilterParams(),
-            quality: quality
+            quality: quality,
+            mode: currentRenderMode()
         )
+    }
+
+    /// 適用中プリセットからレンダリング経路を判定
+    /// - Parameters: なし
+    /// - Returns: レンダリング経路
+    private func currentRenderMode() -> ImageRenderMode {
+        ImageRenderMode.fromPresetId(appliedFilterPresetId)
     }
 
     /// 現在のフィルタ設定をまとめてサービスに渡す（filter + manual を合成）

@@ -79,11 +79,13 @@ enum FilterPreviewUseCase {
             backgroundBlurMaskData: backgroundBlurMaskData,
             preset: preset
         )
+        let renderMode = ImageRenderMode.fromPresetId(preset.id)
 
         return await ImageElement.previewService.applyFiltersAsync(
             to: preparedImage,
             params: params,
-            quality: .preview
+            quality: .preview,
+            mode: renderMode
         )
     }
 

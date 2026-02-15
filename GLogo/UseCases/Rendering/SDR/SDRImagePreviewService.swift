@@ -18,8 +18,13 @@ final class SDRImagePreviewService: ImagePreviewing {
     /// - Parameters:
     ///   - editingImage: 編集用プロキシ
     ///   - originalImage: オリジナル画像
+    ///   - mode: レンダリング経路（SDRでは未使用）
     /// - Returns: プレビューで使う画像
-    func generatePreviewImage(editingImage: UIImage?, originalImage: UIImage?) -> UIImage? {
+    func generatePreviewImage(
+        editingImage: UIImage?,
+        originalImage: UIImage?,
+        mode _: ImageRenderMode
+    ) -> UIImage? {
         if let proxy = editingImage { return proxy }
         return originalImage
     }
@@ -29,11 +34,13 @@ final class SDRImagePreviewService: ImagePreviewing {
     ///   - baseImage: プレビューのベース画像
     ///   - params: フィルタパラメータ
     ///   - quality: プレビュー品質
+    ///   - mode: レンダリング経路（SDRでは未使用）
     /// - Returns: フィルタ適用済みプレビュー
     func instantPreview(
         baseImage: UIImage?,
         params: ImageFilterParams,
-        quality: ToneCurveFilter.Quality
+        quality: ToneCurveFilter.Quality,
+        mode: ImageRenderMode
     ) -> UIImage? {
         guard let preview = baseImage else { return nil }
 
@@ -43,7 +50,12 @@ final class SDRImagePreviewService: ImagePreviewing {
         }
 
         previewCache.markInProgress()
-        let filtered = applyFilters(to: preview, params: params, quality: quality) ?? preview
+        let filtered = applyFilters(
+            to: preview,
+            params: params,
+            quality: quality,
+            mode: mode
+        ) ?? preview
         previewCache.set(image: filtered, for: previewKey)
         return filtered
     }
@@ -53,11 +65,13 @@ final class SDRImagePreviewService: ImagePreviewing {
     ///   - image: 入力画像
     ///   - params: フィルタパラメータ
     ///   - quality: レンダリング品質
+    ///   - mode: レンダリング経路（SDRでは未使用）
     /// - Returns: フィルタ適用済み画像
     func applyFilters(
         to image: UIImage,
         params: ImageFilterParams,
-        quality: ToneCurveFilter.Quality
+        quality: ToneCurveFilter.Quality,
+        mode _: ImageRenderMode
     ) -> UIImage? {
         let policy: RenderPolicy = (quality == .preview) ? .preview : .full
 
@@ -100,11 +114,13 @@ final class SDRImagePreviewService: ImagePreviewing {
     ///   - image: 入力画像
     ///   - params: フィルタパラメータ
     ///   - quality: レンダリング品質
+    ///   - mode: レンダリング経路（SDRでは未使用）
     /// - Returns: フィルタ適用済み画像
     func applyFiltersAsync(
         to image: UIImage,
         params: ImageFilterParams,
-        quality: ToneCurveFilter.Quality
+        quality: ToneCurveFilter.Quality,
+        mode _: ImageRenderMode
     ) async -> UIImage? {
         await Task.detached(priority: .userInitiated) { [filterPipeline, params] in
             let policy: RenderPolicy = (quality == .preview) ? .preview : .full
