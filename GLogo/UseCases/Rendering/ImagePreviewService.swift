@@ -136,22 +136,28 @@ protocol ImagePreviewing {
     func resetCache()
 }
 
-/// デフォルト実装。内部にプレビューキャッシュを持つ。
+/// 既定のプレビュー・フィルタサービス（SDR実装へのファサード）
 final class ImagePreviewService: ImagePreviewing {
-    private let filterPipeline = FilterPipeline()
-    private let previewCache = PreviewCache()
+    private let sdrService: ImagePreviewing
 
-    /// プレビュー用ベースを生成（プロキシ優先）
+    /// ファサードを初期化
     /// - Parameters:
-    ///   - editingImage: 編集用プロキシ
-    ///   - originalImage: オリジナル画像
-    /// - Returns: プレビューで使う画像
-    func generatePreviewImage(editingImage: UIImage?, originalImage: UIImage?) -> UIImage? {
-        if let proxy = editingImage { return proxy }
-        return originalImage
+    ///   - sdrService: SDR専用サービス
+    /// - Returns: なし
+    init(sdrService: ImagePreviewing = SDRImagePreviewService()) {
+        self.sdrService = sdrService
     }
 
-    /// 即時プレビューを生成し、パラメータでキャッシュ管理
+    /// プレビュー用のベース画像を返す
+    /// - Parameters:
+    ///   - editingImage: 編集用プロキシ画像
+    ///   - originalImage: オリジナル画像
+    /// - Returns: プレビューに使う元画像
+    func generatePreviewImage(editingImage: UIImage?, originalImage: UIImage?) -> UIImage? {
+        sdrService.generatePreviewImage(editingImage: editingImage, originalImage: originalImage)
+    }
+
+    /// 即時プレビューを生成（キャッシュ込み）
     /// - Parameters:
     ///   - baseImage: プレビューのベース画像
     ///   - params: フィルタパラメータ
@@ -162,17 +168,7 @@ final class ImagePreviewService: ImagePreviewing {
         params: ImageFilterParams,
         quality: ToneCurveFilter.Quality
     ) -> UIImage? {
-        guard let preview = baseImage else { return nil }
-
-        let previewKey = makeCacheKey(params: params)
-        if let cached = previewCache.image(for: previewKey) {
-            return cached
-        }
-
-        previewCache.markInProgress()
-        let filtered = applyFilters(to: preview, params: params, quality: quality) ?? preview
-        previewCache.set(image: filtered, for: previewKey)
-        return filtered
+        sdrService.instantPreview(baseImage: baseImage, params: params, quality: quality)
     }
 
     /// フィルタ適用（同期）
@@ -186,40 +182,7 @@ final class ImagePreviewService: ImagePreviewing {
         params: ImageFilterParams,
         quality: ToneCurveFilter.Quality
     ) -> UIImage? {
-        let policy: RenderPolicy = (quality == .preview) ? .preview : .full
-
-        let adjustments = AdjustmentStages.makeClosure(params: Self.makeAdjustmentParams(from: params))
-        guard var base = filterPipeline.applyAllFilters(
-            to: image,
-            toneCurveData: params.toneCurveData,
-            policy: policy,
-            adjustments: adjustments
-        ) else {
-            return image
-        }
-
-        // 背景ぼかし合成を適用（マスクがある場合のみ）
-        if params.backgroundBlurRadius > 0,
-           let maskData = params.backgroundBlurMaskData,
-           let blurred = ImageFilterUtility.applyBackgroundBlur(
-            to: base,
-            maskData: maskData,
-            radius: params.backgroundBlurRadius
-           ) {
-            base = blurred
-        }
-
-        // ティントカラーを適用
-        if let tintColor = params.tintColor, params.tintIntensity > 0,
-           let tinted = ImageFilterUtility.applyTintOverlay(
-            to: base,
-            color: tintColor,
-            intensity: params.tintIntensity
-           ) {
-            return tinted
-        }
-
-        return base
+        sdrService.applyFilters(to: image, params: params, quality: quality)
     }
 
     /// フィルタ適用（非同期）
@@ -233,110 +196,13 @@ final class ImagePreviewService: ImagePreviewing {
         params: ImageFilterParams,
         quality: ToneCurveFilter.Quality
     ) async -> UIImage? {
-        await Task.detached(priority: .userInitiated) { [filterPipeline, params] in
-            let policy: RenderPolicy = (quality == .preview) ? .preview : .full
-            let adjustments = AdjustmentStages.makeClosure(params: Self.makeAdjustmentParams(from: params))
-            var result = filterPipeline.applyAllFilters(
-                to: image,
-                toneCurveData: params.toneCurveData,
-                policy: policy,
-                adjustments: adjustments
-            ) ?? image
-
-            // 背景ぼかし合成を適用（マスクがある場合のみ）
-            if params.backgroundBlurRadius > 0,
-               let maskData = params.backgroundBlurMaskData,
-               let blurred = ImageFilterUtility.applyBackgroundBlur(
-                to: result,
-                maskData: maskData,
-                radius: params.backgroundBlurRadius
-               ) {
-                result = blurred
-            }
-
-            // ティントカラーを適用
-            if let tintColor = params.tintColor, params.tintIntensity > 0,
-               let tinted = ImageFilterUtility.applyTintOverlay(
-                to: result,
-                color: tintColor,
-                intensity: params.tintIntensity
-               ) {
-                return tinted
-            }
-            return result
-        }.value
+        await sdrService.applyFiltersAsync(to: image, params: params, quality: quality)
     }
 
     /// プレビューキャッシュをリセットする
     /// - Parameters: なし
     /// - Returns: なし
     func resetCache() {
-        previewCache.reset()
-    }
-
-    // MARK: - Helpers
-
-    /// キャッシュキー（トーンカーブ＋調整パラメータ）を生成
-    /// - Parameter params: フィルタパラメータ
-    /// - Returns: キャッシュ用ハッシュ値
-    private func makeCacheKey(params: ImageFilterParams) -> Int {
-        toneCurveHash(params.toneCurveData) ^ adjustmentsHash(params)
-    }
-
-    /// トーンカーブ用ハッシュ
-    /// - Parameter data: トーンカーブデータ
-    /// - Returns: ハッシュ値
-    private func toneCurveHash(_ data: ToneCurveData) -> Int {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .sortedKeys
-
-        if let jsonData = try? encoder.encode(data),
-           let jsonString = String(data: jsonData, encoding: .utf8) {
-            return jsonString.hashValue
-        }
-        return "\(data.rgbPoints.count)_\(data.redPoints.count)_\(data.greenPoints.count)_\(data.bluePoints.count)".hashValue
-    }
-
-    /// 調整パラメータ用ハッシュ
-    /// - Parameter params: フィルタパラメータ
-    /// - Returns: ハッシュ値
-    private func adjustmentsHash(_ params: ImageFilterParams) -> Int {
-        var hasher = Hasher()
-        hasher.combine(params.saturation)
-        hasher.combine(params.brightness)
-        hasher.combine(params.contrast)
-        hasher.combine(params.highlights)
-        hasher.combine(params.shadows)
-        hasher.combine(params.blacks)
-        hasher.combine(params.whites)
-        hasher.combine(params.warmth)
-        hasher.combine(params.vibrance)
-        hasher.combine(params.hue)
-        hasher.combine(params.sharpness)
-        hasher.combine(params.gaussianBlurRadius)
-        hasher.combine(params.tintIntensity)
-        hasher.combine(params.backgroundBlurRadius)
-        hasher.combine(params.backgroundBlurMaskData)
-        return hasher.finalize()
-    }
-
-    /// 既存のレンダリング調整パラメータへ変換
-    /// - Parameter params: フィルタパラメータ
-    /// - Returns: AdjustmentParams への変換結果
-    private static func makeAdjustmentParams(from params: ImageFilterParams) -> AdjustmentParams {
-        AdjustmentParams(
-            saturation: params.saturation,
-            brightness: params.brightness,
-            contrast: params.contrast,
-            highlights: params.highlights,
-            shadows: params.shadows,
-            blacks: params.blacks,
-            whites: params.whites,
-            warmth: params.warmth,
-            vibrance: params.vibrance,
-            hue: params.hue,
-            sharpness: params.sharpness,
-            gaussianBlurRadius: params.gaussianBlurRadius
-        )
+        sdrService.resetCache()
     }
 }
