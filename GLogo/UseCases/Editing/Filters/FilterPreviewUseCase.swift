@@ -24,6 +24,8 @@ enum FilterPreviewUseCase {
     ///   - manualShadows: manual 側のシャドウ
     ///   - manualBlacks: manual 側の黒レベル
     ///   - manualWhites: manual 側の白レベル
+    ///   - manualWarmth: manual 側の色温度
+    ///   - manualVibrance: manual 側のヴィブランス
     ///   - manualHue: manual 側の色相
     ///   - manualSharpness: manual 側のシャープネス
     ///   - manualGaussianBlur: manual 側のガウシアンブラー
@@ -44,6 +46,8 @@ enum FilterPreviewUseCase {
         manualShadows: CGFloat,
         manualBlacks: CGFloat,
         manualWhites: CGFloat,
+        manualWarmth: CGFloat,
+        manualVibrance: CGFloat,
         manualHue: CGFloat,
         manualSharpness: CGFloat,
         manualGaussianBlur: CGFloat,
@@ -64,6 +68,8 @@ enum FilterPreviewUseCase {
             manualShadows: manualShadows,
             manualBlacks: manualBlacks,
             manualWhites: manualWhites,
+            manualWarmth: manualWarmth,
+            manualVibrance: manualVibrance,
             manualHue: manualHue,
             manualSharpness: manualSharpness,
             manualGaussianBlur: manualGaussianBlur,
@@ -91,6 +97,8 @@ enum FilterPreviewUseCase {
         manualShadows: CGFloat,
         manualBlacks: CGFloat,
         manualWhites: CGFloat,
+        manualWarmth: CGFloat,
+        manualVibrance: CGFloat,
         manualHue: CGFloat,
         manualSharpness: CGFloat,
         manualGaussianBlur: CGFloat,
@@ -112,6 +120,8 @@ enum FilterPreviewUseCase {
         let shadows = (recipe.shadows ?? 0.0) + manualShadows
         let blacks = manualBlacks
         let whites = manualWhites
+        let warmth = manualWarmth
+        let vibrance = manualVibrance
         let hue = (recipe.hue ?? 0.0) + manualHue
         let sharpness = (recipe.sharpness ?? 0.0) + manualSharpness
         let gaussianBlurRadius = (recipe.gaussianBlur ?? 0.0) + manualGaussianBlur
@@ -136,6 +146,8 @@ enum FilterPreviewUseCase {
             shadows: shadows,
             blacks: blacks,
             whites: whites,
+            warmth: warmth,
+            vibrance: vibrance,
             hue: hue,
             sharpness: sharpness,
             gaussianBlurRadius: gaussianBlurRadius,

@@ -55,6 +55,8 @@ struct FiltersPanelView: View {
         hasher.combine(img.shadowsAdjustment)
         hasher.combine(img.blacksAdjustment)
         hasher.combine(img.whitesAdjustment)
+        hasher.combine(img.warmthAdjustment)
+        hasher.combine(img.vibranceAdjustment)
         hasher.combine(img.hueAdjustment)
         hasher.combine(img.sharpnessAdjustment)
         hasher.combine(img.gaussianBlurRadius)

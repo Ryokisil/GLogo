@@ -192,6 +192,12 @@ class ImageElement: LogoElement {
 
     /// 色調補正（白レベル調整）
     var whitesAdjustment: CGFloat = 0.0
+
+    /// 色調補正（色温度調整）
+    var warmthAdjustment: CGFloat = 0.0
+
+    /// 色調補正（ヴィブランス調整）
+    var vibranceAdjustment: CGFloat = 0.0
     
     /// 色相調整（度数）
     var hueAdjustment: CGFloat = 0.0
@@ -354,6 +360,7 @@ class ImageElement: LogoElement {
         // 色・トーン調整
         case saturationAdjustment, brightnessAdjustment, contrastAdjustment
         case highlightsAdjustment, shadowsAdjustment, blacksAdjustment, whitesAdjustment
+        case warmthAdjustment, vibranceAdjustment
         case hueAdjustment, sharpnessAdjustment, gaussianBlurRadius
         case toneCurveData
         // 背景ぼかし
@@ -387,6 +394,8 @@ class ImageElement: LogoElement {
         try container.encode(shadowsAdjustment, forKey: .shadowsAdjustment)
         try container.encode(blacksAdjustment, forKey: .blacksAdjustment)
         try container.encode(whitesAdjustment, forKey: .whitesAdjustment)
+        try container.encode(warmthAdjustment, forKey: .warmthAdjustment)
+        try container.encode(vibranceAdjustment, forKey: .vibranceAdjustment)
         try container.encode(hueAdjustment, forKey: .hueAdjustment)
         try container.encode(sharpnessAdjustment, forKey: .sharpnessAdjustment)
         try container.encode(gaussianBlurRadius, forKey: .gaussianBlurRadius)
@@ -440,6 +449,8 @@ class ImageElement: LogoElement {
         shadowsAdjustment = try container.decode(CGFloat.self, forKey: .shadowsAdjustment)
         blacksAdjustment = try container.decodeIfPresent(CGFloat.self, forKey: .blacksAdjustment) ?? 0.0
         whitesAdjustment = try container.decodeIfPresent(CGFloat.self, forKey: .whitesAdjustment) ?? 0.0
+        warmthAdjustment = try container.decodeIfPresent(CGFloat.self, forKey: .warmthAdjustment) ?? 0.0
+        vibranceAdjustment = try container.decodeIfPresent(CGFloat.self, forKey: .vibranceAdjustment) ?? 0.0
         hueAdjustment = try container.decode(CGFloat.self, forKey: .hueAdjustment)
         sharpnessAdjustment = try container.decode(CGFloat.self, forKey: .sharpnessAdjustment)
         gaussianBlurRadius = try container.decode(CGFloat.self, forKey: .gaussianBlurRadius)
@@ -633,6 +644,8 @@ class ImageElement: LogoElement {
         shadowsAdjustment = 0.0
         blacksAdjustment = 0.0
         whitesAdjustment = 0.0
+        warmthAdjustment = 0.0
+        vibranceAdjustment = 0.0
         hueAdjustment = 0.0
         sharpnessAdjustment = 0.0
         gaussianBlurRadius = 0.0
@@ -834,6 +847,8 @@ class ImageElement: LogoElement {
         let effectiveShadows = (recipe?.shadows ?? 0.0) + shadowsAdjustment
         let effectiveBlacks = blacksAdjustment
         let effectiveWhites = whitesAdjustment
+        let effectiveWarmth = warmthAdjustment
+        let effectiveVibrance = vibranceAdjustment
         let effectiveHue = (recipe?.hue ?? 0.0) + hueAdjustment
         let effectiveSharpness = (recipe?.sharpness ?? 0.0) + sharpnessAdjustment
         let effectiveBlur = (recipe?.gaussianBlur ?? 0.0) + gaussianBlurRadius
@@ -858,6 +873,8 @@ class ImageElement: LogoElement {
             shadows: effectiveShadows,
             blacks: effectiveBlacks,
             whites: effectiveWhites,
+            warmth: effectiveWarmth,
+            vibrance: effectiveVibrance,
             hue: effectiveHue,
             sharpness: effectiveSharpness,
             gaussianBlurRadius: effectiveBlur,
@@ -916,6 +933,8 @@ class ImageElement: LogoElement {
         copy.shadowsAdjustment = shadowsAdjustment
         copy.blacksAdjustment = blacksAdjustment
         copy.whitesAdjustment = whitesAdjustment
+        copy.warmthAdjustment = warmthAdjustment
+        copy.vibranceAdjustment = vibranceAdjustment
         copy.hueAdjustment = hueAdjustment
         copy.sharpnessAdjustment = sharpnessAdjustment
         copy.gaussianBlurRadius = gaussianBlurRadius

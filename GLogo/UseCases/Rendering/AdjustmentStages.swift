@@ -17,6 +17,8 @@ struct AdjustmentParams {
     let shadows: CGFloat
     let blacks: CGFloat
     let whites: CGFloat
+    let warmth: CGFloat
+    let vibrance: CGFloat
     let hue: CGFloat
     let sharpness: CGFloat
     let gaussianBlurRadius: CGFloat
@@ -68,6 +70,24 @@ enum AdjustmentStages {
                let adjusted = ImageFilterUtility.applyWhiteAdjustment(
                 to: ciImage,
                 amount: params.whites
+               ) {
+                ciImage = adjusted
+            }
+
+            // 色温度
+            if params.warmth != 0,
+               let adjusted = ImageFilterUtility.applyWarmthAdjustment(
+                to: ciImage,
+                warmth: params.warmth
+               ) {
+                ciImage = adjusted
+            }
+
+            // ヴィブランス
+            if params.vibrance != 0,
+               let adjusted = ImageFilterUtility.applyVibranceAdjustment(
+                to: ciImage,
+                amount: params.vibrance
                ) {
                 ciImage = adjusted
             }

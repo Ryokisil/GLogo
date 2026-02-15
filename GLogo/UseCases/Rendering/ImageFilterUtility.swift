@@ -309,15 +309,41 @@ class ImageFilterUtility {
     }
     
     /// 色温度（Warmth）調整を適用
+    /// - Parameters:
+    ///   - image: 入力画像
+    ///   - warmth: 調整量（-100...100）
+    /// - Returns: 調整後の画像。フィルター生成に失敗した場合は nil
     static func applyWarmthAdjustment(to image: CIImage, warmth: CGFloat) -> CIImage? {
+        if warmth == 0 {
+            return image
+        }
         guard let filter = CIFilter(name: "CITemperatureAndTint") else { return nil }
-        
-        // 温度調整値を変換（-100〜100の範囲を適切なベクトルに変換）
-        let vector = CIVector(x: 6500 + (warmth * 1500), y: 0)
+
+        // 温度調整値を変換（-100〜100をおおよそ3000K〜10000Kへ）
+        let clampedWarmth = max(-100.0, min(100.0, warmth))
+        let neutralTemperature: CGFloat = 6500
+        let vector = CIVector(x: neutralTemperature + (clampedWarmth * 35.0), y: 0)
         
         filter.setValue(image, forKey: kCIInputImageKey)
         filter.setValue(vector, forKey: "inputTargetNeutral")
         
+        return filter.outputImage
+    }
+
+    /// ヴィブランス調整を適用
+    /// - Parameters:
+    ///   - image: 入力画像
+    ///   - amount: 調整量（-1.0...1.0）
+    /// - Returns: 調整後の画像。フィルター生成に失敗した場合は nil
+    static func applyVibranceAdjustment(to image: CIImage, amount: CGFloat) -> CIImage? {
+        if amount == 0 {
+            return image
+        }
+        guard let filter = CIFilter(name: "CIVibrance") else { return nil }
+
+        let clampedAmount = max(-1.0, min(1.0, amount))
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(clampedAmount, forKey: "inputAmount")
         return filter.outputImage
     }
     
@@ -510,6 +536,8 @@ extension ImageFilterUtility {
                                   shadows: CGFloat,
                                   blacks: CGFloat,
                                   whites: CGFloat,
+                                  warmth: CGFloat,
+                                  vibrance: CGFloat,
                                   tintColor: UIColor?,
                                   tintIntensity: CGFloat) async -> UIImage? {
         
@@ -561,6 +589,24 @@ extension ImageFilterUtility {
                let adjusted = ImageFilterUtility.applyWhiteAdjustment(
                 to: ciImage,
                 amount: whites
+               ) {
+                ciImage = adjusted
+            }
+
+            // 色温度調整を適用（値が0でない場合のみ）
+            if warmth != 0,
+               let adjusted = ImageFilterUtility.applyWarmthAdjustment(
+                to: ciImage,
+                warmth: warmth
+               ) {
+                ciImage = adjusted
+            }
+
+            // ヴィブランス調整を適用（値が0でない場合のみ）
+            if vibrance != 0,
+               let adjusted = ImageFilterUtility.applyVibranceAdjustment(
+                to: ciImage,
+                amount: vibrance
                ) {
                 ciImage = adjusted
             }

@@ -4,23 +4,30 @@
 //
 //  概要:
 //  下部ツールストリップの「Adjust」から表示される基礎色調整パネルです。
-//  彩度・明度・ブラー・コントラスト・シャドウ・ハイライト・色相・シャープネス・カーブを
-//  横スクロールの選択UIとスライダーで編集します。
+//  彩度・明度・ブラー・コントラスト・シャドウ・ハイライト・黒/白レベル・色温度・ヴィブランス・色相・シャープネス・カーブを
+//  カテゴリ別（Color / Light / Detail）の選択UIとスライダーで編集します。
 //
 
 import SwiftUI
 
 private enum AdjustBasicControl: CaseIterable, Identifiable {
+    // Color
     case saturation
+    case vibrance
+    case temperature
+    case hue
+
+    // Light
     case brightness
-    case blur
     case contrast
-    case shadows
     case highlights
+    case shadows
     case blacks
     case whites
-    case hue
+
+    // Detail
     case sharpness
+    case blur
     case curve
 
     var id: String { title }
@@ -43,6 +50,10 @@ private enum AdjustBasicControl: CaseIterable, Identifiable {
             return "Blacks"
         case .whites:
             return "Whites"
+        case .temperature:
+            return "Temperature"
+        case .vibrance:
+            return "Vibrance"
         case .hue:
             return "Hue"
         case .sharpness:
@@ -63,6 +74,8 @@ private enum AdjustBasicControl: CaseIterable, Identifiable {
         case .highlights:  return "sun.min.fill"
         case .blacks:      return "circle.bottomhalf.filled"
         case .whites:      return "circle.tophalf.filled"
+        case .temperature: return "thermometer.medium"
+        case .vibrance:    return "sparkles"
         case .hue:         return "paintpalette.fill"
         case .sharpness:   return "scope"
         case .curve:       return "chart.xyaxis.line"
@@ -87,6 +100,10 @@ private enum AdjustBasicControl: CaseIterable, Identifiable {
             return .blacks
         case .whites:
             return .whites
+        case .temperature:
+            return .temperature
+        case .vibrance:
+            return .vibrance
         case .hue:
             return .hue
         case .sharpness:
@@ -114,6 +131,10 @@ private enum AdjustBasicControl: CaseIterable, Identifiable {
             return -1...1
         case .whites:
             return -1...1
+        case .temperature:
+            return -100...100
+        case .vibrance:
+            return -1...1
         case .hue:
             return -180...180
         case .sharpness:
@@ -128,6 +149,8 @@ private enum AdjustBasicControl: CaseIterable, Identifiable {
         case .blur:
             return 0.1
         case .hue:
+            return 1
+        case .temperature:
             return 1
         case .curve:
             return 0.01
@@ -154,12 +177,46 @@ private enum AdjustBasicControl: CaseIterable, Identifiable {
             return 0
         case .whites:
             return 0
+        case .temperature:
+            return 0
+        case .vibrance:
+            return 0
         case .hue:
             return 0
         case .sharpness:
             return 0
         case .curve:
             return 0
+        }
+    }
+}
+
+private enum AdjustControlCategory: CaseIterable, Identifiable {
+    case color
+    case light
+    case detail
+
+    var id: String { title }
+
+    var title: String {
+        switch self {
+        case .color:
+            return "Color"
+        case .light:
+            return "Light"
+        case .detail:
+            return "Detail"
+        }
+    }
+
+    var controls: [AdjustBasicControl] {
+        switch self {
+        case .color:
+            return [.saturation, .vibrance, .temperature, .hue]
+        case .light:
+            return [.brightness, .contrast, .highlights, .shadows, .blacks, .whites]
+        case .detail:
+            return [.sharpness, .blur, .curve]
         }
     }
 }
@@ -221,14 +278,33 @@ struct AdjustBasicPanelView: View {
 
     private var controlSelector: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(AdjustBasicControl.allCases) { control in
-                    controlCard(control)
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(AdjustControlCategory.allCases) { category in
+                    categoryCard(category)
                 }
             }
             .padding(.horizontal, 1)
             .padding(.vertical, 2)
         }
+    }
+
+    private func categoryCard(_ category: AdjustControlCategory) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(category.title)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.secondary)
+
+            HStack(spacing: 8) {
+                ForEach(category.controls) { control in
+                    controlCard(control)
+                }
+            }
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.gray.opacity(0.08))
+        )
     }
 
     private var editorSection: some View {
@@ -375,7 +451,7 @@ struct AdjustBasicPanelView: View {
 
     private func valueText() -> String {
         let value = valueForSelectedControl()
-        if selectedControl == .hue {
+        if selectedControl == .hue || selectedControl == .temperature {
             return "\(Int(value))"
         }
         return String(format: "%.2f", value)

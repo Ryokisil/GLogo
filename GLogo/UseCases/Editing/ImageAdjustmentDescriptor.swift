@@ -11,17 +11,26 @@ import UIKit
 
 /// 画像調整スライダーのキー
 enum ImageAdjustmentKey: Hashable {
+    // Color
     case saturation
+    case temperature
+    case vibrance
+    case hue
+    case tintIntensity
+
+    // Light
     case brightness
     case contrast
     case highlights
     case shadows
     case blacks
     case whites
-    case hue
+
+    // Detail
     case sharpness
     case gaussianBlur
-    case tintIntensity
+
+    // Frame / Background
     case frameWidth
     case cornerRadius
     case backgroundBlurRadius
@@ -50,6 +59,8 @@ struct ImageAdjustmentDescriptor {
     static let all: [ImageAdjustmentKey: ImageAdjustmentDescriptor] = {
         var table: [ImageAdjustmentKey: ImageAdjustmentDescriptor] = [:]
 
+        // MARK: Color
+
         table[.saturation] = ImageAdjustmentDescriptor(
             key: .saturation,
             keyPath: \.saturationAdjustment,
@@ -63,6 +74,66 @@ struct ImageAdjustmentDescriptor {
             metadataKey: "saturationAdjustment",
             needsRenderScheduler: false
         )
+
+        table[.temperature] = ImageAdjustmentDescriptor(
+            key: .temperature,
+            keyPath: \.warmthAdjustment,
+            eventFactory: { element, oldValue, newValue in
+                ImageWarmthChangedEvent(
+                    elementId: element.id,
+                    oldWarmth: oldValue,
+                    newWarmth: newValue
+                )
+            },
+            metadataKey: "warmthAdjustment",
+            needsRenderScheduler: false
+        )
+
+        table[.vibrance] = ImageAdjustmentDescriptor(
+            key: .vibrance,
+            keyPath: \.vibranceAdjustment,
+            eventFactory: { element, oldValue, newValue in
+                ImageVibranceChangedEvent(
+                    elementId: element.id,
+                    oldVibrance: oldValue,
+                    newVibrance: newValue
+                )
+            },
+            metadataKey: "vibranceAdjustment",
+            needsRenderScheduler: false
+        )
+
+        table[.hue] = ImageAdjustmentDescriptor(
+            key: .hue,
+            keyPath: \.hueAdjustment,
+            eventFactory: { element, oldValue, newValue in
+                ImageHueChangedEvent(
+                    elementId: element.id,
+                    oldHue: oldValue,
+                    newHue: newValue
+                )
+            },
+            metadataKey: "hueAdjustment",
+            needsRenderScheduler: false
+        )
+
+        table[.tintIntensity] = ImageAdjustmentDescriptor(
+            key: .tintIntensity,
+            keyPath: \.tintIntensity,
+            eventFactory: { element, oldValue, newValue in
+                ImageTintColorChangedEvent(
+                    elementId: element.id,
+                    oldColor: element.tintColor,
+                    newColor: element.tintColor,
+                    oldIntensity: oldValue,
+                    newIntensity: newValue
+                )
+            },
+            metadataKey: "tintIntensity",
+            needsRenderScheduler: false
+        )
+
+        // MARK: Light
 
         table[.brightness] = ImageAdjustmentDescriptor(
             key: .brightness,
@@ -148,19 +219,7 @@ struct ImageAdjustmentDescriptor {
             needsRenderScheduler: false
         )
 
-        table[.hue] = ImageAdjustmentDescriptor(
-            key: .hue,
-            keyPath: \.hueAdjustment,
-            eventFactory: { element, oldValue, newValue in
-                ImageHueChangedEvent(
-                    elementId: element.id,
-                    oldHue: oldValue,
-                    newHue: newValue
-                )
-            },
-            metadataKey: "hueAdjustment",
-            needsRenderScheduler: false
-        )
+        // MARK: Detail
 
         table[.sharpness] = ImageAdjustmentDescriptor(
             key: .sharpness,
@@ -190,21 +249,7 @@ struct ImageAdjustmentDescriptor {
             needsRenderScheduler: true
         )
 
-        table[.tintIntensity] = ImageAdjustmentDescriptor(
-            key: .tintIntensity,
-            keyPath: \.tintIntensity,
-            eventFactory: { element, oldValue, newValue in
-                ImageTintColorChangedEvent(
-                    elementId: element.id,
-                    oldColor: element.tintColor,
-                    newColor: element.tintColor,
-                    oldIntensity: oldValue,
-                    newIntensity: newValue
-                )
-            },
-            metadataKey: "tintIntensity",
-            needsRenderScheduler: false
-        )
+        // MARK: Frame / Background
 
         table[.frameWidth] = ImageAdjustmentDescriptor(
             key: .frameWidth,
