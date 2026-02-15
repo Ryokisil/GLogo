@@ -17,6 +17,8 @@ private enum AdjustBasicControl: CaseIterable, Identifiable {
     case contrast
     case shadows
     case highlights
+    case blacks
+    case whites
     case hue
     case sharpness
     case curve
@@ -37,6 +39,10 @@ private enum AdjustBasicControl: CaseIterable, Identifiable {
             return "Shadows"
         case .highlights:
             return "Highlights"
+        case .blacks:
+            return "Blacks"
+        case .whites:
+            return "Whites"
         case .hue:
             return "Hue"
         case .sharpness:
@@ -55,6 +61,8 @@ private enum AdjustBasicControl: CaseIterable, Identifiable {
         case .contrast:    return "circle.lefthalf.filled"
         case .shadows:     return "moon.fill"
         case .highlights:  return "sun.min.fill"
+        case .blacks:      return "circle.bottomhalf.filled"
+        case .whites:      return "circle.tophalf.filled"
         case .hue:         return "paintpalette.fill"
         case .sharpness:   return "scope"
         case .curve:       return "chart.xyaxis.line"
@@ -75,6 +83,10 @@ private enum AdjustBasicControl: CaseIterable, Identifiable {
             return .shadows
         case .highlights:
             return .highlights
+        case .blacks:
+            return .blacks
+        case .whites:
+            return .whites
         case .hue:
             return .hue
         case .sharpness:
@@ -97,6 +109,10 @@ private enum AdjustBasicControl: CaseIterable, Identifiable {
         case .shadows:
             return -1...1
         case .highlights:
+            return -1...1
+        case .blacks:
+            return -1...1
+        case .whites:
             return -1...1
         case .hue:
             return -180...180
@@ -133,6 +149,10 @@ private enum AdjustBasicControl: CaseIterable, Identifiable {
         case .shadows:
             return 0
         case .highlights:
+            return 0
+        case .blacks:
+            return 0
+        case .whites:
             return 0
         case .hue:
             return 0

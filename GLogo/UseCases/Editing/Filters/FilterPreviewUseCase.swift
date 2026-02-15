@@ -22,6 +22,8 @@ enum FilterPreviewUseCase {
     ///   - manualContrast: manual 側のコントラスト
     ///   - manualHighlights: manual 側のハイライト
     ///   - manualShadows: manual 側のシャドウ
+    ///   - manualBlacks: manual 側の黒レベル
+    ///   - manualWhites: manual 側の白レベル
     ///   - manualHue: manual 側の色相
     ///   - manualSharpness: manual 側のシャープネス
     ///   - manualGaussianBlur: manual 側のガウシアンブラー
@@ -40,6 +42,8 @@ enum FilterPreviewUseCase {
         manualContrast: CGFloat,
         manualHighlights: CGFloat,
         manualShadows: CGFloat,
+        manualBlacks: CGFloat,
+        manualWhites: CGFloat,
         manualHue: CGFloat,
         manualSharpness: CGFloat,
         manualGaussianBlur: CGFloat,
@@ -58,6 +62,8 @@ enum FilterPreviewUseCase {
             manualContrast: manualContrast,
             manualHighlights: manualHighlights,
             manualShadows: manualShadows,
+            manualBlacks: manualBlacks,
+            manualWhites: manualWhites,
             manualHue: manualHue,
             manualSharpness: manualSharpness,
             manualGaussianBlur: manualGaussianBlur,
@@ -83,6 +89,8 @@ enum FilterPreviewUseCase {
         manualContrast: CGFloat,
         manualHighlights: CGFloat,
         manualShadows: CGFloat,
+        manualBlacks: CGFloat,
+        manualWhites: CGFloat,
         manualHue: CGFloat,
         manualSharpness: CGFloat,
         manualGaussianBlur: CGFloat,
@@ -102,6 +110,8 @@ enum FilterPreviewUseCase {
         let brightness = (recipe.brightness ?? 0.0) + manualBrightness
         let highlights = (recipe.highlights ?? 0.0) + manualHighlights
         let shadows = (recipe.shadows ?? 0.0) + manualShadows
+        let blacks = manualBlacks
+        let whites = manualWhites
         let hue = (recipe.hue ?? 0.0) + manualHue
         let sharpness = (recipe.sharpness ?? 0.0) + manualSharpness
         let gaussianBlurRadius = (recipe.gaussianBlur ?? 0.0) + manualGaussianBlur
@@ -124,6 +134,8 @@ enum FilterPreviewUseCase {
             contrast: contrast,
             highlights: highlights,
             shadows: shadows,
+            blacks: blacks,
+            whites: whites,
             hue: hue,
             sharpness: sharpness,
             gaussianBlurRadius: gaussianBlurRadius,

@@ -15,6 +15,8 @@ struct AdjustmentParams {
     let contrast: CGFloat
     let highlights: CGFloat
     let shadows: CGFloat
+    let blacks: CGFloat
+    let whites: CGFloat
     let hue: CGFloat
     let sharpness: CGFloat
     let gaussianBlurRadius: CGFloat
@@ -48,6 +50,24 @@ enum AdjustmentStages {
                let adjusted = ImageFilterUtility.applyShadowAdjustment(
                 to: ciImage,
                 amount: params.shadows
+               ) {
+                ciImage = adjusted
+            }
+
+            // 黒レベル
+            if params.blacks != 0,
+               let adjusted = ImageFilterUtility.applyBlackAdjustment(
+                to: ciImage,
+                amount: params.blacks
+               ) {
+                ciImage = adjusted
+            }
+
+            // 白レベル
+            if params.whites != 0,
+               let adjusted = ImageFilterUtility.applyWhiteAdjustment(
+                to: ciImage,
+                amount: params.whites
                ) {
                 ciImage = adjusted
             }

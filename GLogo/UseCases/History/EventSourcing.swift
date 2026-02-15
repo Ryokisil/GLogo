@@ -958,6 +958,60 @@ struct ImageShadowsChangedEvent: EditorEvent {
     }
 }
 
+/// 画像黒レベル変更イベント
+struct ImageBlacksChangedEvent: EditorEvent {
+    var eventName = "ImageBlacksChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldBlacks: CGFloat
+    let newBlacks: CGFloat
+
+    var description: String {
+        return "画像の黒レベルを変更しました"
+    }
+
+    func apply(to project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.blacksAdjustment = newBlacks
+            element.invalidateRenderedImageCache()
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.blacksAdjustment = oldBlacks
+            element.invalidateRenderedImageCache()
+        }
+    }
+}
+
+/// 画像白レベル変更イベント
+struct ImageWhitesChangedEvent: EditorEvent {
+    var eventName = "ImageWhitesChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldWhites: CGFloat
+    let newWhites: CGFloat
+
+    var description: String {
+        return "画像の白レベルを変更しました"
+    }
+
+    func apply(to project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.whitesAdjustment = newWhites
+            element.invalidateRenderedImageCache()
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.whitesAdjustment = oldWhites
+            element.invalidateRenderedImageCache()
+        }
+    }
+}
+
 /// 画像色相変更イベント
 struct ImageHueChangedEvent: EditorEvent {
     var eventName = "ImageHueChanged"
@@ -1151,6 +1205,8 @@ struct ImageContentReplacedEvent: EditorEvent {
     let oldContrast: CGFloat
     let oldHighlights: CGFloat
     let oldShadows: CGFloat
+    let oldBlacks: CGFloat
+    let oldWhites: CGFloat
     let oldHue: CGFloat
     let oldSharpness: CGFloat
     let oldGaussianBlurRadius: CGFloat
@@ -1179,6 +1235,8 @@ struct ImageContentReplacedEvent: EditorEvent {
     ///   - oldContrast: 以前のコントラスト
     ///   - oldHighlights: 以前のハイライト補正
     ///   - oldShadows: 以前のシャドウ補正
+    ///   - oldBlacks: 以前の黒レベル補正
+    ///   - oldWhites: 以前の白レベル補正
     ///   - oldHue: 以前の色相
     ///   - oldSharpness: 以前のシャープネス
     ///   - oldGaussianBlurRadius: 以前のガウシアンブラー半径
@@ -1202,6 +1260,8 @@ struct ImageContentReplacedEvent: EditorEvent {
         oldContrast: CGFloat,
         oldHighlights: CGFloat,
         oldShadows: CGFloat,
+        oldBlacks: CGFloat,
+        oldWhites: CGFloat,
         oldHue: CGFloat,
         oldSharpness: CGFloat,
         oldGaussianBlurRadius: CGFloat,
@@ -1224,6 +1284,8 @@ struct ImageContentReplacedEvent: EditorEvent {
         self.oldContrast = oldContrast
         self.oldHighlights = oldHighlights
         self.oldShadows = oldShadows
+        self.oldBlacks = oldBlacks
+        self.oldWhites = oldWhites
         self.oldHue = oldHue
         self.oldSharpness = oldSharpness
         self.oldGaussianBlurRadius = oldGaussianBlurRadius
@@ -1238,7 +1300,7 @@ struct ImageContentReplacedEvent: EditorEvent {
     private enum CodingKeys: String, CodingKey {
         case timestamp, elementId
         case oldImageData, oldImageFileName, oldOriginalImageURL, oldOriginalImagePath, oldOriginalImageIdentifier
-        case oldToneCurveData, oldSaturation, oldBrightness, oldContrast, oldHighlights, oldShadows
+        case oldToneCurveData, oldSaturation, oldBrightness, oldContrast, oldHighlights, oldShadows, oldBlacks, oldWhites
         case oldHue, oldSharpness, oldGaussianBlurRadius, oldTintIntensity
         case oldTintColorData, hasOldTintColor
         case oldAppliedFilterRecipe, oldAppliedFilterPresetId
@@ -1264,6 +1326,8 @@ struct ImageContentReplacedEvent: EditorEvent {
         try container.encode(oldContrast, forKey: .oldContrast)
         try container.encode(oldHighlights, forKey: .oldHighlights)
         try container.encode(oldShadows, forKey: .oldShadows)
+        try container.encode(oldBlacks, forKey: .oldBlacks)
+        try container.encode(oldWhites, forKey: .oldWhites)
         try container.encode(oldHue, forKey: .oldHue)
         try container.encode(oldSharpness, forKey: .oldSharpness)
         try container.encode(oldGaussianBlurRadius, forKey: .oldGaussianBlurRadius)
@@ -1300,6 +1364,8 @@ struct ImageContentReplacedEvent: EditorEvent {
         oldContrast = try container.decode(CGFloat.self, forKey: .oldContrast)
         oldHighlights = try container.decode(CGFloat.self, forKey: .oldHighlights)
         oldShadows = try container.decode(CGFloat.self, forKey: .oldShadows)
+        oldBlacks = try container.decodeIfPresent(CGFloat.self, forKey: .oldBlacks) ?? 0.0
+        oldWhites = try container.decodeIfPresent(CGFloat.self, forKey: .oldWhites) ?? 0.0
         oldHue = try container.decode(CGFloat.self, forKey: .oldHue)
         oldSharpness = try container.decode(CGFloat.self, forKey: .oldSharpness)
         oldGaussianBlurRadius = try container.decode(CGFloat.self, forKey: .oldGaussianBlurRadius)
@@ -1357,6 +1423,8 @@ struct ImageContentReplacedEvent: EditorEvent {
         element.contrastAdjustment = oldContrast
         element.highlightsAdjustment = oldHighlights
         element.shadowsAdjustment = oldShadows
+        element.blacksAdjustment = oldBlacks
+        element.whitesAdjustment = oldWhites
         element.hueAdjustment = oldHue
         element.sharpnessAdjustment = oldSharpness
         element.gaussianBlurRadius = oldGaussianBlurRadius

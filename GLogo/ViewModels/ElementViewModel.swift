@@ -670,6 +670,8 @@ class ElementViewModel: ObservableObject {
             manualContrast: imageElement.contrastAdjustment,
             manualHighlights: imageElement.highlightsAdjustment,
             manualShadows: imageElement.shadowsAdjustment,
+            manualBlacks: imageElement.blacksAdjustment,
+            manualWhites: imageElement.whitesAdjustment,
             manualHue: imageElement.hueAdjustment,
             manualSharpness: imageElement.sharpnessAdjustment,
             manualGaussianBlur: imageElement.gaussianBlurRadius,

@@ -30,6 +30,19 @@ class ImageFilterUtility {
         
         return filter.outputImage
     }
+
+    /// ルミナンス画像（グレースケール）を生成
+    /// - Parameters:
+    ///   - image: 入力画像
+    /// - Returns: ルミナンス画像。生成できない場合は nil
+    private static func makeLuminanceImage(from image: CIImage) -> CIImage? {
+        guard let luminanceFilter = CIFilter(name: "CIColorMatrix") else { return nil }
+        luminanceFilter.setValue(image, forKey: kCIInputImageKey)
+        luminanceFilter.setValue(CIVector(x: 0.2126, y: 0.7152, z: 0.0722, w: 0), forKey: "inputRVector")
+        luminanceFilter.setValue(CIVector(x: 0.2126, y: 0.7152, z: 0.0722, w: 0), forKey: "inputGVector")
+        luminanceFilter.setValue(CIVector(x: 0.2126, y: 0.7152, z: 0.0722, w: 0), forKey: "inputBVector")
+        return luminanceFilter.outputImage
+    }
     
     /// ハイライトの調整を適用
     static func applyHighlightAdjustment(to image: CIImage, amount: CGFloat) -> CIImage? {
@@ -205,6 +218,94 @@ class ImageFilterUtility {
             
             return blendFilter.outputImage
         }
+    }
+
+    /// 黒レベル調整を適用（暗部端点の締まり/持ち上げ）
+    /// - Parameters:
+    ///   - image: 入力画像
+    ///   - amount: 調整量（-1.0...1.0）
+    /// - Returns: 調整後の画像
+    static func applyBlackAdjustment(to image: CIImage, amount: CGFloat) -> CIImage? {
+        if amount == 0 { return image }
+
+        let clampedAmount = max(-1.0, min(1.0, amount))
+        guard let luminanceImage = makeLuminanceImage(from: image) else { return image }
+
+        // 暗部優先マスク（ルミナンス反転）
+        guard let invertFilter = CIFilter(name: "CIColorInvert") else { return image }
+        invertFilter.setValue(luminanceImage, forKey: kCIInputImageKey)
+        guard let inverted = invertFilter.outputImage else { return image }
+
+        guard let gammaFilter = CIFilter(name: "CIGammaAdjust") else { return image }
+        gammaFilter.setValue(inverted, forKey: kCIInputImageKey)
+        gammaFilter.setValue(1.8, forKey: "inputPower")
+        guard let darkMask = gammaFilter.outputImage else { return image }
+
+        let adjustedImage: CIImage?
+        if clampedAmount > 0 {
+            // 黒を締める（暗部をわずかに下げる）
+            guard let exposureFilter = CIFilter(name: "CIExposureAdjust") else { return image }
+            exposureFilter.setValue(image, forKey: kCIInputImageKey)
+            exposureFilter.setValue(-clampedAmount * 0.8, forKey: kCIInputEVKey)
+            adjustedImage = exposureFilter.outputImage
+        } else {
+            // 黒を持ち上げる（暗部を持ち上げる）
+            guard let colorFilter = CIFilter(name: "CIColorControls") else { return image }
+            colorFilter.setValue(image, forKey: kCIInputImageKey)
+            colorFilter.setValue(abs(clampedAmount) * 0.25, forKey: kCIInputBrightnessKey)
+            adjustedImage = colorFilter.outputImage
+        }
+
+        guard let target = adjustedImage,
+              let blendFilter = CIFilter(name: "CIBlendWithMask") else {
+            return image
+        }
+        blendFilter.setValue(image, forKey: kCIInputImageKey)
+        blendFilter.setValue(target, forKey: kCIInputBackgroundImageKey)
+        blendFilter.setValue(darkMask, forKey: kCIInputMaskImageKey)
+        return blendFilter.outputImage
+    }
+
+    /// 白レベル調整を適用（明部端点の伸び/抑制）
+    /// - Parameters:
+    ///   - image: 入力画像
+    ///   - amount: 調整量（-1.0...1.0）
+    /// - Returns: 調整後の画像
+    static func applyWhiteAdjustment(to image: CIImage, amount: CGFloat) -> CIImage? {
+        if amount == 0 { return image }
+
+        let clampedAmount = max(-1.0, min(1.0, amount))
+        guard let luminanceImage = makeLuminanceImage(from: image) else { return image }
+
+        // 明部優先マスク
+        guard let gammaFilter = CIFilter(name: "CIGammaAdjust") else { return image }
+        gammaFilter.setValue(luminanceImage, forKey: kCIInputImageKey)
+        gammaFilter.setValue(0.6, forKey: "inputPower")
+        guard let highlightMask = gammaFilter.outputImage else { return image }
+
+        let adjustedImage: CIImage?
+        if clampedAmount > 0 {
+            // 白を伸ばす（明部をわずかに押し上げる）
+            guard let exposureFilter = CIFilter(name: "CIExposureAdjust") else { return image }
+            exposureFilter.setValue(image, forKey: kCIInputImageKey)
+            exposureFilter.setValue(clampedAmount * 0.8, forKey: kCIInputEVKey)
+            adjustedImage = exposureFilter.outputImage
+        } else {
+            // 白を抑える（白飛びを軽減）
+            guard let exposureFilter = CIFilter(name: "CIExposureAdjust") else { return image }
+            exposureFilter.setValue(image, forKey: kCIInputImageKey)
+            exposureFilter.setValue(-abs(clampedAmount) * 0.6, forKey: kCIInputEVKey)
+            adjustedImage = exposureFilter.outputImage
+        }
+
+        guard let target = adjustedImage,
+              let blendFilter = CIFilter(name: "CIBlendWithMask") else {
+            return image
+        }
+        blendFilter.setValue(image, forKey: kCIInputImageKey)
+        blendFilter.setValue(target, forKey: kCIInputBackgroundImageKey)
+        blendFilter.setValue(highlightMask, forKey: kCIInputMaskImageKey)
+        return blendFilter.outputImage
     }
     
     /// 色温度（Warmth）調整を適用
@@ -407,6 +508,8 @@ extension ImageFilterUtility {
                                   contrast: CGFloat,
                                   highlights: CGFloat,
                                   shadows: CGFloat,
+                                  blacks: CGFloat,
+                                  whites: CGFloat,
                                   tintColor: UIColor?,
                                   tintIntensity: CGFloat) async -> UIImage? {
         
@@ -440,6 +543,24 @@ extension ImageFilterUtility {
                let adjusted = ImageFilterUtility.applyShadowAdjustment(
                 to: ciImage,
                 amount: shadows
+               ) {
+                ciImage = adjusted
+            }
+
+            // 黒レベル調整を適用（値が0でない場合のみ）
+            if blacks != 0,
+               let adjusted = ImageFilterUtility.applyBlackAdjustment(
+                to: ciImage,
+                amount: blacks
+               ) {
+                ciImage = adjusted
+            }
+
+            // 白レベル調整を適用（値が0でない場合のみ）
+            if whites != 0,
+               let adjusted = ImageFilterUtility.applyWhiteAdjustment(
+                to: ciImage,
+                amount: whites
                ) {
                 ciImage = adjusted
             }

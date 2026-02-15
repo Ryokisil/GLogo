@@ -22,6 +22,10 @@ struct ImageFilterParams {
     let highlights: CGFloat
     /// シャドウ補正
     let shadows: CGFloat
+    /// 黒レベル補正
+    let blacks: CGFloat
+    /// 白レベル補正
+    let whites: CGFloat
     /// 色相（度数）
     let hue: CGFloat
     /// シャープネス
@@ -45,6 +49,8 @@ struct ImageFilterParams {
         contrast: CGFloat,
         highlights: CGFloat,
         shadows: CGFloat,
+        blacks: CGFloat = 0.0,
+        whites: CGFloat = 0.0,
         hue: CGFloat,
         sharpness: CGFloat,
         gaussianBlurRadius: CGFloat,
@@ -59,6 +65,8 @@ struct ImageFilterParams {
         self.contrast = contrast
         self.highlights = highlights
         self.shadows = shadows
+        self.blacks = blacks
+        self.whites = whites
         self.hue = hue
         self.sharpness = sharpness
         self.gaussianBlurRadius = gaussianBlurRadius
@@ -291,6 +299,8 @@ final class ImagePreviewService: ImagePreviewing {
         hasher.combine(params.contrast)
         hasher.combine(params.highlights)
         hasher.combine(params.shadows)
+        hasher.combine(params.blacks)
+        hasher.combine(params.whites)
         hasher.combine(params.hue)
         hasher.combine(params.sharpness)
         hasher.combine(params.gaussianBlurRadius)
@@ -310,6 +320,8 @@ final class ImagePreviewService: ImagePreviewing {
             contrast: params.contrast,
             highlights: params.highlights,
             shadows: params.shadows,
+            blacks: params.blacks,
+            whites: params.whites,
             hue: params.hue,
             sharpness: params.sharpness,
             gaussianBlurRadius: params.gaussianBlurRadius

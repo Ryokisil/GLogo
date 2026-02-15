@@ -3,7 +3,7 @@
 //
 //  概要:
 //  画像調整パラメータのディスクリプタ定義。
-//  12種類のCGFloat画像調整を統一的に扱うためのデータ駆動テーブルを提供する。
+//  複数のCGFloat画像調整を統一的に扱うためのデータ駆動テーブルを提供する。
 //
 
 import Foundation
@@ -16,6 +16,8 @@ enum ImageAdjustmentKey: Hashable {
     case contrast
     case highlights
     case shadows
+    case blacks
+    case whites
     case hue
     case sharpness
     case gaussianBlur
@@ -44,7 +46,7 @@ struct ImageAdjustmentDescriptor {
 
     // MARK: - 全ディスクリプタテーブル
 
-    /// 12種類の画像調整ディスクリプタ
+    /// 画像調整ディスクリプタ
     static let all: [ImageAdjustmentKey: ImageAdjustmentDescriptor] = {
         var table: [ImageAdjustmentKey: ImageAdjustmentDescriptor] = [:]
 
@@ -115,6 +117,34 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "shadowsAdjustment",
+            needsRenderScheduler: false
+        )
+
+        table[.blacks] = ImageAdjustmentDescriptor(
+            key: .blacks,
+            keyPath: \.blacksAdjustment,
+            eventFactory: { element, oldValue, newValue in
+                ImageBlacksChangedEvent(
+                    elementId: element.id,
+                    oldBlacks: oldValue,
+                    newBlacks: newValue
+                )
+            },
+            metadataKey: "blacksAdjustment",
+            needsRenderScheduler: false
+        )
+
+        table[.whites] = ImageAdjustmentDescriptor(
+            key: .whites,
+            keyPath: \.whitesAdjustment,
+            eventFactory: { element, oldValue, newValue in
+                ImageWhitesChangedEvent(
+                    elementId: element.id,
+                    oldWhites: oldValue,
+                    newWhites: newValue
+                )
+            },
+            metadataKey: "whitesAdjustment",
             needsRenderScheduler: false
         )
 

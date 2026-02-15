@@ -408,6 +408,8 @@ class EditorViewModel: ObservableObject {
             oldContrast: imageElement.contrastAdjustment,
             oldHighlights: imageElement.highlightsAdjustment,
             oldShadows: imageElement.shadowsAdjustment,
+            oldBlacks: imageElement.blacksAdjustment,
+            oldWhites: imageElement.whitesAdjustment,
             oldHue: imageElement.hueAdjustment,
             oldSharpness: imageElement.sharpnessAdjustment,
             oldGaussianBlurRadius: imageElement.gaussianBlurRadius,
