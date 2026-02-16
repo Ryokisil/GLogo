@@ -27,11 +27,16 @@ enum HDRFilterCatalog {
         original,
         natural,
         vivid,
+        crisp,
+        soft,
         dramatic,
+        cityNight,
         goldenHour,
         tealOrange,
         film,
-        mono
+        filmMatte,
+        mono,
+        monoContrast
     ]
 
     // MARK: - カテゴリ別取得
@@ -94,6 +99,37 @@ enum HDRFilterCatalog {
         previewColor: UIColor.systemOrange.withAlphaComponent(0.7)
     )
 
+    /// Crisp: ディテール重視のシャープなHDR
+    static let crisp = FilterPreset(
+        id: "hdr_crisp",
+        name: "Crisp",
+        category: .basic,
+        recipe: FilterRecipe(
+            saturation: 1.12,
+            contrast: 1.16,
+            highlights: -0.12,
+            shadows: 0.14,
+            sharpness: 0.24
+        ),
+        previewColor: UIColor.systemBlue.withAlphaComponent(0.65)
+    )
+
+    /// Soft: ハイライトを少し残した柔らかいHDR
+    static let soft = FilterPreset(
+        id: "hdr_soft",
+        name: "Soft",
+        category: .basic,
+        recipe: FilterRecipe(
+            saturation: 1.02,
+            brightness: 0.03,
+            contrast: 0.96,
+            highlights: 0.06,
+            shadows: 0.22,
+            gaussianBlur: 0.6
+        ),
+        previewColor: UIColor.systemPink.withAlphaComponent(0.45)
+    )
+
     /// Dramatic: 高コントラスト + 深い影の劇的なHDR
     static let dramatic = FilterPreset(
         id: "hdr_dramatic",
@@ -108,6 +144,25 @@ enum HDRFilterCatalog {
             sharpness: 0.15
         ),
         previewColor: UIColor.systemIndigo.withAlphaComponent(0.7)
+    )
+
+    /// City Night: 夜景向けに寒色とコントラストを強調
+    static let cityNight = FilterPreset(
+        id: "hdr_city_night",
+        name: "City Night",
+        category: .cinematic,
+        recipe: FilterRecipe(
+            saturation: 1.08,
+            brightness: -0.04,
+            contrast: 1.26,
+            highlights: -0.22,
+            shadows: 0.06,
+            hue: 7.0,
+            sharpness: 0.20,
+            tintColorHex: "#5E84B8",
+            tintIntensity: 0.10
+        ),
+        previewColor: UIColor(hex: "#5E84B8") ?? UIColor.systemBlue
     )
 
     /// Golden Hour: 暖色ハイライト + ソフトシャドウ
@@ -162,6 +217,24 @@ enum HDRFilterCatalog {
         previewColor: UIColor(hex: "#B8956A") ?? UIColor.systemBrown
     )
 
+    /// Film Matte: 黒浮きを抑えたマット寄りHDRフィルム
+    static let filmMatte = FilterPreset(
+        id: "hdr_film_matte",
+        name: "Film Matte",
+        category: .vintage,
+        recipe: FilterRecipe(
+            saturation: 0.84,
+            brightness: 0.01,
+            contrast: 0.90,
+            highlights: -0.24,
+            shadows: 0.28,
+            gaussianBlur: 0.5,
+            tintColorHex: "#A98867",
+            tintIntensity: 0.12
+        ),
+        previewColor: UIColor(hex: "#A98867") ?? UIColor.brown
+    )
+
     /// HDR Mono: ディテール豊富なモノクロHDR
     static let mono = FilterPreset(
         id: "hdr_mono",
@@ -175,5 +248,21 @@ enum HDRFilterCatalog {
             sharpness: 0.20
         ),
         previewColor: UIColor.systemGray2
+    )
+
+    /// Mono Contrast: モノクロでコントラストをさらに強調
+    static let monoContrast = FilterPreset(
+        id: "hdr_mono_contrast",
+        name: "Mono Contrast",
+        category: .mono,
+        recipe: FilterRecipe(
+            saturation: 0.0,
+            brightness: -0.02,
+            contrast: 1.28,
+            highlights: -0.20,
+            shadows: 0.14,
+            sharpness: 0.24
+        ),
+        previewColor: UIColor.systemGray
     )
 }

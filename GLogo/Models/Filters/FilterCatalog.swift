@@ -23,8 +23,14 @@ enum FilterCatalog {
     /// 全プリセット一覧（表示順）
     static let allPresets: [FilterPreset] = [
         original,
+        natural,
+        vivid,
         crisp,
         soft,
+        dramatic,
+        goldenHour,
+        tealOrange,
+        film,
         vintageWarm,
         vintageInstant,
         agedPhoto,
@@ -32,6 +38,7 @@ enum FilterCatalog {
         coolShadowsWarmHighlights,
         subtleFade,
         bwHighContrast,
+        monoSoft,
         noir
     ]
 
@@ -64,6 +71,37 @@ enum FilterCatalog {
         previewColor: UIColor.systemGray4
     )
 
+    /// Natural: 破綻を抑えた自然な補正
+    static let natural = FilterPreset(
+        id: "natural",
+        name: "Natural",
+        category: .basic,
+        recipe: FilterRecipe(
+            saturation: 1.04,
+            brightness: 0.01,
+            contrast: 1.04,
+            highlights: -0.06,
+            shadows: 0.08,
+            sharpness: 0.06
+        ),
+        previewColor: UIColor.systemGreen.withAlphaComponent(0.55)
+    )
+
+    /// Vivid: 彩度とコントラストをしっかり強調
+    static let vivid = FilterPreset(
+        id: "vivid",
+        name: "Vivid",
+        category: .basic,
+        recipe: FilterRecipe(
+            saturation: 1.18,
+            contrast: 1.14,
+            highlights: -0.05,
+            shadows: 0.06,
+            sharpness: 0.14
+        ),
+        previewColor: UIColor.systemOrange.withAlphaComponent(0.65)
+    )
+
     /// Crisp: コントラスト↑ 彩度↑ シャープネス↑
     static let crisp = FilterPreset(
         id: "crisp",
@@ -88,6 +126,74 @@ enum FilterCatalog {
             gaussianBlur: 1.0
         ),
         previewColor: UIColor.systemPink.withAlphaComponent(0.4)
+    )
+
+    /// Dramatic: 映画風の強い立体感
+    static let dramatic = FilterPreset(
+        id: "dramatic",
+        name: "Dramatic",
+        category: .cinematic,
+        recipe: FilterRecipe(
+            saturation: 1.08,
+            brightness: -0.03,
+            contrast: 1.24,
+            highlights: -0.14,
+            shadows: -0.08,
+            sharpness: 0.16
+        ),
+        previewColor: UIColor.systemIndigo.withAlphaComponent(0.68)
+    )
+
+    /// Golden Hour: 暖色寄りでやわらかな夕景トーン
+    static let goldenHour = FilterPreset(
+        id: "golden_hour",
+        name: "Golden Hour",
+        category: .cinematic,
+        recipe: FilterRecipe(
+            saturation: 1.10,
+            brightness: 0.03,
+            contrast: 1.06,
+            highlights: 0.10,
+            shadows: 0.16,
+            tintColorHex: "#D69E58",
+            tintIntensity: 0.16
+        ),
+        previewColor: UIColor(hex: "#D69E58") ?? UIColor.systemYellow
+    )
+
+    /// Teal & Orange: 寒暖分離を強調するシネマトーン
+    static let tealOrange = FilterPreset(
+        id: "teal_orange",
+        name: "Teal & Orange",
+        category: .cinematic,
+        recipe: FilterRecipe(
+            saturation: 1.10,
+            contrast: 1.10,
+            highlights: -0.08,
+            shadows: 0.10,
+            hue: 5.0,
+            tintColorHex: "#DB8B46",
+            tintIntensity: 0.10
+        ),
+        previewColor: UIColor(hex: "#DB8B46") ?? UIColor.systemTeal
+    )
+
+    /// Film: 軽い退色と粒状感のあるフィルム調
+    static let film = FilterPreset(
+        id: "film",
+        name: "Film",
+        category: .vintage,
+        recipe: FilterRecipe(
+            saturation: 0.90,
+            brightness: 0.01,
+            contrast: 0.94,
+            highlights: -0.14,
+            shadows: 0.16,
+            gaussianBlur: 0.25,
+            tintColorHex: "#BE9669",
+            tintIntensity: 0.09
+        ),
+        previewColor: UIColor(hex: "#BE9669") ?? UIColor.systemBrown
     )
 
     /// Vintage Warm: 彩度↓ コントラスト↓ シャドウ↑ セピア系ティント
@@ -223,6 +329,22 @@ enum FilterCatalog {
             tintIntensity: 0.0
         ),
         previewColor: UIColor.systemGray
+    )
+
+    /// Mono Soft: 低コントラスト寄りの柔らかいモノクロ
+    static let monoSoft = FilterPreset(
+        id: "mono_soft",
+        name: "Mono Soft",
+        category: .mono,
+        recipe: FilterRecipe(
+            saturation: 0.0,
+            brightness: 0.02,
+            contrast: 0.90,
+            highlights: 0.04,
+            shadows: 0.12,
+            sharpness: 0.06
+        ),
+        previewColor: UIColor.systemGray3
     )
 
     /// Noir: 完全モノクロ コントラスト↑ シャープネス↑
