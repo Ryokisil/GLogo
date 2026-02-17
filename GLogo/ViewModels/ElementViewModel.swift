@@ -150,6 +150,15 @@ class ElementViewModel: ObservableObject {
     func applyGestureTransform(translation: CGSize?, scale: CGFloat?, rotation: CGFloat?, ended: Bool) {
         guard let element = element else { return }
 
+        // 画像要素はジェスチャー中にプレビュー品質へ切り替えて操作遅延を抑える
+        if let imageElement = element as? ImageElement {
+            if ended {
+                imageElement.endEditing()
+            } else {
+                imageElement.startEditing()
+            }
+        }
+
         // 基準値を保持（ジェスチャー開始時のみ）
         if gestureBasePosition == nil { gestureBasePosition = element.position }
         if gestureBaseSize == nil { gestureBaseSize = element.size }
