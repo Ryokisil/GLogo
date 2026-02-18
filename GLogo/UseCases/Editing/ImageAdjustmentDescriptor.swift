@@ -30,6 +30,13 @@ enum ImageAdjustmentKey: Hashable {
     case sharpness
     case gaussianBlur
 
+    // FX
+    case vignette
+    case bloom
+    case grain
+    case fade
+    case chromaticAberration
+
     // Frame / Background
     case frameWidth
     case cornerRadius
@@ -247,6 +254,78 @@ struct ImageAdjustmentDescriptor {
             },
             metadataKey: "gaussianBlurRadius",
             needsRenderScheduler: true
+        )
+
+        // MARK: FX
+
+        table[.vignette] = ImageAdjustmentDescriptor(
+            key: .vignette,
+            keyPath: \.vignetteAdjustment,
+            eventFactory: { element, oldValue, newValue in
+                ImageVignetteChangedEvent(
+                    elementId: element.id,
+                    oldIntensity: oldValue,
+                    newIntensity: newValue
+                )
+            },
+            metadataKey: "vignetteAdjustment",
+            needsRenderScheduler: false
+        )
+
+        table[.bloom] = ImageAdjustmentDescriptor(
+            key: .bloom,
+            keyPath: \.bloomAdjustment,
+            eventFactory: { element, oldValue, newValue in
+                ImageBloomChangedEvent(
+                    elementId: element.id,
+                    oldIntensity: oldValue,
+                    newIntensity: newValue
+                )
+            },
+            metadataKey: "bloomAdjustment",
+            needsRenderScheduler: false
+        )
+
+        table[.grain] = ImageAdjustmentDescriptor(
+            key: .grain,
+            keyPath: \.grainAdjustment,
+            eventFactory: { element, oldValue, newValue in
+                ImageGrainChangedEvent(
+                    elementId: element.id,
+                    oldIntensity: oldValue,
+                    newIntensity: newValue
+                )
+            },
+            metadataKey: "grainAdjustment",
+            needsRenderScheduler: false
+        )
+
+        table[.fade] = ImageAdjustmentDescriptor(
+            key: .fade,
+            keyPath: \.fadeAdjustment,
+            eventFactory: { element, oldValue, newValue in
+                ImageFadeChangedEvent(
+                    elementId: element.id,
+                    oldIntensity: oldValue,
+                    newIntensity: newValue
+                )
+            },
+            metadataKey: "fadeAdjustment",
+            needsRenderScheduler: false
+        )
+
+        table[.chromaticAberration] = ImageAdjustmentDescriptor(
+            key: .chromaticAberration,
+            keyPath: \.chromaticAberrationAdjustment,
+            eventFactory: { element, oldValue, newValue in
+                ImageChromaticAberrationChangedEvent(
+                    elementId: element.id,
+                    oldIntensity: oldValue,
+                    newIntensity: newValue
+                )
+            },
+            metadataKey: "chromaticAberrationAdjustment",
+            needsRenderScheduler: false
         )
 
         // MARK: Frame / Background

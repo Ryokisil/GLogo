@@ -1147,6 +1147,141 @@ struct ImageGaussianBlurChangedEvent: EditorEvent {
     }
 }
 
+/// 画像ビネット変更イベント
+struct ImageVignetteChangedEvent: EditorEvent {
+    var eventName = "ImageVignetteChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldIntensity: CGFloat
+    let newIntensity: CGFloat
+
+    var description: String {
+        return "画像のビネットを変更しました"
+    }
+
+    func apply(to project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.vignetteAdjustment = newIntensity
+            element.invalidateRenderedImageCache()
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.vignetteAdjustment = oldIntensity
+            element.invalidateRenderedImageCache()
+        }
+    }
+}
+
+/// 画像ブルーム変更イベント
+struct ImageBloomChangedEvent: EditorEvent {
+    var eventName = "ImageBloomChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldIntensity: CGFloat
+    let newIntensity: CGFloat
+
+    var description: String {
+        return "画像のブルームを変更しました"
+    }
+
+    func apply(to project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.bloomAdjustment = newIntensity
+            element.invalidateRenderedImageCache()
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.bloomAdjustment = oldIntensity
+            element.invalidateRenderedImageCache()
+        }
+    }
+}
+
+/// 画像グレイン変更イベント
+struct ImageGrainChangedEvent: EditorEvent {
+    var eventName = "ImageGrainChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldIntensity: CGFloat
+    let newIntensity: CGFloat
+
+    var description: String {
+        return "画像のグレインを変更しました"
+    }
+
+    func apply(to project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.grainAdjustment = newIntensity
+            element.invalidateRenderedImageCache()
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.grainAdjustment = oldIntensity
+            element.invalidateRenderedImageCache()
+        }
+    }
+}
+
+/// 画像フェード変更イベント
+struct ImageFadeChangedEvent: EditorEvent {
+    var eventName = "ImageFadeChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldIntensity: CGFloat
+    let newIntensity: CGFloat
+
+    var description: String {
+        return "画像のフェードを変更しました"
+    }
+
+    func apply(to project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.fadeAdjustment = newIntensity
+            element.invalidateRenderedImageCache()
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.fadeAdjustment = oldIntensity
+            element.invalidateRenderedImageCache()
+        }
+    }
+}
+
+/// 画像色収差変更イベント
+struct ImageChromaticAberrationChangedEvent: EditorEvent {
+    var eventName = "ImageChromaticAberrationChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldIntensity: CGFloat
+    let newIntensity: CGFloat
+
+    var description: String {
+        return "画像の色収差を変更しました"
+    }
+
+    func apply(to project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.chromaticAberrationAdjustment = newIntensity
+            element.invalidateRenderedImageCache()
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.chromaticAberrationAdjustment = oldIntensity
+            element.invalidateRenderedImageCache()
+        }
+    }
+}
+
 /// 画像ティントカラー変更イベント
 struct ImageTintColorChangedEvent: EditorEvent {
     let eventName = "ImageTintColorChanged"
@@ -1266,6 +1401,11 @@ struct ImageContentReplacedEvent: EditorEvent {
     let oldHue: CGFloat
     let oldSharpness: CGFloat
     let oldGaussianBlurRadius: CGFloat
+    let oldVignette: CGFloat
+    let oldBloom: CGFloat
+    let oldGrain: CGFloat
+    let oldFade: CGFloat
+    let oldChromaticAberration: CGFloat
     let oldTintIntensity: CGFloat
     var oldTintColor: UIColor?
     let oldAppliedFilterRecipe: FilterRecipe?
@@ -1298,6 +1438,11 @@ struct ImageContentReplacedEvent: EditorEvent {
     ///   - oldHue: 以前の色相
     ///   - oldSharpness: 以前のシャープネス
     ///   - oldGaussianBlurRadius: 以前のガウシアンブラー半径
+    ///   - oldVignette: 以前のビネット強度
+    ///   - oldBloom: 以前のブルーム強度
+    ///   - oldGrain: 以前のグレイン強度
+    ///   - oldFade: 以前のフェード強度
+    ///   - oldChromaticAberration: 以前の色収差強度
     ///   - oldTintIntensity: 以前のティント強度
     ///   - oldTintColor: 以前のティントカラー
     ///   - oldAppliedFilterRecipe: 以前のフィルターレシピ
@@ -1325,6 +1470,11 @@ struct ImageContentReplacedEvent: EditorEvent {
         oldHue: CGFloat,
         oldSharpness: CGFloat,
         oldGaussianBlurRadius: CGFloat,
+        oldVignette: CGFloat,
+        oldBloom: CGFloat,
+        oldGrain: CGFloat,
+        oldFade: CGFloat,
+        oldChromaticAberration: CGFloat,
         oldTintIntensity: CGFloat,
         oldTintColor: UIColor?,
         oldAppliedFilterRecipe: FilterRecipe?,
@@ -1351,6 +1501,11 @@ struct ImageContentReplacedEvent: EditorEvent {
         self.oldHue = oldHue
         self.oldSharpness = oldSharpness
         self.oldGaussianBlurRadius = oldGaussianBlurRadius
+        self.oldVignette = oldVignette
+        self.oldBloom = oldBloom
+        self.oldGrain = oldGrain
+        self.oldFade = oldFade
+        self.oldChromaticAberration = oldChromaticAberration
         self.oldTintIntensity = oldTintIntensity
         self.oldTintColor = oldTintColor
         self.oldAppliedFilterRecipe = oldAppliedFilterRecipe
@@ -1364,7 +1519,9 @@ struct ImageContentReplacedEvent: EditorEvent {
         case oldImageData, oldImageFileName, oldOriginalImageURL, oldOriginalImagePath, oldOriginalImageIdentifier
         case oldToneCurveData, oldSaturation, oldBrightness, oldContrast, oldHighlights, oldShadows, oldBlacks, oldWhites
         case oldWarmth, oldVibrance
-        case oldHue, oldSharpness, oldGaussianBlurRadius, oldTintIntensity
+        case oldHue, oldSharpness, oldGaussianBlurRadius
+        case oldVignette, oldBloom, oldGrain, oldFade, oldChromaticAberration
+        case oldTintIntensity
         case oldTintColorData, hasOldTintColor
         case oldAppliedFilterRecipe, oldAppliedFilterPresetId
         case newImageData, newOriginalImageIdentifier
@@ -1396,6 +1553,11 @@ struct ImageContentReplacedEvent: EditorEvent {
         try container.encode(oldHue, forKey: .oldHue)
         try container.encode(oldSharpness, forKey: .oldSharpness)
         try container.encode(oldGaussianBlurRadius, forKey: .oldGaussianBlurRadius)
+        try container.encode(oldVignette, forKey: .oldVignette)
+        try container.encode(oldBloom, forKey: .oldBloom)
+        try container.encode(oldGrain, forKey: .oldGrain)
+        try container.encode(oldFade, forKey: .oldFade)
+        try container.encode(oldChromaticAberration, forKey: .oldChromaticAberration)
         try container.encode(oldTintIntensity, forKey: .oldTintIntensity)
         try container.encode(newImageData, forKey: .newImageData)
         try container.encode(newOriginalImageIdentifier, forKey: .newOriginalImageIdentifier)
@@ -1436,6 +1598,11 @@ struct ImageContentReplacedEvent: EditorEvent {
         oldHue = try container.decode(CGFloat.self, forKey: .oldHue)
         oldSharpness = try container.decode(CGFloat.self, forKey: .oldSharpness)
         oldGaussianBlurRadius = try container.decode(CGFloat.self, forKey: .oldGaussianBlurRadius)
+        oldVignette = try container.decodeIfPresent(CGFloat.self, forKey: .oldVignette) ?? 0.0
+        oldBloom = try container.decodeIfPresent(CGFloat.self, forKey: .oldBloom) ?? 0.0
+        oldGrain = try container.decodeIfPresent(CGFloat.self, forKey: .oldGrain) ?? 0.0
+        oldFade = try container.decodeIfPresent(CGFloat.self, forKey: .oldFade) ?? 0.0
+        oldChromaticAberration = try container.decodeIfPresent(CGFloat.self, forKey: .oldChromaticAberration) ?? 0.0
         oldTintIntensity = try container.decode(CGFloat.self, forKey: .oldTintIntensity)
         newImageData = try container.decode(Data.self, forKey: .newImageData)
         newOriginalImageIdentifier = try container.decode(String.self, forKey: .newOriginalImageIdentifier)
@@ -1497,6 +1664,11 @@ struct ImageContentReplacedEvent: EditorEvent {
         element.hueAdjustment = oldHue
         element.sharpnessAdjustment = oldSharpness
         element.gaussianBlurRadius = oldGaussianBlurRadius
+        element.vignetteAdjustment = oldVignette
+        element.bloomAdjustment = oldBloom
+        element.grainAdjustment = oldGrain
+        element.fadeAdjustment = oldFade
+        element.chromaticAberrationAdjustment = oldChromaticAberration
         element.tintColor = oldTintColor
         element.tintIntensity = oldTintIntensity
         element.appliedFilterRecipe = oldAppliedFilterRecipe

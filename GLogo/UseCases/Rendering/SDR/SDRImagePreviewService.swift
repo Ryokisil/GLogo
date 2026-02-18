@@ -203,6 +203,11 @@ final class SDRImagePreviewService: ImagePreviewing {
         hasher.combine(params.hue)
         hasher.combine(params.sharpness)
         hasher.combine(params.gaussianBlurRadius)
+        hasher.combine(params.vignetteIntensity)
+        hasher.combine(params.bloomIntensity)
+        hasher.combine(params.grainIntensity)
+        hasher.combine(params.fadeIntensity)
+        hasher.combine(params.chromaticAberrationIntensity)
         hasher.combine(params.tintIntensity)
         hasher.combine(params.backgroundBlurRadius)
         hasher.combine(params.backgroundBlurMaskData)
@@ -225,7 +230,12 @@ final class SDRImagePreviewService: ImagePreviewing {
             vibrance: params.vibrance,
             hue: params.hue,
             sharpness: params.sharpness,
-            gaussianBlurRadius: params.gaussianBlurRadius
+            gaussianBlurRadius: params.gaussianBlurRadius,
+            vignetteIntensity: params.vignetteIntensity,
+            bloomIntensity: params.bloomIntensity,
+            grainIntensity: params.grainIntensity,
+            fadeIntensity: params.fadeIntensity,
+            chromaticAberrationIntensity: params.chromaticAberrationIntensity
         )
     }
 }

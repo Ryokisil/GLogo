@@ -22,6 +22,11 @@ struct AdjustmentParams {
     let hue: CGFloat
     let sharpness: CGFloat
     let gaussianBlurRadius: CGFloat
+    let vignetteIntensity: CGFloat
+    let bloomIntensity: CGFloat
+    let grainIntensity: CGFloat
+    let fadeIntensity: CGFloat
+    let chromaticAberrationIntensity: CGFloat
 }
 
 /// 既存のフィルター適用順序を小さなステージとして提供
@@ -115,6 +120,51 @@ enum AdjustmentStages {
                let adjusted = ImageFilterUtility.applyGaussianBlur(
                 to: ciImage,
                 radius: params.gaussianBlurRadius
+               ) {
+                ciImage = adjusted
+            }
+
+            // ビネット
+            if params.vignetteIntensity > 0,
+               let adjusted = ImageFilterUtility.applyVignette(
+                to: ciImage,
+                intensity: params.vignetteIntensity
+               ) {
+                ciImage = adjusted
+            }
+
+            // ブルーム
+            if params.bloomIntensity > 0,
+               let adjusted = ImageFilterUtility.applyBloom(
+                to: ciImage,
+                intensity: params.bloomIntensity
+               ) {
+                ciImage = adjusted
+            }
+
+            // グレイン
+            if params.grainIntensity > 0,
+               let adjusted = ImageFilterUtility.applyGrain(
+                to: ciImage,
+                intensity: params.grainIntensity
+               ) {
+                ciImage = adjusted
+            }
+
+            // フェード
+            if params.fadeIntensity > 0,
+               let adjusted = ImageFilterUtility.applyFade(
+                to: ciImage,
+                amount: params.fadeIntensity
+               ) {
+                ciImage = adjusted
+            }
+
+            // 色収差
+            if params.chromaticAberrationIntensity > 0,
+               let adjusted = ImageFilterUtility.applyChromaticAberration(
+                to: ciImage,
+                intensity: params.chromaticAberrationIntensity
                ) {
                 ciImage = adjusted
             }

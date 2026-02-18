@@ -196,6 +196,19 @@ struct EditorView: View {
                 }
             }
             .overlay(alignment: .bottom) {
+                if uiState.selectedBottomTool == .effects {
+                    EffectsPanelView(
+                        viewModel: elementViewModel,
+                        onClose: {
+                            uiState.selectedBottomTool = .select
+                        }
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .overlay(alignment: .bottom) {
                 if uiState.isTextPanelVisible && !viewModel.isEditingText {
                     TextPropertyPanelView(
                         viewModel: elementViewModel,
@@ -312,6 +325,7 @@ struct EditorView: View {
         uiState.selectedBottomTool == .adjust ||
         uiState.selectedBottomTool == .magicStudio ||
         uiState.selectedBottomTool == .filters ||
+        uiState.selectedBottomTool == .effects ||
         uiState.isTextPanelVisible ||
         viewModel.isEditingText
     }
@@ -320,6 +334,7 @@ struct EditorView: View {
         uiState.selectedBottomTool == .adjust ||
         uiState.selectedBottomTool == .magicStudio ||
         uiState.selectedBottomTool == .filters ||
+        uiState.selectedBottomTool == .effects ||
         uiState.isTextPanelVisible
     }
 
@@ -332,7 +347,7 @@ struct EditorView: View {
             // addElementが自動選択 → onChange連動でパネル表示
         } else {
             uiState.isTextPanelVisible = false
-            if tool == .adjust || tool == .magicStudio || tool == .filters {
+            if tool == .adjust || tool == .magicStudio || tool == .filters || tool == .effects {
                 viewModel.editorMode = .select
             }
         }
@@ -772,4 +787,3 @@ struct EditorView_Previews: PreviewProvider {
         EditorView(viewModel: EditorViewModel())
     }
 }
-

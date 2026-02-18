@@ -208,6 +208,21 @@ class ImageElement: LogoElement {
     /// ガウシアンブラー半径
     var gaussianBlurRadius: CGFloat = 0.0
 
+    /// ビネット強度
+    var vignetteAdjustment: CGFloat = 0.0
+
+    /// ブルーム強度
+    var bloomAdjustment: CGFloat = 0.0
+
+    /// グレイン強度
+    var grainAdjustment: CGFloat = 0.0
+
+    /// フェード強度
+    var fadeAdjustment: CGFloat = 0.0
+
+    /// 色収差強度
+    var chromaticAberrationAdjustment: CGFloat = 0.0
+
     /// 背景ぼかし半径（前景マスク使用時）
     var backgroundBlurRadius: CGFloat = 0.0
 
@@ -362,6 +377,7 @@ class ImageElement: LogoElement {
         case highlightsAdjustment, shadowsAdjustment, blacksAdjustment, whitesAdjustment
         case warmthAdjustment, vibranceAdjustment
         case hueAdjustment, sharpnessAdjustment, gaussianBlurRadius
+        case vignetteAdjustment, bloomAdjustment, grainAdjustment, fadeAdjustment, chromaticAberrationAdjustment
         case toneCurveData
         // 背景ぼかし
         case backgroundBlurRadius, backgroundBlurMaskData
@@ -399,6 +415,11 @@ class ImageElement: LogoElement {
         try container.encode(hueAdjustment, forKey: .hueAdjustment)
         try container.encode(sharpnessAdjustment, forKey: .sharpnessAdjustment)
         try container.encode(gaussianBlurRadius, forKey: .gaussianBlurRadius)
+        try container.encode(vignetteAdjustment, forKey: .vignetteAdjustment)
+        try container.encode(bloomAdjustment, forKey: .bloomAdjustment)
+        try container.encode(grainAdjustment, forKey: .grainAdjustment)
+        try container.encode(fadeAdjustment, forKey: .fadeAdjustment)
+        try container.encode(chromaticAberrationAdjustment, forKey: .chromaticAberrationAdjustment)
         try container.encode(toneCurveData, forKey: .toneCurveData)
         try container.encode(backgroundBlurRadius, forKey: .backgroundBlurRadius)
         try container.encodeIfPresent(backgroundBlurMaskData, forKey: .backgroundBlurMaskData)
@@ -454,6 +475,11 @@ class ImageElement: LogoElement {
         hueAdjustment = try container.decode(CGFloat.self, forKey: .hueAdjustment)
         sharpnessAdjustment = try container.decode(CGFloat.self, forKey: .sharpnessAdjustment)
         gaussianBlurRadius = try container.decode(CGFloat.self, forKey: .gaussianBlurRadius)
+        vignetteAdjustment = try container.decodeIfPresent(CGFloat.self, forKey: .vignetteAdjustment) ?? 0.0
+        bloomAdjustment = try container.decodeIfPresent(CGFloat.self, forKey: .bloomAdjustment) ?? 0.0
+        grainAdjustment = try container.decodeIfPresent(CGFloat.self, forKey: .grainAdjustment) ?? 0.0
+        fadeAdjustment = try container.decodeIfPresent(CGFloat.self, forKey: .fadeAdjustment) ?? 0.0
+        chromaticAberrationAdjustment = try container.decodeIfPresent(CGFloat.self, forKey: .chromaticAberrationAdjustment) ?? 0.0
         toneCurveData = try container.decodeIfPresent(ToneCurveData.self, forKey: .toneCurveData) ?? ToneCurveData()
         backgroundBlurRadius = try container.decodeIfPresent(CGFloat.self, forKey: .backgroundBlurRadius) ?? 0.0
         backgroundBlurMaskData = try container.decodeIfPresent(Data.self, forKey: .backgroundBlurMaskData)
@@ -649,6 +675,11 @@ class ImageElement: LogoElement {
         hueAdjustment = 0.0
         sharpnessAdjustment = 0.0
         gaussianBlurRadius = 0.0
+        vignetteAdjustment = 0.0
+        bloomAdjustment = 0.0
+        grainAdjustment = 0.0
+        fadeAdjustment = 0.0
+        chromaticAberrationAdjustment = 0.0
         backgroundBlurRadius = 0.0
         backgroundBlurMaskData = nil
         toneCurveData = ToneCurveData()
@@ -863,6 +894,11 @@ class ImageElement: LogoElement {
         let effectiveHue = (recipe?.hue ?? 0.0) + hueAdjustment
         let effectiveSharpness = (recipe?.sharpness ?? 0.0) + sharpnessAdjustment
         let effectiveBlur = (recipe?.gaussianBlur ?? 0.0) + gaussianBlurRadius
+        let effectiveVignette = vignetteAdjustment
+        let effectiveBloom = bloomAdjustment
+        let effectiveGrain = grainAdjustment
+        let effectiveFade = fadeAdjustment
+        let effectiveChromaticAberration = chromaticAberrationAdjustment
 
         // ティント: filter が設定されていれば filter 側を使用
         let effectiveTintColor: UIColor?
@@ -889,6 +925,11 @@ class ImageElement: LogoElement {
             hue: effectiveHue,
             sharpness: effectiveSharpness,
             gaussianBlurRadius: effectiveBlur,
+            vignetteIntensity: effectiveVignette,
+            bloomIntensity: effectiveBloom,
+            grainIntensity: effectiveGrain,
+            fadeIntensity: effectiveFade,
+            chromaticAberrationIntensity: effectiveChromaticAberration,
             tintColor: effectiveTintColor,
             tintIntensity: effectiveTintIntensity,
             backgroundBlurRadius: backgroundBlurRadius,
@@ -949,6 +990,11 @@ class ImageElement: LogoElement {
         copy.hueAdjustment = hueAdjustment
         copy.sharpnessAdjustment = sharpnessAdjustment
         copy.gaussianBlurRadius = gaussianBlurRadius
+        copy.vignetteAdjustment = vignetteAdjustment
+        copy.bloomAdjustment = bloomAdjustment
+        copy.grainAdjustment = grainAdjustment
+        copy.fadeAdjustment = fadeAdjustment
+        copy.chromaticAberrationAdjustment = chromaticAberrationAdjustment
         copy.backgroundBlurRadius = backgroundBlurRadius
         copy.backgroundBlurMaskData = backgroundBlurMaskData
         copy.toneCurveData = toneCurveData

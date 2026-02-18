@@ -55,6 +55,16 @@ struct ImageFilterParams {
     let sharpness: CGFloat
     /// ガウシアンブラー半径
     let gaussianBlurRadius: CGFloat
+    /// ビネット強度
+    let vignetteIntensity: CGFloat
+    /// ブルーム強度
+    let bloomIntensity: CGFloat
+    /// グレイン強度
+    let grainIntensity: CGFloat
+    /// フェード強度
+    let fadeIntensity: CGFloat
+    /// 色収差強度
+    let chromaticAberrationIntensity: CGFloat
     /// ティントカラー
     let tintColor: UIColor?
     /// ティント強度
@@ -79,6 +89,11 @@ struct ImageFilterParams {
         hue: CGFloat,
         sharpness: CGFloat,
         gaussianBlurRadius: CGFloat,
+        vignetteIntensity: CGFloat = 0.0,
+        bloomIntensity: CGFloat = 0.0,
+        grainIntensity: CGFloat = 0.0,
+        fadeIntensity: CGFloat = 0.0,
+        chromaticAberrationIntensity: CGFloat = 0.0,
         tintColor: UIColor?,
         tintIntensity: CGFloat,
         backgroundBlurRadius: CGFloat = 0.0,
@@ -97,6 +112,11 @@ struct ImageFilterParams {
         self.hue = hue
         self.sharpness = sharpness
         self.gaussianBlurRadius = gaussianBlurRadius
+        self.vignetteIntensity = vignetteIntensity
+        self.bloomIntensity = bloomIntensity
+        self.grainIntensity = grainIntensity
+        self.fadeIntensity = fadeIntensity
+        self.chromaticAberrationIntensity = chromaticAberrationIntensity
         self.tintColor = tintColor
         self.tintIntensity = tintIntensity
         self.backgroundBlurRadius = backgroundBlurRadius

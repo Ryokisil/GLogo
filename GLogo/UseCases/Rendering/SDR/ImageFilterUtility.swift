@@ -429,6 +429,189 @@ class ImageFilterUtility {
         return blurredImage.cropped(to: originalExtent)
     }
 
+    /// ビネットを適用
+    /// - Parameters:
+    ///   - image: 入力画像
+    ///   - intensity: 強度（0.0...1.0）
+    /// - Returns: 調整後の画像。フィルター生成に失敗した場合は nil
+    static func applyVignette(to image: CIImage, intensity: CGFloat) -> CIImage? {
+        if intensity <= 0 {
+            return image
+        }
+        guard let filter = CIFilter(name: "CIVignette") else { return nil }
+
+        let clampedIntensity = max(0.0, min(1.0, intensity))
+        let radius = max(image.extent.width, image.extent.height) * 0.8
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(clampedIntensity * 2.0, forKey: kCIInputIntensityKey)
+        filter.setValue(radius, forKey: kCIInputRadiusKey)
+        return filter.outputImage
+    }
+
+    /// ブルームを適用
+    /// - Parameters:
+    ///   - image: 入力画像
+    ///   - intensity: 強度（0.0...1.0）
+    /// - Returns: 調整後の画像。フィルター生成に失敗した場合は nil
+    static func applyBloom(to image: CIImage, intensity: CGFloat) -> CIImage? {
+        if intensity <= 0 {
+            return image
+        }
+        guard let filter = CIFilter(name: "CIBloom") else { return nil }
+
+        let clampedIntensity = max(0.0, min(1.0, intensity))
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(clampedIntensity, forKey: kCIInputIntensityKey)
+        filter.setValue(10.0 + clampedIntensity * 20.0, forKey: kCIInputRadiusKey)
+        return filter.outputImage
+    }
+
+    /// グレインを適用
+    /// - Parameters:
+    ///   - image: 入力画像
+    ///   - intensity: 強度（0.0...1.0）
+    /// - Returns: 調整後の画像。フィルター生成に失敗した場合は nil
+    static func applyGrain(to image: CIImage, intensity: CGFloat) -> CIImage? {
+        if intensity <= 0 {
+            return image
+        }
+
+        let clampedIntensity = max(0.0, min(1.0, intensity))
+
+        guard let noiseFilter = CIFilter(name: "CIRandomGenerator"),
+              let monochromeFilter = CIFilter(name: "CIColorControls"),
+              let alphaFilter = CIFilter(name: "CIColorMatrix"),
+              let blendFilter = CIFilter(name: "CIOverlayBlendMode") else {
+            return nil
+        }
+
+        guard let noiseImage = noiseFilter.outputImage?.cropped(to: image.extent) else {
+            return image
+        }
+
+        monochromeFilter.setValue(noiseImage, forKey: kCIInputImageKey)
+        monochromeFilter.setValue(0.0, forKey: kCIInputSaturationKey)
+        monochromeFilter.setValue(0.0, forKey: kCIInputBrightnessKey)
+        monochromeFilter.setValue(1.1, forKey: kCIInputContrastKey)
+        guard let monochromeNoise = monochromeFilter.outputImage else {
+            return image
+        }
+
+        alphaFilter.setValue(monochromeNoise, forKey: kCIInputImageKey)
+        alphaFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 1), forKey: "inputRVector")
+        alphaFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 1), forKey: "inputGVector")
+        alphaFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 1), forKey: "inputBVector")
+        alphaFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: clampedIntensity * 0.25), forKey: "inputAVector")
+        alphaFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputBiasVector")
+        guard let alphaNoise = alphaFilter.outputImage else {
+            return image
+        }
+
+        blendFilter.setValue(alphaNoise, forKey: kCIInputImageKey)
+        blendFilter.setValue(image, forKey: kCIInputBackgroundImageKey)
+        return blendFilter.outputImage
+    }
+
+    /// フェードを適用
+    /// - Parameters:
+    ///   - image: 入力画像
+    ///   - amount: 強度（0.0...1.0）
+    /// - Returns: 調整後の画像。フィルター生成に失敗した場合は nil
+    static func applyFade(to image: CIImage, amount: CGFloat) -> CIImage? {
+        if amount <= 0 {
+            return image
+        }
+        guard let filter = CIFilter(name: "CIColorControls") else { return nil }
+
+        let clampedAmount = max(0.0, min(1.0, amount))
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(1.0 - clampedAmount * 0.2, forKey: kCIInputSaturationKey)
+        filter.setValue(clampedAmount * 0.08, forKey: kCIInputBrightnessKey)
+        filter.setValue(1.0 - clampedAmount * 0.3, forKey: kCIInputContrastKey)
+        return filter.outputImage
+    }
+
+    /// 色収差（Chromatic Aberration）を適用
+    /// - Parameters:
+    ///   - image: 入力画像
+    ///   - intensity: 強度（0.0...1.0）
+    /// - Returns: 調整後の画像。フィルター生成に失敗した場合は nil
+    static func applyChromaticAberration(to image: CIImage, intensity: CGFloat) -> CIImage? {
+        if intensity <= 0 {
+            return image
+        }
+
+        let clampedIntensity = max(0.0, min(1.0, intensity))
+        let extent = image.extent
+        let offset = max(extent.width, extent.height) * (0.0012 + 0.0060 * clampedIntensity)
+
+        guard let redFilter = CIFilter(name: "CIColorMatrix"),
+              let greenFilter = CIFilter(name: "CIColorMatrix"),
+              let blueFilter = CIFilter(name: "CIColorMatrix"),
+              let rgAddFilter = CIFilter(name: "CIAdditionCompositing"),
+              let rgbAddFilter = CIFilter(name: "CIAdditionCompositing"),
+              let blendMaskFilter = CIFilter(name: "CIBlendWithMask"),
+              let radialGradient = CIFilter(name: "CIRadialGradient") else {
+            return nil
+        }
+
+        // Rチャンネル
+        redFilter.setValue(image, forKey: kCIInputImageKey)
+        redFilter.setValue(CIVector(x: 1, y: 0, z: 0, w: 0), forKey: "inputRVector")
+        redFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputGVector")
+        redFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputBVector")
+        redFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 1), forKey: "inputAVector")
+        redFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputBiasVector")
+        guard let redChannel = redFilter.outputImage else { return image }
+        let redShifted = redChannel.transformed(by: CGAffineTransform(translationX: offset, y: offset * 0.25))
+
+        // Gチャンネル
+        greenFilter.setValue(image, forKey: kCIInputImageKey)
+        greenFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputRVector")
+        greenFilter.setValue(CIVector(x: 0, y: 1, z: 0, w: 0), forKey: "inputGVector")
+        greenFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputBVector")
+        greenFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 1), forKey: "inputAVector")
+        greenFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputBiasVector")
+        guard let greenChannel = greenFilter.outputImage else { return image }
+
+        // Bチャンネル
+        blueFilter.setValue(image, forKey: kCIInputImageKey)
+        blueFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputRVector")
+        blueFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputGVector")
+        blueFilter.setValue(CIVector(x: 0, y: 0, z: 1, w: 0), forKey: "inputBVector")
+        blueFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 1), forKey: "inputAVector")
+        blueFilter.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputBiasVector")
+        guard let blueChannel = blueFilter.outputImage else { return image }
+        let blueShifted = blueChannel.transformed(by: CGAffineTransform(translationX: -offset, y: -offset * 0.25))
+
+        // RGB再合成
+        rgAddFilter.setValue(redShifted, forKey: kCIInputImageKey)
+        rgAddFilter.setValue(greenChannel, forKey: kCIInputBackgroundImageKey)
+        guard let rgImage = rgAddFilter.outputImage else { return image }
+
+        rgbAddFilter.setValue(blueShifted, forKey: kCIInputImageKey)
+        rgbAddFilter.setValue(rgImage, forKey: kCIInputBackgroundImageKey)
+        guard let shiftedComposite = rgbAddFilter.outputImage?.cropped(to: extent) else { return image }
+
+        // 画面中央は弱く、周辺で強く効かせる
+        let center = CIVector(x: extent.midX, y: extent.midY)
+        let radius0 = min(extent.width, extent.height) * 0.18
+        let radius1 = min(extent.width, extent.height) * 0.70
+        radialGradient.setValue(center, forKey: "inputCenter")
+        radialGradient.setValue(radius0, forKey: "inputRadius0")
+        radialGradient.setValue(radius1, forKey: "inputRadius1")
+        radialGradient.setValue(CIColor(red: 0, green: 0, blue: 0, alpha: 1), forKey: "inputColor0")
+        radialGradient.setValue(CIColor(red: 1, green: 1, blue: 1, alpha: 1), forKey: "inputColor1")
+        guard let mask = radialGradient.outputImage?.cropped(to: extent) else {
+            return shiftedComposite
+        }
+
+        blendMaskFilter.setValue(shiftedComposite, forKey: kCIInputImageKey)
+        blendMaskFilter.setValue(image, forKey: kCIInputBackgroundImageKey)
+        blendMaskFilter.setValue(mask, forKey: kCIInputMaskImageKey)
+        return blendMaskFilter.outputImage?.cropped(to: extent)
+    }
+
     /// 背景ぼかし合成を適用
     /// - Parameters:
     ///   - image: 元画像（CIImage）
