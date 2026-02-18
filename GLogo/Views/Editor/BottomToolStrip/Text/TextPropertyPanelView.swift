@@ -20,7 +20,7 @@ private enum TextPropertyTab: CaseIterable, Identifiable {
     case color
     case align
     case spacing
-    case shadow
+    case effects
 
     var id: String { title }
 
@@ -32,9 +32,16 @@ private enum TextPropertyTab: CaseIterable, Identifiable {
         case .color: return "Color"
         case .align: return "Align"
         case .spacing: return "Spacing"
-        case .shadow: return "Shadow"
+        case .effects: return "Effects"
         }
     }
+}
+
+/// Effects タブ内の編集セクション
+private enum EffectsDetailSection: String, CaseIterable {
+    case shadow = "Shadow"
+    case stroke = "Stroke"
+    case glow = "Glow"
 }
 
 // MARK: - TextPropertyPanelView
@@ -47,6 +54,7 @@ struct TextPropertyPanelView: View {
     @State private var selectedTab: TextPropertyTab = .content
     @State private var isShowingAllFonts = false
     @State private var pendingSheetFontName: String = ""
+    @State private var selectedEffectsSection: EffectsDetailSection = .shadow
 
     // MARK: - Body
 
@@ -159,8 +167,8 @@ struct TextPropertyPanelView: View {
             alignTabContent
         case .spacing:
             spacingTabContent
-        case .shadow:
-            shadowTabContent
+        case .effects:
+            effectsTabContent
         }
     }
 
@@ -584,12 +592,37 @@ struct TextPropertyPanelView: View {
         }
     }
 
-    // MARK: - Shadow タブ
+    // MARK: - Effects タブ
 
-    private var shadowTabContent: some View {
+    private var effectsTabContent: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Picker("Effects", selection: $selectedEffectsSection) {
+                ForEach(EffectsDetailSection.allCases, id: \.self) { section in
+                    Text(section.rawValue).tag(section)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            switch selectedEffectsSection {
+            case .shadow:
+                shadowDetailSection
+            case .stroke:
+                strokeDetailSection
+            case .glow:
+                glowDetailSection
+            }
+        }
+    }
+
+    // MARK: - Shadow Detail
+
+    private var shadowDetailSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
             if let shadowEffect = findShadowEffect() {
-                // シャドウ色
+                Text("Shadow")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(.secondary)
+
                 ColorPicker(
                     "Color",
                     selection: Binding(
@@ -607,87 +640,162 @@ struct TextPropertyPanelView: View {
                 )
                 .font(.subheadline)
 
-                // ぼかしスライダー
-                sliderRow(
-                    label: "Blur",
-                    value: Binding(
-                        get: { shadowEffect.blurRadius },
-                        set: { newValue in
-                            guard let index = findShadowEffectIndex() else { return }
-                            viewModel.updateShadowEffect(
-                                atIndex: index,
-                                color: shadowEffect.color,
-                                offset: shadowEffect.offset,
-                                blurRadius: newValue
-                            )
-                        }
-                    ),
-                    range: 0...20,
-                    step: 0.5,
-                    format: "%.1f"
-                )
+                sliderRow(label: "Blur", value: Binding(
+                    get: { shadowEffect.blurRadius },
+                    set: { newValue in
+                        guard let index = findShadowEffectIndex() else { return }
+                        viewModel.updateShadowEffect(
+                            atIndex: index, color: shadowEffect.color,
+                            offset: shadowEffect.offset, blurRadius: newValue
+                        )
+                    }
+                ), range: 0...20, step: 0.5, format: "%.1f")
 
-                // Xオフセットスライダー
-                sliderRow(
-                    label: "X Offset",
-                    value: Binding(
-                        get: { shadowEffect.offset.width },
-                        set: { newValue in
-                            guard let index = findShadowEffectIndex() else { return }
-                            viewModel.updateShadowEffect(
-                                atIndex: index,
-                                color: shadowEffect.color,
-                                offset: CGSize(width: newValue, height: shadowEffect.offset.height),
-                                blurRadius: shadowEffect.blurRadius
-                            )
-                        }
-                    ),
-                    range: -20...20,
-                    step: 0.5,
-                    format: "%.1f"
-                )
+                sliderRow(label: "X Offset", value: Binding(
+                    get: { shadowEffect.offset.width },
+                    set: { newValue in
+                        guard let index = findShadowEffectIndex() else { return }
+                        viewModel.updateShadowEffect(
+                            atIndex: index, color: shadowEffect.color,
+                            offset: CGSize(width: newValue, height: shadowEffect.offset.height),
+                            blurRadius: shadowEffect.blurRadius
+                        )
+                    }
+                ), range: -20...20, step: 0.5, format: "%.1f")
 
-                // Yオフセットスライダー
-                sliderRow(
-                    label: "Y Offset",
-                    value: Binding(
-                        get: { shadowEffect.offset.height },
-                        set: { newValue in
-                            guard let index = findShadowEffectIndex() else { return }
-                            viewModel.updateShadowEffect(
-                                atIndex: index,
-                                color: shadowEffect.color,
-                                offset: CGSize(width: shadowEffect.offset.width, height: newValue),
-                                blurRadius: shadowEffect.blurRadius
-                            )
-                        }
-                    ),
-                    range: -20...20,
-                    step: 0.5,
-                    format: "%.1f"
-                )
+                sliderRow(label: "Y Offset", value: Binding(
+                    get: { shadowEffect.offset.height },
+                    set: { newValue in
+                        guard let index = findShadowEffectIndex() else { return }
+                        viewModel.updateShadowEffect(
+                            atIndex: index, color: shadowEffect.color,
+                            offset: CGSize(width: shadowEffect.offset.width, height: newValue),
+                            blurRadius: shadowEffect.blurRadius
+                        )
+                    }
+                ), range: -20...20, step: 0.5, format: "%.1f")
+
+                // 削除ボタン
+                Button(role: .destructive) {
+                    if let index = findShadowEffectIndex() {
+                        viewModel.removeTextEffect(atIndex: index)
+                    }
+                } label: {
+                    Label("Remove Shadow", systemImage: "trash")
+                        .font(.caption)
+                }
             } else {
-                // 初期表示時にまだ反映されていない場合のフォールバック
-                Text("シャドウを準備中...")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                Button {
+                    viewModel.addTextEffect(ShadowEffect())
+                } label: {
+                    Label("Add Shadow", systemImage: "plus.circle")
+                        .font(.subheadline)
+                }
             }
-        }
-        .onAppear {
-            ensureShadowEffectReady()
         }
     }
 
-    /// Shadowタブ表示時にシャドウ効果を用意し、有効状態を維持
-    private func ensureShadowEffectReady() {
-        if findShadowEffectIndex() == nil {
-            viewModel.addTextEffect(ShadowEffect())
-            return
+    // MARK: - Stroke Detail
+
+    private var strokeDetailSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let strokeEffect = findStrokeEffect() {
+                Text("Stroke")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(.secondary)
+
+                ColorPicker(
+                    "Color",
+                    selection: Binding(
+                        get: { Color(strokeEffect.color) },
+                        set: { newColor in
+                            guard let index = findStrokeEffectIndex() else { return }
+                            viewModel.updateStrokeEffect(
+                                atIndex: index, color: UIColor(newColor), width: strokeEffect.width
+                            )
+                        }
+                    )
+                )
+                .font(.subheadline)
+
+                sliderRow(label: "Width", value: Binding(
+                    get: { strokeEffect.width },
+                    set: { newValue in
+                        guard let index = findStrokeEffectIndex() else { return }
+                        viewModel.updateStrokeEffect(
+                            atIndex: index, color: strokeEffect.color, width: newValue
+                        )
+                    }
+                ), range: 0...20, step: 0.5, format: "%.1f")
+
+                Button(role: .destructive) {
+                    if let index = findStrokeEffectIndex() {
+                        viewModel.removeTextEffect(atIndex: index)
+                    }
+                } label: {
+                    Label("Remove Stroke", systemImage: "trash")
+                        .font(.caption)
+                }
+            } else {
+                Button {
+                    viewModel.addTextEffect(StrokeEffect())
+                } label: {
+                    Label("Add Stroke", systemImage: "plus.circle")
+                        .font(.subheadline)
+                }
+            }
         }
-        if let index = findShadowEffectIndex(),
-           let effect = findShadowEffect(),
-           !effect.isEnabled {
-            viewModel.updateTextEffect(atIndex: index, isEnabled: true)
+    }
+
+    // MARK: - Glow Detail
+
+    private var glowDetailSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let glowEffect = findGlowEffect() {
+                Text("Glow")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(.secondary)
+
+                ColorPicker(
+                    "Color",
+                    selection: Binding(
+                        get: { Color(glowEffect.color) },
+                        set: { newColor in
+                            guard let index = findGlowEffectIndex() else { return }
+                            viewModel.updateGlowEffect(
+                                atIndex: index, color: UIColor(newColor), radius: glowEffect.radius
+                            )
+                        }
+                    )
+                )
+                .font(.subheadline)
+
+                sliderRow(label: "Radius", value: Binding(
+                    get: { glowEffect.radius },
+                    set: { newValue in
+                        guard let index = findGlowEffectIndex() else { return }
+                        viewModel.updateGlowEffect(
+                            atIndex: index, color: glowEffect.color, radius: newValue
+                        )
+                    }
+                ), range: 0...30, step: 0.5, format: "%.1f")
+
+                Button(role: .destructive) {
+                    if let index = findGlowEffectIndex() {
+                        viewModel.removeTextEffect(atIndex: index)
+                    }
+                } label: {
+                    Label("Remove Glow", systemImage: "trash")
+                        .font(.caption)
+                }
+            } else {
+                Button {
+                    viewModel.addTextEffect(GlowEffect())
+                } label: {
+                    Label("Add Glow", systemImage: "plus.circle")
+                        .font(.subheadline)
+                }
+            }
         }
     }
 
@@ -732,16 +840,42 @@ struct TextPropertyPanelView: View {
         viewModel.textElement?.effects.firstIndex(where: { $0 is ShadowEffect })
     }
 
+    /// Stroke エフェクトを取得
+    ///
+    /// - Parameters: なし
+    /// - Returns: Stroke エフェクト。存在しない場合は nil
+    private func findStrokeEffect() -> StrokeEffect? {
+        viewModel.textElement?.effects.compactMap { $0 as? StrokeEffect }.first
+    }
+
+    /// Stroke エフェクトのインデックスを取得
+    ///
+    /// - Parameters: なし
+    /// - Returns: Stroke エフェクトのインデックス。存在しない場合は nil
+    private func findStrokeEffectIndex() -> Int? {
+        viewModel.textElement?.effects.firstIndex(where: { $0 is StrokeEffect })
+    }
+
+    /// 最初のGlowEffectを取得
+    private func findGlowEffect() -> GlowEffect? {
+        viewModel.textElement?.effects.compactMap { $0 as? GlowEffect }.first
+    }
+
+    /// 最初のGlowEffectのインデックスを取得
+    private func findGlowEffectIndex() -> Int? {
+        viewModel.textElement?.effects.firstIndex(where: { $0 is GlowEffect })
+    }
+
     /// 現在のタブの値をリセット
     private func resetCurrentTab() {
-        guard let textElement = viewModel.textElement else { return }
+        guard viewModel.textElement != nil else { return }
         switch selectedTab {
         case .content:
             viewModel.updateText("Text")
         case .font:
-            viewModel.updateFont(name: "HelveticaNeue", size: textElement.fontSize)
+            viewModel.updateFont(name: "HelveticaNeue", size: viewModel.textElement?.fontSize ?? 36)
         case .size:
-            viewModel.updateFont(name: textElement.fontName, size: 36.0)
+            viewModel.updateFont(name: viewModel.textElement?.fontName ?? "HelveticaNeue", size: 36.0)
         case .color:
             viewModel.updateTextColor(.white)
         case .align:
@@ -749,15 +883,34 @@ struct TextPropertyPanelView: View {
         case .spacing:
             viewModel.updateLineSpacing(1.0)
             viewModel.updateLetterSpacing(0.0)
-        case .shadow:
-            if let index = findShadowEffectIndex() {
-                viewModel.updateShadowEffect(
-                    atIndex: index,
-                    color: .black,
-                    offset: CGSize(width: 2, height: 2),
-                    blurRadius: 3.0
-                )
-                viewModel.updateTextEffect(atIndex: index, isEnabled: true)
+        case .effects:
+            switch selectedEffectsSection {
+            case .shadow:
+                if let index = findShadowEffectIndex(), let effect = findShadowEffect() {
+                    viewModel.updateShadowEffect(
+                        atIndex: index,
+                        color: .black,
+                        offset: CGSize(width: 2, height: 2),
+                        blurRadius: 3.0
+                    )
+                    if !effect.isEnabled {
+                        viewModel.updateTextEffect(atIndex: index, isEnabled: true)
+                    }
+                }
+            case .stroke:
+                if let index = findStrokeEffectIndex(), let effect = findStrokeEffect() {
+                    viewModel.updateStrokeEffect(atIndex: index, color: .black, width: 2.0)
+                    if !effect.isEnabled {
+                        viewModel.updateTextEffect(atIndex: index, isEnabled: true)
+                    }
+                }
+            case .glow:
+                if let index = findGlowEffectIndex(), let effect = findGlowEffect() {
+                    viewModel.updateGlowEffect(atIndex: index, color: .white, radius: 5.0)
+                    if !effect.isEnabled {
+                        viewModel.updateTextEffect(atIndex: index, isEnabled: true)
+                    }
+                }
             }
         }
     }
