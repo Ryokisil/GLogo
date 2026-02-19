@@ -44,7 +44,7 @@ final class HDRImagePreviewService: ImagePreviewing {
     ) -> UIImage? {
         guard let preview = baseImage else { return nil }
 
-        let previewKey = makeCacheKey(params: params)
+        let previewKey = makeCacheKey(baseImage: preview, params: params)
         if let cached = previewCache.image(for: previewKey) {
             return cached
         }
@@ -165,8 +165,8 @@ final class HDRImagePreviewService: ImagePreviewing {
     // MARK: - Helpers
 
     /// キャッシュキー（トーンカーブ＋調整パラメータ）を生成
-    private func makeCacheKey(params: ImageFilterParams) -> Int {
-        toneCurveHash(params.toneCurveData) ^ adjustmentsHash(params)
+    private func makeCacheKey(baseImage: UIImage, params: ImageFilterParams) -> Int {
+        toneCurveHash(params.toneCurveData) ^ adjustmentsHash(params) ^ baseImageHash(baseImage)
     }
 
     /// トーンカーブ用ハッシュ
@@ -204,6 +204,24 @@ final class HDRImagePreviewService: ImagePreviewing {
         hasher.combine(params.tintIntensity)
         hasher.combine(params.backgroundBlurRadius)
         hasher.combine(params.backgroundBlurMaskData)
+        return hasher.finalize()
+    }
+
+    /// ベース画像の識別ハッシュ（誤キャッシュ返却防止）
+    /// - Parameter image: キャッシュキーに含めるベース画像
+    /// - Returns: 画像識別用のハッシュ値
+    private func baseImageHash(_ image: UIImage) -> Int {
+        var hasher = Hasher()
+        if let cgImage = image.cgImage {
+            hasher.combine(Int(bitPattern: Unmanaged.passUnretained(cgImage).toOpaque()))
+            hasher.combine(cgImage.width)
+            hasher.combine(cgImage.height)
+            hasher.combine(cgImage.bytesPerRow)
+        } else {
+            hasher.combine(image.size.width)
+            hasher.combine(image.size.height)
+            hasher.combine(image.scale)
+        }
         return hasher.finalize()
     }
 
