@@ -30,6 +30,8 @@ enum FilterCatalog {
         dramatic,
         goldenHour,
         tealOrange,
+        nightDrive,
+        sunsetCinema,
         film,
         vintageWarm,
         vintageInstant,
@@ -39,6 +41,8 @@ enum FilterCatalog {
         subtleFade,
         bwHighContrast,
         monoSoft,
+        monoMatte,
+        monoPunch,
         noir
     ]
 
@@ -176,6 +180,44 @@ enum FilterCatalog {
             tintIntensity: 0.10
         ),
         previewColor: UIColor(hex: "#DB8B46") ?? UIColor.systemTeal
+    )
+
+    /// Night Drive: 寒色寄りで暗部を締めた夜景シネマトーン
+    static let nightDrive = FilterPreset(
+        id: "night_drive",
+        name: "Night Drive",
+        category: .cinematic,
+        recipe: FilterRecipe(
+            saturation: 0.96,
+            brightness: -0.04,
+            contrast: 1.20,
+            highlights: -0.18,
+            shadows: -0.04,
+            hue: -4.0,
+            sharpness: 0.14,
+            tintColorHex: "#5D7DAE",
+            tintIntensity: 0.12
+        ),
+        previewColor: UIColor(hex: "#5D7DAE") ?? UIColor.systemBlue
+    )
+
+    /// Sunset Cinema: 暖色の光感を強調する夕景シネマトーン
+    static let sunsetCinema = FilterPreset(
+        id: "sunset_cinema",
+        name: "Sunset Cinema",
+        category: .cinematic,
+        recipe: FilterRecipe(
+            saturation: 1.08,
+            brightness: 0.02,
+            contrast: 1.08,
+            highlights: 0.06,
+            shadows: 0.10,
+            hue: 3.0,
+            sharpness: 0.10,
+            tintColorHex: "#D77A46",
+            tintIntensity: 0.14
+        ),
+        previewColor: UIColor(hex: "#D77A46") ?? UIColor.systemOrange
     )
 
     /// Film: 軽い退色と粒状感のあるフィルム調
@@ -345,6 +387,38 @@ enum FilterCatalog {
             sharpness: 0.06
         ),
         previewColor: UIColor.systemGray3
+    )
+
+    /// Mono Matte: 黒を少し持ち上げたマット調モノクロ
+    static let monoMatte = FilterPreset(
+        id: "mono_matte",
+        name: "Mono Matte",
+        category: .mono,
+        recipe: FilterRecipe(
+            saturation: 0.0,
+            brightness: 0.03,
+            contrast: 0.86,
+            highlights: 0.06,
+            shadows: 0.18,
+            sharpness: 0.04
+        ),
+        previewColor: UIColor.systemGray4
+    )
+
+    /// Mono Punch: 強いコントラストで輪郭を立てるモノクロ
+    static let monoPunch = FilterPreset(
+        id: "mono_punch",
+        name: "Mono Punch",
+        category: .mono,
+        recipe: FilterRecipe(
+            saturation: 0.0,
+            brightness: -0.01,
+            contrast: 1.28,
+            highlights: -0.04,
+            shadows: -0.22,
+            sharpness: 0.18
+        ),
+        previewColor: UIColor.systemGray2
     )
 
     /// Noir: 完全モノクロ コントラスト↑ シャープネス↑

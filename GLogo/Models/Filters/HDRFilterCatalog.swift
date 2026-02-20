@@ -33,10 +33,20 @@ enum HDRFilterCatalog {
         cityNight,
         goldenHour,
         tealOrange,
+        neonNoir,
+        epicLandscape,
         film,
         filmMatte,
+        vintageWarm,
+        fadedMemory,
+        dustyFilm,
+        retroChrome,
         mono,
-        monoContrast
+        monoContrast,
+        monoSoft,
+        monoMatte,
+        silverGrain,
+        graphite
     ]
 
     // MARK: - カテゴリ別取得
@@ -199,6 +209,43 @@ enum HDRFilterCatalog {
         previewColor: UIColor(hex: "#E08840") ?? UIColor.systemTeal
     )
 
+    /// Neon Noir: ネオン光を強調する高コントラストシネマトーン
+    static let neonNoir = FilterPreset(
+        id: "hdr_neon_noir",
+        name: "Neon Noir",
+        category: .cinematic,
+        recipe: FilterRecipe(
+            saturation: 1.18,
+            brightness: -0.05,
+            contrast: 1.34,
+            highlights: -0.24,
+            shadows: 0.04,
+            hue: 9.0,
+            sharpness: 0.24,
+            tintColorHex: "#6A59C8",
+            tintIntensity: 0.12
+        ),
+        previewColor: UIColor(hex: "#6A59C8") ?? UIColor.systemIndigo
+    )
+
+    /// Epic Landscape: 空と地表の立体感を強める風景向けトーン
+    static let epicLandscape = FilterPreset(
+        id: "hdr_epic_landscape",
+        name: "Epic Landscape",
+        category: .cinematic,
+        recipe: FilterRecipe(
+            saturation: 1.14,
+            brightness: 0.01,
+            contrast: 1.20,
+            highlights: -0.14,
+            shadows: 0.18,
+            sharpness: 0.20,
+            tintColorHex: "#4D87A9",
+            tintIntensity: 0.08
+        ),
+        previewColor: UIColor(hex: "#4D87A9") ?? UIColor.systemCyan
+    )
+
     /// Film HDR: フィルム調ミュートHDR
     static let film = FilterPreset(
         id: "hdr_film",
@@ -235,6 +282,78 @@ enum HDRFilterCatalog {
         previewColor: UIColor(hex: "#A98867") ?? UIColor.brown
     )
 
+    /// Vintage Warm: 暖色寄りに柔らかくまとめたHDRヴィンテージ
+    static let vintageWarm = FilterPreset(
+        id: "hdr_vintage_warm",
+        name: "Vintage Warm",
+        category: .vintage,
+        recipe: FilterRecipe(
+            saturation: 0.92,
+            brightness: 0.02,
+            contrast: 0.92,
+            highlights: -0.20,
+            shadows: 0.24,
+            tintColorHex: "#C89A64",
+            tintIntensity: 0.14
+        ),
+        previewColor: UIColor(hex: "#C89A64") ?? UIColor.systemOrange
+    )
+
+    /// Faded Memory: 退色感を強めた懐古調HDR
+    static let fadedMemory = FilterPreset(
+        id: "hdr_faded_memory",
+        name: "Faded Memory",
+        category: .vintage,
+        recipe: FilterRecipe(
+            saturation: 0.80,
+            brightness: 0.03,
+            contrast: 0.88,
+            highlights: -0.16,
+            shadows: 0.28,
+            gaussianBlur: 0.45,
+            tintColorHex: "#BAA07E",
+            tintIntensity: 0.12
+        ),
+        previewColor: UIColor(hex: "#BAA07E") ?? UIColor.systemBrown
+    )
+
+    /// Dusty Film: 粒感を活かしたドライなフィルム調HDR
+    static let dustyFilm = FilterPreset(
+        id: "hdr_dusty_film",
+        name: "Dusty Film",
+        category: .vintage,
+        recipe: FilterRecipe(
+            saturation: 0.86,
+            brightness: -0.01,
+            contrast: 0.94,
+            highlights: -0.24,
+            shadows: 0.20,
+            gaussianBlur: 0.55,
+            tintColorHex: "#9E8A74",
+            tintIntensity: 0.10
+        ),
+        previewColor: UIColor(hex: "#9E8A74") ?? UIColor.brown
+    )
+
+    /// Retro Chrome: 寒色寄りメタリックなレトロ調HDR
+    static let retroChrome = FilterPreset(
+        id: "hdr_retro_chrome",
+        name: "Retro Chrome",
+        category: .vintage,
+        recipe: FilterRecipe(
+            saturation: 0.88,
+            brightness: -0.02,
+            contrast: 1.02,
+            highlights: -0.22,
+            shadows: 0.14,
+            hue: 6.0,
+            sharpness: 0.14,
+            tintColorHex: "#7E8FA4",
+            tintIntensity: 0.10
+        ),
+        previewColor: UIColor(hex: "#7E8FA4") ?? UIColor.systemGray
+    )
+
     /// HDR Mono: ディテール豊富なモノクロHDR
     static let mono = FilterPreset(
         id: "hdr_mono",
@@ -264,5 +383,69 @@ enum HDRFilterCatalog {
             sharpness: 0.24
         ),
         previewColor: UIColor.systemGray
+    )
+
+    /// Mono Soft: 明部階調を残した柔らかいHDRモノクロ
+    static let monoSoft = FilterPreset(
+        id: "hdr_mono_soft",
+        name: "Mono Soft",
+        category: .mono,
+        recipe: FilterRecipe(
+            saturation: 0.0,
+            brightness: 0.03,
+            contrast: 0.92,
+            highlights: 0.06,
+            shadows: 0.18,
+            sharpness: 0.10
+        ),
+        previewColor: UIColor.systemGray4
+    )
+
+    /// Mono Matte: 黒を少し浮かせたマット調モノクロ
+    static let monoMatte = FilterPreset(
+        id: "hdr_mono_matte",
+        name: "Mono Matte",
+        category: .mono,
+        recipe: FilterRecipe(
+            saturation: 0.0,
+            brightness: 0.02,
+            contrast: 0.86,
+            highlights: 0.04,
+            shadows: 0.24,
+            sharpness: 0.08
+        ),
+        previewColor: UIColor.systemGray3
+    )
+
+    /// Silver Grain: 銀塩写真のような硬質モノクロ
+    static let silverGrain = FilterPreset(
+        id: "hdr_silver_grain",
+        name: "Silver Grain",
+        category: .mono,
+        recipe: FilterRecipe(
+            saturation: 0.0,
+            brightness: -0.01,
+            contrast: 1.24,
+            highlights: -0.10,
+            shadows: 0.10,
+            sharpness: 0.22
+        ),
+        previewColor: UIColor.systemGray2
+    )
+
+    /// Graphite: 暗部を締めた重厚モノクロ
+    static let graphite = FilterPreset(
+        id: "hdr_graphite",
+        name: "Graphite",
+        category: .mono,
+        recipe: FilterRecipe(
+            saturation: 0.0,
+            brightness: -0.04,
+            contrast: 1.30,
+            highlights: -0.18,
+            shadows: -0.10,
+            sharpness: 0.20
+        ),
+        previewColor: UIColor.darkGray
     )
 }
