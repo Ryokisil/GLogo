@@ -304,6 +304,28 @@ class ElementViewModel: ObservableObject {
         updateElement(to: textElement)
     }
 
+    /// ストローク効果の更新
+    func updateStrokeEffect(atIndex index: Int, color: UIColor, width: CGFloat) {
+        guard let textElement = textElement, index < textElement.effects.count,
+              let strokeEffect = textElement.effects[index] as? StrokeEffect else { return }
+
+        strokeEffect.color = color
+        strokeEffect.width = width
+
+        updateElement(to: textElement)
+    }
+
+    /// グロー効果の更新
+    func updateGlowEffect(atIndex index: Int, color: UIColor, radius: CGFloat) {
+        guard let textElement = textElement, index < textElement.effects.count,
+              let glowEffect = textElement.effects[index] as? GlowEffect else { return }
+
+        glowEffect.color = color
+        glowEffect.radius = radius
+
+        updateElement(to: textElement)
+    }
+
     // MARK: - 図形要素の更新
 
     /// 図形の種類の更新

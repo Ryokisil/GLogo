@@ -39,22 +39,35 @@ enum TextEffectType: String, Codable {
 class TextEffect: Codable {
     /// 効果の種類
     let type: TextEffectType
-    
+
     /// 効果が有効かどうか
     var isEnabled: Bool = true
-    
+
     /// エンコード用のコーディングキー
     enum CodingKeys: String, CodingKey {
         case type, isEnabled
     }
-    
+
     init(type: TextEffectType) {
         self.type = type
     }
-    
+
     /// 効果を適用するメソッド（サブクラスでオーバーライド）
     func apply(to attributes: inout [NSAttributedString.Key: Any]) {
         // サブクラスで実装
+    }
+
+    /// ディープコピーを作成（サブクラスでオーバーライド）
+    func deepCopy() -> TextEffect {
+        let copy = TextEffect(type: type)
+        copy.isEnabled = isEnabled
+        return copy
+    }
+
+    /// スケール済みコピーを返す（サブクラスでオーバーライド）
+    func scaled(by scale: CGFloat) -> TextEffect {
+        assertionFailure("未対応の TextEffect サブクラス: \(Swift.type(of: self))")
+        return deepCopy()
     }
 }
 
@@ -120,6 +133,22 @@ class ShadowEffect: TextEffect {
             attributes[.shadow] = shadow
         }
     }
+
+    override func deepCopy() -> TextEffect {
+        let copy = ShadowEffect(color: color, offset: offset, blurRadius: blurRadius)
+        copy.isEnabled = isEnabled
+        return copy
+    }
+
+    override func scaled(by scale: CGFloat) -> TextEffect {
+        let copy = ShadowEffect(
+            color: color,
+            offset: CGSize(width: offset.width * scale, height: offset.height * scale),
+            blurRadius: blurRadius * scale
+        )
+        copy.isEnabled = isEnabled
+        return copy
+    }
 }
 
 /// テキストの外枠線エフェクト
@@ -169,12 +198,118 @@ class StrokeEffect: TextEffect {
         if isEnabled {
             attributes[.strokeColor] = color
             attributes[.strokeWidth] = width
-            
+
             // 注意: NSAttributedString.Key.strokeWidthの負の値は塗りつぶしありの外枠線
             // 正の値は塗りつぶしなしの外枠線になります
             // 既存のテキスト色を保持したい場合は負の値を使用
             attributes[.strokeWidth] = -width
         }
+    }
+
+    override func deepCopy() -> TextEffect {
+        let copy = StrokeEffect(color: color, width: width)
+        copy.isEnabled = isEnabled
+        return copy
+    }
+
+    override func scaled(by scale: CGFloat) -> TextEffect {
+        let copy = StrokeEffect(color: color, width: width * scale)
+        copy.isEnabled = isEnabled
+        return copy
+    }
+}
+
+/// グロー効果
+class GlowEffect: TextEffect {
+    /// グローの色
+    var color: UIColor = .white
+
+    /// グローの半径
+    var radius: CGFloat = 5.0
+
+    /// エンコード用のコーディングキー
+    private enum GlowCodingKeys: String, CodingKey {
+        case colorData, radius
+    }
+
+    init(color: UIColor = .white, radius: CGFloat = 5.0) {
+        super.init(type: .glow)
+        self.color = color
+        self.radius = radius
+    }
+
+    required init(from decoder: Decoder) throws {
+        _ = try decoder.container(keyedBy: CodingKeys.self)
+        try super.init(from: decoder)
+
+        let glowContainer = try decoder.container(keyedBy: GlowCodingKeys.self)
+        if let colorData = try? glowContainer.decode(Data.self, forKey: .colorData),
+           let decodedColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: colorData) {
+            color = decodedColor
+        }
+
+        radius = try glowContainer.decode(CGFloat.self, forKey: .radius)
+    }
+
+    override func encode(to encoder: Encoder) throws {
+        try super.encode(to: encoder)
+
+        var glowContainer = encoder.container(keyedBy: GlowCodingKeys.self)
+
+        // UIColorのエンコード
+        let colorData = try NSKeyedArchiver.archivedData(withRootObject: color, requiringSecureCoding: false)
+        try glowContainer.encode(colorData, forKey: .colorData)
+        try glowContainer.encode(radius, forKey: .radius)
+    }
+
+    /// グローはマルチパス描画で直接処理するため apply は no-op
+    override func apply(to attributes: inout [NSAttributedString.Key: Any]) {
+        // マルチパス描画で直接処理
+    }
+
+    override func deepCopy() -> TextEffect {
+        let copy = GlowEffect(color: color, radius: radius)
+        copy.isEnabled = isEnabled
+        return copy
+    }
+
+    override func scaled(by scale: CGFloat) -> TextEffect {
+        let copy = GlowEffect(color: color, radius: radius * scale)
+        copy.isEnabled = isEnabled
+        return copy
+    }
+}
+
+// MARK: - 多態 Codable ラッパー
+
+/// TextEffect のサブクラス情報を保持して Codable ラウンドトリップを実現するラッパー
+struct AnyTextEffect: Codable {
+    let effect: TextEffect
+
+    init(_ effect: TextEffect) {
+        self.effect = effect
+    }
+
+    init(from decoder: Decoder) throws {
+        // "type" フィールドを先読みして対応サブクラスをデコード
+        let typeContainer = try decoder.container(keyedBy: TextEffect.CodingKeys.self)
+        let effectType = try typeContainer.decode(TextEffectType.self, forKey: .type)
+
+        switch effectType {
+        case .shadow:
+            effect = try ShadowEffect(from: decoder)
+        case .stroke:
+            effect = try StrokeEffect(from: decoder)
+        case .glow:
+            effect = try GlowEffect(from: decoder)
+        case .gradient:
+            // 未実装フォールバック
+            effect = try TextEffect(from: decoder)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        try effect.encode(to: encoder)
     }
 }
 
@@ -235,7 +370,8 @@ class TextElement: LogoElement {
         try container.encode(alignment, forKey: .alignment)
         try container.encode(lineSpacing, forKey: .lineSpacing)
         try container.encode(letterSpacing, forKey: .letterSpacing)
-        try container.encode(effects, forKey: .effects)
+        // AnyTextEffect でラップしてサブクラス情報を保持
+        try container.encode(effects.map { AnyTextEffect($0) }, forKey: .effects)
     }
     
     /// カスタムデコーダー
@@ -256,7 +392,9 @@ class TextElement: LogoElement {
         alignment = try container.decode(TextAlignment.self, forKey: .alignment)
         lineSpacing = try container.decode(CGFloat.self, forKey: .lineSpacing)
         letterSpacing = try container.decode(CGFloat.self, forKey: .letterSpacing)
-        effects = try container.decode([TextEffect].self, forKey: .effects)
+        // AnyTextEffect 経由でサブクラス情報を復元（後方互換: キーなし→空配列）
+        let wrappedEffects = try container.decodeIfPresent([AnyTextEffect].self, forKey: .effects) ?? []
+        effects = wrappedEffects.map { $0.effect }
     }
     
     /// 初期化メソッド
@@ -299,62 +437,165 @@ class TextElement: LogoElement {
     }
 
     
-    /// テキストを描画
+    // MARK: - マルチパス描画
+
+    /// テキストをマルチパスで描画（グロー → ストローク群 → 塗り＋シャドウ）
     override func draw(in context: CGContext) {
         guard isVisible else { return }
-        
+
         context.saveGState()
-        
+
         // 透明度の設定
         context.setAlpha(opacity)
-        
+
         // 中心点を計算
         let centerX = position.x + size.width / 2
         let centerY = position.y + size.height / 2
-        
+
         // 変換行列を適用（回転と位置）
         context.translateBy(x: centerX, y: centerY)
         context.rotate(by: rotation)
         context.translateBy(x: -centerX, y: -centerY)
-        
-        // テキストを描画
-        let attrString = attributedString()
+
+        let drawingOptions: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+        let drawRect = calculateDrawRect()
+
+        // パス1: グロー（最背面）
+        for effect in effects where effect.isEnabled {
+            if let glow = effect as? GlowEffect {
+                drawGlowPass(glow, in: drawRect, options: drawingOptions)
+            }
+        }
+
+        // パス2: ストローク群（太→細の順で描画、外縁だけが残る）
+        let enabledStrokes = effects.compactMap { $0.isEnabled ? ($0 as? StrokeEffect) : nil }
+            .sorted { $0.width > $1.width }
+        for stroke in enabledStrokes {
+            drawStrokePass(stroke, in: drawRect, options: drawingOptions)
+        }
+
+        // パス3: テキスト本体＋シャドウ（最前面）
+        drawFillPass(in: drawRect, options: drawingOptions)
+
+        context.restoreGState()
+    }
+
+    /// 垂直中央揃えを考慮した描画矩形を算出
+    private func calculateDrawRect() -> CGRect {
         let rect = CGRect(origin: position, size: size)
-        
-        
-        // NSStringDrawingOptionsで描画方法を明示的に制御
-        let options: NSStringDrawingOptions = [
-            .usesLineFragmentOrigin,    // 行の断片化を使用（複数行対応）
-            .usesFontLeading           // フォントのリーディングを使用
-        ]
-        
-        // boundingRectForDrawingOptionsを使用してテキストサイズを正確に計算
-        let boundingRect = attrString.boundingRect(
+        let measureString = attributedStringForMeasurement()
+        let options: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+        let boundingRect = measureString.boundingRect(
             with: CGSize(width: rect.width, height: CGFloat.greatestFiniteMagnitude),
             options: options,
             context: nil
         )
-        
-        
-        // 描画領域を調整（マージンを追加して切り欠けを防ぐ）
-        var drawRect = rect
-        
-        // テキストサイズがrectより小さい場合のみ中央揃え調整
+
+        let baseRect: CGRect
         if boundingRect.height < rect.height {
             let yOffset = (rect.height - boundingRect.height) / 2
-            drawRect = CGRect(
+            baseRect = CGRect(
                 x: rect.origin.x,
                 y: rect.origin.y + yOffset,
                 width: rect.width,
-                height: max(boundingRect.height + 4, rect.height) // 4pxのマージンを追加
+                height: max(boundingRect.height + 4, rect.height)
             )
+        } else {
+            baseRect = rect
         }
-        
-        
-        // テキストを描画
-        attrString.draw(with: drawRect, options: options, context: nil)
-        
-        context.restoreGState()
+
+        // 編集中の見た目を安定させるため、エフェクト値の変化で描画原点を動かさない
+        return baseRect
+    }
+
+    /// エフェクトなしの計測用属性付き文字列
+    private func attributedStringForMeasurement() -> NSAttributedString {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = alignment.nsTextAlignment
+        paragraphStyle.lineSpacing = lineSpacing
+
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraphStyle
+        ]
+        if letterSpacing != 0 {
+            attributes[.kern] = letterSpacing
+        }
+        return NSAttributedString(string: text, attributes: attributes)
+    }
+
+    /// グローパスを描画
+    private func drawGlowPass(_ glow: GlowEffect, in rect: CGRect, options: NSStringDrawingOptions) {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = alignment.nsTextAlignment
+        paragraphStyle.lineSpacing = lineSpacing
+
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: glow.color,
+            .paragraphStyle: paragraphStyle
+        ]
+        if letterSpacing != 0 {
+            attributes[.kern] = letterSpacing
+        }
+
+        // グローは中心からの発光なのでオフセット0のシャドウで表現
+        let shadow = NSShadow()
+        shadow.shadowColor = glow.color
+        shadow.shadowOffset = .zero
+        shadow.shadowBlurRadius = glow.radius
+        attributes[.shadow] = shadow
+
+        let attrString = NSAttributedString(string: text, attributes: attributes)
+        attrString.draw(with: rect, options: options, context: nil)
+    }
+
+    /// ストロークパスを描画
+    private func drawStrokePass(_ stroke: StrokeEffect, in rect: CGRect, options: NSStringDrawingOptions) {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = alignment.nsTextAlignment
+        paragraphStyle.lineSpacing = lineSpacing
+
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: stroke.color,
+            .paragraphStyle: paragraphStyle,
+            .strokeColor: stroke.color,
+            .strokeWidth: -stroke.width // 負＝塗り＋輪郭
+        ]
+        if letterSpacing != 0 {
+            attributes[.kern] = letterSpacing
+        }
+
+        let attrString = NSAttributedString(string: text, attributes: attributes)
+        attrString.draw(with: rect, options: options, context: nil)
+    }
+
+    /// テキスト本体＋シャドウパスを描画（最前面）
+    private func drawFillPass(in rect: CGRect, options: NSStringDrawingOptions) {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = alignment.nsTextAlignment
+        paragraphStyle.lineSpacing = lineSpacing
+
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraphStyle
+        ]
+        if letterSpacing != 0 {
+            attributes[.kern] = letterSpacing
+        }
+
+        // シャドウ効果を適用
+        for effect in effects where effect.isEnabled {
+            if let shadowEffect = effect as? ShadowEffect {
+                shadowEffect.apply(to: &attributes)
+            }
+        }
+
+        let attrString = NSAttributedString(string: text, attributes: attributes)
+        attrString.draw(with: rect, options: options, context: nil)
     }
     
     /// 要素のコピーを作成
@@ -371,9 +612,8 @@ class TextElement: LogoElement {
         copy.lineSpacing = lineSpacing
         copy.letterSpacing = letterSpacing
         
-        // 効果のコピー（TextEffect は参照型のため現状は浅いコピー）
-        // 将来的に保存処理以外で個別編集する場合は deep copy 化を検討する
-        copy.effects = effects
+        // 効果のディープコピー（参照型のため独立したインスタンスを生成）
+        copy.effects = effects.map { $0.deepCopy() }
         
         return copy
     }

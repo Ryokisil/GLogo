@@ -9,12 +9,16 @@
 
 import SwiftUI
 
+/// AI Toolsパネルで扱うタブ種別です。
 private enum AIToolsTab: CaseIterable, Identifiable {
     case backgroundRemoval
     case backgroundBlur
 
     var id: String { title }
 
+    /// タブに表示するタイトル文字列を返します。
+    /// - Parameters: なし
+    /// - Returns: タブ表示用のタイトル文字列
     var title: String {
         switch self {
         case .backgroundRemoval:
@@ -25,6 +29,7 @@ private enum AIToolsTab: CaseIterable, Identifiable {
     }
 }
 
+/// エディタ下部のAI Toolsパネルを表示するビューです。
 struct AIToolsPanelView: View {
     @ObservedObject var viewModel: ElementViewModel
     let onClose: () -> Void
@@ -246,27 +251,35 @@ struct AIToolsPanelView: View {
         }
     }
 
+    /// 現在選択中のタブがリセット可能かどうかを判定します。
+    /// - Parameters: なし
+    /// - Returns: リセット可能な場合は`true`
     private func canResetCurrentTab() -> Bool {
         guard let imageElement = viewModel.imageElement else { return false }
         switch selectedTab {
         case .backgroundRemoval:
+            // 背景除去タブは即時アクションのみで、保持状態を持たないためリセット対象はありません。
             return false
         case .backgroundBlur:
             return imageElement.backgroundBlurRadius != 0 || imageElement.backgroundBlurMaskData != nil
         }
     }
 
+    /// 現在選択中のタブ状態を既定値へ戻します。
     private func resetCurrentTab() {
         guard let imageElement = viewModel.imageElement else { return }
         switch selectedTab {
         case .backgroundRemoval:
+            // 背景除去タブはリセット対象の内部状態を持たないため何もしません。
             return
         case .backgroundBlur:
+            // 履歴イベントのノイズを避けるため、変更がある場合のみ更新します。
             if imageElement.backgroundBlurRadius != 0 {
                 viewModel.beginImageAdjustmentEditing(.backgroundBlurRadius)
                 viewModel.updateImageAdjustment(.backgroundBlurRadius, value: 0)
                 viewModel.commitImageAdjustmentEditing(.backgroundBlurRadius)
             }
+            // ぼかしマスクが存在する場合のみ削除します。
             if imageElement.backgroundBlurMaskData != nil {
                 viewModel.removeBackgroundBlurMask()
             }

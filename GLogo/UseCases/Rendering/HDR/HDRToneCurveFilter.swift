@@ -96,9 +96,6 @@ class HDRToneCurveFilter {
            isDefaultCurve(curveData.redPoints) &&
            isDefaultCurve(curveData.greenPoints) &&
            isDefaultCurve(curveData.bluePoints) {
-            #if DEBUG
-            print("⏭️ [HDRToneCurve] すべてデフォルト状態のためスキップ")
-            #endif
             return ciImage
         }
 

@@ -44,7 +44,7 @@ struct BackgroundEditorPanel: View {
                         Text("グラデーション").tag(BackgroundType.gradient)
                     }
                     .pickerStyle(SegmentedPickerStyle())
-                    .onChange(of: backgroundSettings.type) { _ in
+                    .onChange(of: backgroundSettings.type) {
                         updateBackground()
                     }
                 }
@@ -129,7 +129,7 @@ struct BackgroundEditorPanel: View {
                 Text("放射状").tag(GradientType.radial)
             }
             .pickerStyle(SegmentedPickerStyle())
-            .onChange(of: backgroundSettings.gradientType) { _ in
+            .onChange(of: backgroundSettings.gradientType) {
                 updateBackground()
             }
             
@@ -145,7 +145,7 @@ struct BackgroundEditorPanel: View {
                         Text("カスタム").tag(GradientDirection.custom)
                     }
                     .pickerStyle(SegmentedPickerStyle())
-                    .onChange(of: backgroundSettings.gradientDirection) { _ in
+                    .onChange(of: backgroundSettings.gradientDirection) {
                         updateBackground()
                     }
                     

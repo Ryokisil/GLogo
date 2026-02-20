@@ -32,6 +32,8 @@ struct TextEditorPanel: View {
     
     /// エフェクト編集メニューの表示フラグ
     @State private var isEditingShadow = false
+    @State private var isEditingStroke = false
+    @State private var isEditingGlow = false
     
     /// フォント選択時の一時保存用（キャンセル時の復元用）
     @State private var temporaryFontName: String = ""
@@ -305,69 +307,72 @@ struct TextEditorPanel: View {
     }
     
     // MARK: - テキストエフェクトセクション
-    
+
     private var effectsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("エフェクト")
                 .font(.headline)
-            
+
             // シャドウエフェクト
+            shadowEffectEditor
+
+            // ストロークエフェクト
+            strokeEffectEditor
+
+            // グローエフェクト
+            glowEffectEditor
+        }
+    }
+
+    // MARK: - シャドウエフェクトエディタ
+
+    private var shadowEffectEditor: some View {
+        Group {
             if let textElement = textElement, let shadowIndex = textElement.effects.firstIndex(where: { $0.type == .shadow }) {
                 let shadowEffect = textElement.effects[shadowIndex] as? ShadowEffect
-                
+
                 VStack {
                     HStack {
                         Toggle("シャドウ", isOn: Binding(
                             get: { shadowEffect?.isEnabled ?? false },
                             set: { viewModel.updateTextEffect(atIndex: shadowIndex, isEnabled: $0) }
                         ))
-                        
+
                         Spacer()
-                        
-                        // 詳細設定の表示切替ボタン
-                        Button(action: {
-                            isEditingShadow.toggle()
-                        }) {
+
+                        Button(action: { isEditingShadow.toggle() }) {
                             Image(systemName: "slider.horizontal.3")
                                 .foregroundColor(.blue)
                         }
                     }
-                    
-                    // シャドウの詳細設定（展開時のみ表示）
+
                     if isEditingShadow, let shadowEffect = shadowEffect, shadowEffect.isEnabled {
                         VStack(alignment: .leading, spacing: 8) {
-                            // シャドウカラー
                             ColorPicker("色:", selection: Binding(
                                 get: { Color(shadowEffect.color) },
                                 set: {
                                     viewModel.updateShadowEffect(
-                                        atIndex: shadowIndex,
-                                        color: UIColor($0),
-                                        offset: shadowEffect.offset,
-                                        blurRadius: shadowEffect.blurRadius
+                                        atIndex: shadowIndex, color: UIColor($0),
+                                        offset: shadowEffect.offset, blurRadius: shadowEffect.blurRadius
                                     )
                                 }
                             ))
-                            
-                            // ぼかし半径
+
                             HStack {
                                 Text("ぼかし:")
                                 Slider(value: Binding(
                                     get: { shadowEffect.blurRadius },
                                     set: {
                                         viewModel.updateShadowEffect(
-                                            atIndex: shadowIndex,
-                                            color: shadowEffect.color,
-                                            offset: shadowEffect.offset,
-                                            blurRadius: $0
+                                            atIndex: shadowIndex, color: shadowEffect.color,
+                                            offset: shadowEffect.offset, blurRadius: $0
                                         )
                                     }
                                 ), in: 0...20, step: 0.5)
                                 Text("\(shadowEffect.blurRadius, specifier: "%.1f")")
                                     .frame(width: 30, alignment: .trailing)
                             }
-                            
-                            // オフセットX
+
                             HStack {
                                 Text("X オフセット:")
                                 Slider(value: Binding(
@@ -375,18 +380,15 @@ struct TextEditorPanel: View {
                                     set: {
                                         let newOffset = CGSize(width: $0, height: shadowEffect.offset.height)
                                         viewModel.updateShadowEffect(
-                                            atIndex: shadowIndex,
-                                            color: shadowEffect.color,
-                                            offset: newOffset,
-                                            blurRadius: shadowEffect.blurRadius
+                                            atIndex: shadowIndex, color: shadowEffect.color,
+                                            offset: newOffset, blurRadius: shadowEffect.blurRadius
                                         )
                                     }
                                 ), in: -20...20, step: 0.5)
                                 Text("\(shadowEffect.offset.width, specifier: "%.1f")")
                                     .frame(width: 30, alignment: .trailing)
                             }
-                            
-                            // オフセットY
+
                             HStack {
                                 Text("Y オフセット:")
                                 Slider(value: Binding(
@@ -394,10 +396,8 @@ struct TextEditorPanel: View {
                                     set: {
                                         let newOffset = CGSize(width: shadowEffect.offset.width, height: $0)
                                         viewModel.updateShadowEffect(
-                                            atIndex: shadowIndex,
-                                            color: shadowEffect.color,
-                                            offset: newOffset,
-                                            blurRadius: shadowEffect.blurRadius
+                                            atIndex: shadowIndex, color: shadowEffect.color,
+                                            offset: newOffset, blurRadius: shadowEffect.blurRadius
                                         )
                                     }
                                 ), in: -20...20, step: 0.5)
@@ -409,13 +409,148 @@ struct TextEditorPanel: View {
                     }
                 }
             } else {
-                // シャドウエフェクトがない場合は追加ボタンを表示
-                Button(action: {
-                    viewModel.addTextEffect(ShadowEffect())
-                }) {
+                Button(action: { viewModel.addTextEffect(ShadowEffect()) }) {
                     HStack {
                         Image(systemName: "plus.circle")
                         Text("シャドウを追加")
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - ストロークエフェクトエディタ
+
+    private var strokeEffectEditor: some View {
+        Group {
+            if let textElement = textElement, let strokeIndex = textElement.effects.firstIndex(where: { $0.type == .stroke }) {
+                let strokeEffect = textElement.effects[strokeIndex] as? StrokeEffect
+
+                VStack {
+                    HStack {
+                        Toggle("ストローク", isOn: Binding(
+                            get: { strokeEffect?.isEnabled ?? false },
+                            set: { viewModel.updateTextEffect(atIndex: strokeIndex, isEnabled: $0) }
+                        ))
+
+                        Spacer()
+
+                        Button(action: { isEditingStroke.toggle() }) {
+                            Image(systemName: "slider.horizontal.3")
+                                .foregroundColor(.blue)
+                        }
+                    }
+
+                    if isEditingStroke, let strokeEffect = strokeEffect, strokeEffect.isEnabled {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ColorPicker("色:", selection: Binding(
+                                get: { Color(strokeEffect.color) },
+                                set: {
+                                    viewModel.updateStrokeEffect(
+                                        atIndex: strokeIndex, color: UIColor($0), width: strokeEffect.width
+                                    )
+                                }
+                            ))
+
+                            HStack {
+                                Text("太さ:")
+                                Slider(value: Binding(
+                                    get: { strokeEffect.width },
+                                    set: {
+                                        viewModel.updateStrokeEffect(
+                                            atIndex: strokeIndex, color: strokeEffect.color, width: $0
+                                        )
+                                    }
+                                ), in: 0...20, step: 0.5)
+                                Text("\(strokeEffect.width, specifier: "%.1f")")
+                                    .frame(width: 30, alignment: .trailing)
+                            }
+
+                            Button(role: .destructive, action: {
+                                viewModel.removeTextEffect(atIndex: strokeIndex)
+                                isEditingStroke = false
+                            }) {
+                                Label("削除", systemImage: "trash")
+                                    .font(.caption)
+                            }
+                        }
+                        .padding(.leading, 10)
+                    }
+                }
+            } else {
+                Button(action: { viewModel.addTextEffect(StrokeEffect()) }) {
+                    HStack {
+                        Image(systemName: "plus.circle")
+                        Text("ストロークを追加")
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - グローエフェクトエディタ
+
+    private var glowEffectEditor: some View {
+        Group {
+            if let textElement = textElement, let glowIndex = textElement.effects.firstIndex(where: { $0.type == .glow }) {
+                let glowEffect = textElement.effects[glowIndex] as? GlowEffect
+
+                VStack {
+                    HStack {
+                        Toggle("グロー", isOn: Binding(
+                            get: { glowEffect?.isEnabled ?? false },
+                            set: { viewModel.updateTextEffect(atIndex: glowIndex, isEnabled: $0) }
+                        ))
+
+                        Spacer()
+
+                        Button(action: { isEditingGlow.toggle() }) {
+                            Image(systemName: "slider.horizontal.3")
+                                .foregroundColor(.blue)
+                        }
+                    }
+
+                    if isEditingGlow, let glowEffect = glowEffect, glowEffect.isEnabled {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ColorPicker("色:", selection: Binding(
+                                get: { Color(glowEffect.color) },
+                                set: {
+                                    viewModel.updateGlowEffect(
+                                        atIndex: glowIndex, color: UIColor($0), radius: glowEffect.radius
+                                    )
+                                }
+                            ))
+
+                            HStack {
+                                Text("半径:")
+                                Slider(value: Binding(
+                                    get: { glowEffect.radius },
+                                    set: {
+                                        viewModel.updateGlowEffect(
+                                            atIndex: glowIndex, color: glowEffect.color, radius: $0
+                                        )
+                                    }
+                                ), in: 0...30, step: 0.5)
+                                Text("\(glowEffect.radius, specifier: "%.1f")")
+                                    .frame(width: 30, alignment: .trailing)
+                            }
+
+                            Button(role: .destructive, action: {
+                                viewModel.removeTextEffect(atIndex: glowIndex)
+                                isEditingGlow = false
+                            }) {
+                                Label("削除", systemImage: "trash")
+                                    .font(.caption)
+                            }
+                        }
+                        .padding(.leading, 10)
+                    }
+                }
+            } else {
+                Button(action: { viewModel.addTextEffect(GlowEffect()) }) {
+                    HStack {
+                        Image(systemName: "plus.circle")
+                        Text("グローを追加")
                     }
                 }
             }

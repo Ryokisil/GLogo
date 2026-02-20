@@ -98,4 +98,3 @@ struct FiltersPanelView: View {
         }
     }
 }
-

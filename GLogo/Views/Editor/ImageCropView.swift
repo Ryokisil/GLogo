@@ -131,7 +131,7 @@ struct ImagePreviewView: View {
             .background(
                 GeometryReader { imageGeometry in
                     Color.clear
-                        .onChange(of: imageGeometry.size) { _ in
+                        .onChange(of: imageGeometry.size) { 
                             updateFrame()
                         }
                 }

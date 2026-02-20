@@ -58,6 +58,30 @@ final class SavePipelineRegressionTests: XCTestCase {
         XCTAssertEqual(resultingStroke.width, originalStrokeWidth, accuracy: 0.001)
     }
 
+    /// 保存合成時に元のGlowEffectの半径が破壊されないことを担保する
+    func testMakeCompositeImage_DoesNotMutateOriginalGlowEffect() throws {
+        let baseImage = makeSolidImage(size: CGSize(width: 240, height: 120), color: .lightGray)
+        let textElement = makeOverlayTextElement()
+        let glow = GlowEffect(color: .white, radius: 8)
+        let stroke = StrokeEffect(color: .red, width: 3)
+        textElement.effects = [glow, stroke]
+        textElement.fontSize = 24
+
+        let originalFontSize = textElement.fontSize
+        let originalGlowRadius = glow.radius
+        let originalStrokeWidth = stroke.width
+        let project = try makeProject(baseImage: baseImage, overlayText: textElement)
+
+        let service = ImageProcessingService()
+        _ = service.makeCompositeImage(baseImage: baseImage, project: project)
+
+        XCTAssertEqual(textElement.fontSize, originalFontSize, accuracy: 0.001)
+        let resultingGlow = try XCTUnwrap(textElement.effects.compactMap { $0 as? GlowEffect }.first)
+        let resultingStroke = try XCTUnwrap(textElement.effects.compactMap { $0 as? StrokeEffect }.first)
+        XCTAssertEqual(resultingGlow.radius, originalGlowRadius, accuracy: 0.001)
+        XCTAssertEqual(resultingStroke.width, originalStrokeWidth, accuracy: 0.001)
+    }
+
     // MARK: - Helpers
 
     /// ベース画像とオーバーレイ文字を含む最小プロジェクトを作成する

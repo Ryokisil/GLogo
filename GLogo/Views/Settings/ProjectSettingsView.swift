@@ -9,6 +9,7 @@
 //  EditorViewから呼び出されるモーダルシートとして表示されます。
 //
 
+
 import SwiftUI
 
 /// プロジェクト設定ビュー
@@ -54,7 +55,7 @@ struct ProjectSettingsView: View {
                 Section(header: Text("基本情報")) {
                     // プロジェクト名
                     TextField("プロジェクト名", text: $projectName)
-                        .onChange(of: projectName) { _ in
+                        .onChange(of: projectName) {
                             hasChanges = true
                         }
                 }
@@ -65,7 +66,7 @@ struct ProjectSettingsView: View {
                         Text("幅:")
                         TextField("幅", text: $canvasWidth)
                             .keyboardType(.numberPad)
-                            .onChange(of: canvasWidth) { _ in
+                            .onChange(of: canvasWidth) {
                                 hasChanges = true
                             }
                         Text("px")
@@ -75,7 +76,7 @@ struct ProjectSettingsView: View {
                         Text("高さ:")
                         TextField("高さ", text: $canvasHeight)
                             .keyboardType(.numberPad)
-                            .onChange(of: canvasHeight) { _ in
+                            .onChange(of: canvasHeight) {
                                 hasChanges = true
                             }
                         Text("px")

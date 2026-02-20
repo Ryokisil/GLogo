@@ -153,42 +153,15 @@ struct ImageProcessingService {
         context.restoreGState()
     }
 
-    /// 保存時の拡縮に合わせてテキスト描画属性（フォント・影・縁取り）を調整する
+    /// 保存時の拡縮に合わせてテキスト描画属性（フォント・影・縁取り・グロー）を調整する
     /// - Parameters:
     ///   - textElement: 調整対象のテキスト要素
     ///   - scale: 拡縮倍率
-    /// - Returns: なし
     private func scaleTextRenderingAttributes(_ textElement: TextElement, by scale: CGFloat) {
         guard scale > 0 else { return }
 
         textElement.fontSize *= scale
-
-        textElement.effects = textElement.effects.map { effect in
-            if let shadowEffect = effect as? ShadowEffect {
-                let scaledShadowEffect = ShadowEffect(
-                    color: shadowEffect.color,
-                    offset: CGSize(
-                        width: shadowEffect.offset.width * scale,
-                        height: shadowEffect.offset.height * scale
-                    ),
-                    blurRadius: shadowEffect.blurRadius * scale
-                )
-                scaledShadowEffect.isEnabled = shadowEffect.isEnabled
-                return scaledShadowEffect
-            }
-
-            if let strokeEffect = effect as? StrokeEffect {
-                let scaledStrokeEffect = StrokeEffect(
-                    color: strokeEffect.color,
-                    width: strokeEffect.width * scale
-                )
-                scaledStrokeEffect.isEnabled = strokeEffect.isEnabled
-                return scaledStrokeEffect
-            }
-
-            assertionFailure("未対応の TextEffect サブクラス: \(type(of: effect))")
-            return effect
-        }
+        textElement.effects = textElement.effects.map { $0.scaled(by: scale) }
     }
 
     /// 保存処理用の画像要素ログを出力

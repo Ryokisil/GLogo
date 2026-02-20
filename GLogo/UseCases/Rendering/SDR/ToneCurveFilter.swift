@@ -114,9 +114,6 @@ class ToneCurveFilter {
            isDefaultCurve(curveData.redPoints) &&
            isDefaultCurve(curveData.greenPoints) &&
            isDefaultCurve(curveData.bluePoints) {
-            #if DEBUG
-            print("⏭️ [ToneCurve] すべてデフォルト状態のためスキップ")
-            #endif
             return ciImage
         }
 

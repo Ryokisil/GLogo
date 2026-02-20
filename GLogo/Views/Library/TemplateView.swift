@@ -89,7 +89,7 @@ struct TemplateView: View {
                 
                 TextField("テンプレートを検索", text: $viewModel.searchText)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .onChange(of: viewModel.searchText) { _ in
+                    .onChange(of: viewModel.searchText) { 
                         viewModel.onSearchTextChanged()
                     }
                 
