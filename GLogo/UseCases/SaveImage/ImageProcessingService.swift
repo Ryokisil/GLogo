@@ -4,7 +4,7 @@
 
 import UIKit
 
-struct ImageProcessingService {
+struct ImageProcessingService: ImageProcessing {
     /// ImageElement に設定されたフィルターを適用した画像を返す
     func applyFilters(to imageElement: ImageElement) -> UIImage? {
         imageElement.getFilteredImageForce()

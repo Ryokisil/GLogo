@@ -3,18 +3,20 @@
 //
 
 import UIKit
+import OSLog
 
 struct SaveImageCoordinator {
+    private static let logger = Logger(subsystem: "com.silvia.GLogo", category: "Save")
     private let policy: SaveImagePolicy
-    private let selectionService: ImageSelectionService
-    private let processingService: ImageProcessingService
-    private let writer: PhotoLibraryWriter
+    private let selectionService: any ImageSelecting
+    private let processingService: any ImageProcessing
+    private let writer: any PhotoLibraryWriting
 
     init(
         policy: SaveImagePolicy = SaveImagePolicy(),
-        selectionService: ImageSelectionService = ImageSelectionService(),
-        processingService: ImageProcessingService = ImageProcessingService(),
-        writer: PhotoLibraryWriter = PhotoLibraryWriter()
+        selectionService: any ImageSelecting = ImageSelectionService(),
+        processingService: any ImageProcessing = ImageProcessingService(),
+        writer: any PhotoLibraryWriting = PhotoLibraryWriter()
     ) {
         self.policy = policy
         self.selectionService = selectionService
@@ -100,10 +102,14 @@ struct SaveImageCoordinator {
                     return
                 }
 
-                let finalImage = processingService.makeCompositeImage(
+                guard let finalImage = processingService.makeCompositeImage(
                     baseImage: baseImage,
                     project: project
-                ) ?? baseImage
+                ) else {
+                    Self.logger.warning("合成保存に失敗: makeCompositeImage が nil を返却")
+                    await MainActor.run { completion(false) }
+                    return
+                }
 
                 do {
                     let format = resolveFormat(for: finalImage, mode: mode)

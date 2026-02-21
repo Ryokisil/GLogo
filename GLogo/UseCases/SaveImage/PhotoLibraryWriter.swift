@@ -7,7 +7,7 @@ import UIKit
 import ImageIO
 import UniformTypeIdentifiers
 
-struct PhotoLibraryWriter {
+struct PhotoLibraryWriter: PhotoLibraryWriting {
     /// 現在の権限状態を返す
     func authorizationStatus(for accessLevel: PHAccessLevel) -> PHAuthorizationStatus {
         PHPhotoLibrary.authorizationStatus(for: accessLevel)

@@ -4,7 +4,7 @@
 
 import UIKit
 
-struct ImageSelectionService {
+struct ImageSelectionService: ImageSelecting {
     /// 最高解像度（ピクセル数最大）の画像要素を選ぶ
     func selectHighestResolutionImageElement(from elements: [ImageElement]) -> ImageElement? {
         var target: ImageElement?

@@ -19,6 +19,7 @@ import UIKit       // UIColor、UIImageなどのUI関連の型
 import Photos      // PHAsset、PHPhotoLibraryなど写真ライブラリアクセス
 import CoreLocation // 位置情報（緯度・経度・高度）の処理
 import ImageIO     // 画像メタデータの読み取り・書き込み
+import OSLog
 
 /// メタデータ編集操作の種類
 enum MetadataEditOperationType: String, Codable {
@@ -117,6 +118,9 @@ enum MetadataFieldType {
 class ImageMetadataManager {
     // シングルトンインスタンス
     static let shared = ImageMetadataManager()
+
+    /// メタデータ処理ログ
+    private let logger = Logger(subsystem: "com.silvia.GLogo", category: "Metadata")
     
     // 編集履歴キャッシュ - 画像IDをキーとしたディクショナリ
     private var editHistoryCache: [String: [MetadataEditOperation]] = [:]
@@ -916,17 +920,22 @@ class ImageMetadataManager {
             
             return history
         } catch {
+            logger.warning("編集履歴の読み込みに失敗: identifier=\(identifier, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
             return nil
         }
     }
     
     /// 画像データにメタデータを適用
-    private func applyMetadataToImageData(_ imageData: Data, metadata: ImageMetadata) -> Data? {
+    /// - Note: テスト可観測性のため internal（@testable import で検証）
+    func applyMetadataToImageData(_ imageData: Data, metadata: ImageMetadata) -> Data? {
         guard let source = CGImageSourceCreateWithData(imageData as CFData, nil) else {
             return nil
         }
         
-        let sourceType = CGImageSourceGetType(source)
+        guard let sourceType = CGImageSourceGetType(source) else {
+            logger.warning("画像メタデータ適用のsourceType取得に失敗")
+            return nil
+        }
         
         // メタデータをCFDictionaryに変換
         let metadataDict = createMetadataDictionary(from: metadata)
@@ -936,7 +945,7 @@ class ImageMetadataManager {
         
         guard let destination = CGImageDestinationCreateWithData(
             mutableData as CFMutableData,
-            sourceType!,
+            sourceType,
             1,
             nil
         ) else {
