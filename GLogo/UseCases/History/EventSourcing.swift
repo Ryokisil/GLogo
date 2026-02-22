@@ -399,6 +399,150 @@ struct FontChangedEvent: EditorEvent {
     }
 }
 
+/// 行間変更イベント
+struct TextLineSpacingChangedEvent: EditorEvent {
+    var eventName = "TextLineSpacingChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldSpacing: CGFloat
+    let newSpacing: CGFloat
+
+    var description: String {
+        return "テキストの行間を変更しました"
+    }
+
+    func apply(to project: LogoProject) {
+        if let element = project.element(for: elementId, as: TextElement.self) {
+            element.lineSpacing = newSpacing
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        if let element = project.element(for: elementId, as: TextElement.self) {
+            element.lineSpacing = oldSpacing
+        }
+    }
+}
+
+/// 文字間隔変更イベント
+struct TextLetterSpacingChangedEvent: EditorEvent {
+    var eventName = "TextLetterSpacingChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldSpacing: CGFloat
+    let newSpacing: CGFloat
+
+    var description: String {
+        return "テキストの文字間隔を変更しました"
+    }
+
+    func apply(to project: LogoProject) {
+        if let element = project.element(for: elementId, as: TextElement.self) {
+            element.letterSpacing = newSpacing
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        if let element = project.element(for: elementId, as: TextElement.self) {
+            element.letterSpacing = oldSpacing
+        }
+    }
+}
+
+/// シャドウ効果変更イベント
+struct TextShadowEffectChangedEvent: EditorEvent {
+    var eventName = "TextShadowEffectChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let effectIndex: Int
+    let oldOffset: CGSize
+    let newOffset: CGSize
+    let oldBlurRadius: CGFloat
+    let newBlurRadius: CGFloat
+
+    var description: String {
+        return "テキストのシャドウを調整しました"
+    }
+
+    func apply(to project: LogoProject) {
+        guard let element = project.element(for: elementId, as: TextElement.self),
+              effectIndex < element.effects.count,
+              let shadowEffect = element.effects[effectIndex] as? ShadowEffect else { return }
+
+        shadowEffect.offset = newOffset
+        shadowEffect.blurRadius = newBlurRadius
+    }
+
+    func revert(from project: LogoProject) {
+        guard let element = project.element(for: elementId, as: TextElement.self),
+              effectIndex < element.effects.count,
+              let shadowEffect = element.effects[effectIndex] as? ShadowEffect else { return }
+
+        shadowEffect.offset = oldOffset
+        shadowEffect.blurRadius = oldBlurRadius
+    }
+}
+
+/// ストローク効果変更イベント
+struct TextStrokeEffectChangedEvent: EditorEvent {
+    var eventName = "TextStrokeEffectChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let effectIndex: Int
+    let oldWidth: CGFloat
+    let newWidth: CGFloat
+
+    var description: String {
+        return "テキストのストロークを調整しました"
+    }
+
+    func apply(to project: LogoProject) {
+        guard let element = project.element(for: elementId, as: TextElement.self),
+              effectIndex < element.effects.count,
+              let strokeEffect = element.effects[effectIndex] as? StrokeEffect else { return }
+
+        strokeEffect.width = newWidth
+    }
+
+    func revert(from project: LogoProject) {
+        guard let element = project.element(for: elementId, as: TextElement.self),
+              effectIndex < element.effects.count,
+              let strokeEffect = element.effects[effectIndex] as? StrokeEffect else { return }
+
+        strokeEffect.width = oldWidth
+    }
+}
+
+/// グロー効果変更イベント
+struct TextGlowEffectChangedEvent: EditorEvent {
+    var eventName = "TextGlowEffectChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let effectIndex: Int
+    let oldRadius: CGFloat
+    let newRadius: CGFloat
+
+    var description: String {
+        return "テキストのグローを調整しました"
+    }
+
+    func apply(to project: LogoProject) {
+        guard let element = project.element(for: elementId, as: TextElement.self),
+              effectIndex < element.effects.count,
+              let glowEffect = element.effects[effectIndex] as? GlowEffect else { return }
+
+        glowEffect.radius = newRadius
+    }
+
+    func revert(from project: LogoProject) {
+        guard let element = project.element(for: elementId, as: TextElement.self),
+              effectIndex < element.effects.count,
+              let glowEffect = element.effects[effectIndex] as? GlowEffect else { return }
+
+        glowEffect.radius = oldRadius
+    }
+}
+
 // MARK: - 図形に関するイベントの実装
 
 /// 図形タイプ変更イベント

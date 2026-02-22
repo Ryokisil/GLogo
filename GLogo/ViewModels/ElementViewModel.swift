@@ -53,6 +53,24 @@ class ElementViewModel: ObservableObject {
     /// 画像調整スライダーの開始値（ドラッグ開始時）
     private var imageAdjustmentStartValues: [ImageAdjustmentKey: CGFloat] = [:]
 
+    /// テキストサイズ編集の開始値（ドラッグ開始時）
+    private var textFontStartState: (name: String, size: CGFloat)?
+
+    /// 行間編集の開始値（ドラッグ開始時）
+    private var textLineSpacingStartValue: CGFloat?
+
+    /// 文字間隔編集の開始値（ドラッグ開始時）
+    private var textLetterSpacingStartValue: CGFloat?
+
+    /// シャドウ編集の開始値（ドラッグ開始時）
+    private var textShadowStartState: (index: Int, offset: CGSize, blurRadius: CGFloat)?
+
+    /// ストローク編集の開始値（ドラッグ開始時）
+    private var textStrokeStartState: (index: Int, width: CGFloat)?
+
+    /// グロー編集の開始値（ドラッグ開始時）
+    private var textGlowStartState: (index: Int, radius: CGFloat)?
+
     /// 現在適用中のフィルタープリセットID（ImageElement から読み出す）
     var appliedFilterPresetId: String? {
         imageElement?.appliedFilterPresetId
@@ -92,6 +110,12 @@ class ElementViewModel: ObservableObject {
         // 要素切り替え時にキャッシュをクリアして、別要素への状態持ち越しを防ぐ
         if self.element?.id != element?.id {
             imageAdjustmentStartValues.removeAll()
+            textFontStartState = nil
+            textLineSpacingStartValue = nil
+            textLetterSpacingStartValue = nil
+            textShadowStartState = nil
+            textStrokeStartState = nil
+            textGlowStartState = nil
         }
 
         self.element = element
@@ -237,6 +261,45 @@ class ElementViewModel: ObservableObject {
         editorViewModel?.updateFont(textElement, fontName: name, fontSize: size)
     }
 
+    /// フォントサイズ編集の開始（onEditingChanged: true 時に呼ばれる）
+    /// - Parameters: なし
+    /// - Returns: なし
+    func beginTextFontSizeEditing() {
+        guard let textElement = textElement else { return }
+        if textFontStartState == nil {
+            textFontStartState = (name: textElement.fontName, size: textElement.fontSize)
+        }
+    }
+
+    /// フォントサイズのプレビュー更新（スライダー操作中に呼ばれる）
+    /// - Parameters:
+    ///   - size: プレビュー反映するフォントサイズ
+    /// - Returns: なし
+    func previewTextFontSize(_ size: CGFloat) {
+        guard let textElement = textElement else { return }
+        if textElement.fontSize == size { return }
+        textElement.fontSize = size
+        updateElement(to: textElement)
+    }
+
+    /// フォントサイズ編集の確定（onEditingChanged: false 時に呼ばれる）
+    /// - Parameters: なし
+    /// - Returns: なし
+    func commitTextFontSizeEditing() {
+        guard let textElement = textElement else { return }
+        let startState = textFontStartState ?? (name: textElement.fontName, size: textElement.fontSize)
+        textFontStartState = nil
+
+        if startState.name == textElement.fontName && startState.size == textElement.fontSize { return }
+        editorViewModel?.updateFont(
+            textElement,
+            oldFontName: startState.name,
+            newFontName: textElement.fontName,
+            oldFontSize: startState.size,
+            newFontSize: textElement.fontSize
+        )
+    }
+
     /// テキスト色の更新
     func updateTextColor(_ color: UIColor) {
         guard let textElement = textElement else { return }
@@ -255,17 +318,97 @@ class ElementViewModel: ObservableObject {
     /// 行間の更新
     func updateLineSpacing(_ spacing: CGFloat) {
         guard let textElement = textElement else { return }
-        textElement.lineSpacing = spacing
+        if textElement.lineSpacing == spacing { return }
+        editorViewModel?.updateTextLineSpacing(
+            textElement,
+            oldSpacing: textElement.lineSpacing,
+            newSpacing: spacing
+        )
+    }
 
+    /// 行間編集の開始（onEditingChanged: true 時に呼ばれる）
+    /// - Parameters: なし
+    /// - Returns: なし
+    func beginTextLineSpacingEditing() {
+        guard let textElement = textElement else { return }
+        if textLineSpacingStartValue == nil {
+            textLineSpacingStartValue = textElement.lineSpacing
+        }
+    }
+
+    /// 行間のプレビュー更新（スライダー操作中に呼ばれる）
+    /// - Parameters:
+    ///   - spacing: プレビュー反映する行間値
+    /// - Returns: なし
+    func previewTextLineSpacing(_ spacing: CGFloat) {
+        guard let textElement = textElement else { return }
+        if textElement.lineSpacing == spacing { return }
+        textElement.lineSpacing = spacing
         updateElement(to: textElement)
+    }
+
+    /// 行間編集の確定（onEditingChanged: false 時に呼ばれる）
+    /// - Parameters: なし
+    /// - Returns: なし
+    func commitTextLineSpacingEditing() {
+        guard let textElement = textElement else { return }
+        let startValue = textLineSpacingStartValue ?? textElement.lineSpacing
+        textLineSpacingStartValue = nil
+
+        if startValue == textElement.lineSpacing { return }
+        editorViewModel?.updateTextLineSpacing(
+            textElement,
+            oldSpacing: startValue,
+            newSpacing: textElement.lineSpacing
+        )
     }
 
     /// 文字間隔の更新
     func updateLetterSpacing(_ spacing: CGFloat) {
         guard let textElement = textElement else { return }
-        textElement.letterSpacing = spacing
+        if textElement.letterSpacing == spacing { return }
+        editorViewModel?.updateTextLetterSpacing(
+            textElement,
+            oldSpacing: textElement.letterSpacing,
+            newSpacing: spacing
+        )
+    }
 
+    /// 文字間隔編集の開始（onEditingChanged: true 時に呼ばれる）
+    /// - Parameters: なし
+    /// - Returns: なし
+    func beginTextLetterSpacingEditing() {
+        guard let textElement = textElement else { return }
+        if textLetterSpacingStartValue == nil {
+            textLetterSpacingStartValue = textElement.letterSpacing
+        }
+    }
+
+    /// 文字間隔のプレビュー更新（スライダー操作中に呼ばれる）
+    /// - Parameters:
+    ///   - spacing: プレビュー反映する文字間隔値
+    /// - Returns: なし
+    func previewTextLetterSpacing(_ spacing: CGFloat) {
+        guard let textElement = textElement else { return }
+        if textElement.letterSpacing == spacing { return }
+        textElement.letterSpacing = spacing
         updateElement(to: textElement)
+    }
+
+    /// 文字間隔編集の確定（onEditingChanged: false 時に呼ばれる）
+    /// - Parameters: なし
+    /// - Returns: なし
+    func commitTextLetterSpacingEditing() {
+        guard let textElement = textElement else { return }
+        let startValue = textLetterSpacingStartValue ?? textElement.letterSpacing
+        textLetterSpacingStartValue = nil
+
+        if startValue == textElement.letterSpacing { return }
+        editorViewModel?.updateTextLetterSpacing(
+            textElement,
+            oldSpacing: startValue,
+            newSpacing: textElement.letterSpacing
+        )
     }
 
     /// テキスト効果の追加
@@ -304,6 +447,54 @@ class ElementViewModel: ObservableObject {
         updateElement(to: textElement)
     }
 
+    /// シャドウ編集の開始（onEditingChanged: true 時に呼ばれる）
+    /// - Parameters:
+    ///   - index: 編集対象シャドウ効果のインデックス
+    /// - Returns: なし
+    func beginShadowEffectEditing(atIndex index: Int) {
+        guard let textElement = textElement,
+              index < textElement.effects.count,
+              let shadowEffect = textElement.effects[index] as? ShadowEffect else { return }
+
+        if textShadowStartState == nil || textShadowStartState?.index != index {
+            textShadowStartState = (index: index, offset: shadowEffect.offset, blurRadius: shadowEffect.blurRadius)
+        }
+    }
+
+    /// シャドウ編集の確定（onEditingChanged: false 時に呼ばれる）
+    /// - Parameters:
+    ///   - index: 編集対象シャドウ効果のインデックス
+    /// - Returns: なし
+    func commitShadowEffectEditing(atIndex index: Int) {
+        guard let textElement = textElement,
+              index < textElement.effects.count,
+              let shadowEffect = textElement.effects[index] as? ShadowEffect else {
+            textShadowStartState = nil
+            return
+        }
+
+        let startState: (offset: CGSize, blurRadius: CGFloat)
+        if let cachedState = textShadowStartState, cachedState.index == index {
+            startState = (offset: cachedState.offset, blurRadius: cachedState.blurRadius)
+        } else {
+            startState = (offset: shadowEffect.offset, blurRadius: shadowEffect.blurRadius)
+        }
+        textShadowStartState = nil
+
+        if startState.offset == shadowEffect.offset && startState.blurRadius == shadowEffect.blurRadius {
+            return
+        }
+
+        editorViewModel?.updateTextShadowEffect(
+            textElement,
+            effectIndex: index,
+            oldOffset: startState.offset,
+            newOffset: shadowEffect.offset,
+            oldBlurRadius: startState.blurRadius,
+            newBlurRadius: shadowEffect.blurRadius
+        )
+    }
+
     /// ストローク効果の更新
     func updateStrokeEffect(atIndex index: Int, color: UIColor, width: CGFloat) {
         guard let textElement = textElement, index < textElement.effects.count,
@@ -315,6 +506,47 @@ class ElementViewModel: ObservableObject {
         updateElement(to: textElement)
     }
 
+    /// ストローク編集の開始（onEditingChanged: true 時に呼ばれる）
+    /// - Parameters:
+    ///   - index: 編集対象ストローク効果のインデックス
+    /// - Returns: なし
+    func beginStrokeEffectEditing(atIndex index: Int) {
+        guard let textElement = textElement,
+              index < textElement.effects.count,
+              let strokeEffect = textElement.effects[index] as? StrokeEffect else { return }
+
+        if textStrokeStartState == nil || textStrokeStartState?.index != index {
+            textStrokeStartState = (index: index, width: strokeEffect.width)
+        }
+    }
+
+    /// ストローク編集の確定（onEditingChanged: false 時に呼ばれる）
+    /// - Parameters:
+    ///   - index: 編集対象ストローク効果のインデックス
+    /// - Returns: なし
+    func commitStrokeEffectEditing(atIndex index: Int) {
+        guard let textElement = textElement,
+              index < textElement.effects.count,
+              let strokeEffect = textElement.effects[index] as? StrokeEffect else {
+            textStrokeStartState = nil
+            return
+        }
+
+        let startWidth = textStrokeStartState?.index == index ? textStrokeStartState?.width ?? strokeEffect.width : strokeEffect.width
+        textStrokeStartState = nil
+
+        if startWidth == strokeEffect.width {
+            return
+        }
+
+        editorViewModel?.updateTextStrokeEffect(
+            textElement,
+            effectIndex: index,
+            oldWidth: startWidth,
+            newWidth: strokeEffect.width
+        )
+    }
+
     /// グロー効果の更新
     func updateGlowEffect(atIndex index: Int, color: UIColor, radius: CGFloat) {
         guard let textElement = textElement, index < textElement.effects.count,
@@ -324,6 +556,47 @@ class ElementViewModel: ObservableObject {
         glowEffect.radius = radius
 
         updateElement(to: textElement)
+    }
+
+    /// グロー編集の開始（onEditingChanged: true 時に呼ばれる）
+    /// - Parameters:
+    ///   - index: 編集対象グロー効果のインデックス
+    /// - Returns: なし
+    func beginGlowEffectEditing(atIndex index: Int) {
+        guard let textElement = textElement,
+              index < textElement.effects.count,
+              let glowEffect = textElement.effects[index] as? GlowEffect else { return }
+
+        if textGlowStartState == nil || textGlowStartState?.index != index {
+            textGlowStartState = (index: index, radius: glowEffect.radius)
+        }
+    }
+
+    /// グロー編集の確定（onEditingChanged: false 時に呼ばれる）
+    /// - Parameters:
+    ///   - index: 編集対象グロー効果のインデックス
+    /// - Returns: なし
+    func commitGlowEffectEditing(atIndex index: Int) {
+        guard let textElement = textElement,
+              index < textElement.effects.count,
+              let glowEffect = textElement.effects[index] as? GlowEffect else {
+            textGlowStartState = nil
+            return
+        }
+
+        let startRadius = textGlowStartState?.index == index ? textGlowStartState?.radius ?? glowEffect.radius : glowEffect.radius
+        textGlowStartState = nil
+
+        if startRadius == glowEffect.radius {
+            return
+        }
+
+        editorViewModel?.updateTextGlowEffect(
+            textElement,
+            effectIndex: index,
+            oldRadius: startRadius,
+            newRadius: glowEffect.radius
+        )
     }
 
     // MARK: - 図形要素の更新

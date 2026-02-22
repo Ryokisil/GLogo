@@ -403,12 +403,18 @@ struct TextPropertyPanelView: View {
                     value: Binding(
                         get: { viewModel.textElement?.fontSize ?? 36 },
                         set: { newSize in
-                            guard let textElement = viewModel.textElement else { return }
-                            viewModel.updateFont(name: textElement.fontName, size: newSize)
+                            viewModel.previewTextFontSize(newSize)
                         }
                     ),
                     in: 8...200,
-                    step: 1
+                    step: 1,
+                    onEditingChanged: { isEditing in
+                        if isEditing {
+                            viewModel.beginTextFontSizeEditing()
+                        } else {
+                            viewModel.commitTextFontSizeEditing()
+                        }
+                    }
                 )
 
                 Text("\(Int(viewModel.textElement?.fontSize ?? 36))pt")
@@ -544,10 +550,17 @@ struct TextPropertyPanelView: View {
                     Slider(
                         value: Binding(
                             get: { viewModel.textElement?.lineSpacing ?? 1.0 },
-                            set: { viewModel.updateLineSpacing($0) }
+                            set: { viewModel.previewTextLineSpacing($0) }
                         ),
                         in: 0...10,
-                        step: 0.5
+                        step: 0.5,
+                        onEditingChanged: { isEditing in
+                            if isEditing {
+                                viewModel.beginTextLineSpacingEditing()
+                            } else {
+                                viewModel.commitTextLineSpacingEditing()
+                            }
+                        }
                     )
 
                     Text(String(format: "%.1f", viewModel.textElement?.lineSpacing ?? 1.0))
@@ -572,10 +585,17 @@ struct TextPropertyPanelView: View {
                     Slider(
                         value: Binding(
                             get: { viewModel.textElement?.letterSpacing ?? 0.0 },
-                            set: { viewModel.updateLetterSpacing($0) }
+                            set: { viewModel.previewTextLetterSpacing($0) }
                         ),
                         in: -5...10,
-                        step: 0.5
+                        step: 0.5,
+                        onEditingChanged: { isEditing in
+                            if isEditing {
+                                viewModel.beginTextLetterSpacingEditing()
+                            } else {
+                                viewModel.commitTextLetterSpacingEditing()
+                            }
+                        }
                     )
 
                     Text(String(format: "%.1f", viewModel.textElement?.letterSpacing ?? 0.0))
@@ -618,7 +638,7 @@ struct TextPropertyPanelView: View {
 
     private var shadowDetailSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let shadowEffect = findShadowEffect() {
+            if let shadowEffect = findShadowEffect(), let index = findShadowEffectIndex() {
                 Text("Shadow")
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(.secondary)
@@ -628,7 +648,6 @@ struct TextPropertyPanelView: View {
                     selection: Binding(
                         get: { Color(shadowEffect.color) },
                         set: { newColor in
-                            guard let index = findShadowEffectIndex() else { return }
                             viewModel.updateShadowEffect(
                                 atIndex: index,
                                 color: UIColor(newColor),
@@ -643,37 +662,52 @@ struct TextPropertyPanelView: View {
                 sliderRow(label: "Blur", value: Binding(
                     get: { shadowEffect.blurRadius },
                     set: { newValue in
-                        guard let index = findShadowEffectIndex() else { return }
                         viewModel.updateShadowEffect(
                             atIndex: index, color: shadowEffect.color,
                             offset: shadowEffect.offset, blurRadius: newValue
                         )
                     }
-                ), range: 0...20, step: 0.5, format: "%.1f")
+                ), range: 0...20, step: 0.5, format: "%.1f", onEditingChanged: { isEditing in
+                    if isEditing {
+                        viewModel.beginShadowEffectEditing(atIndex: index)
+                    } else {
+                        viewModel.commitShadowEffectEditing(atIndex: index)
+                    }
+                })
 
                 sliderRow(label: "X Offset", value: Binding(
                     get: { shadowEffect.offset.width },
                     set: { newValue in
-                        guard let index = findShadowEffectIndex() else { return }
                         viewModel.updateShadowEffect(
                             atIndex: index, color: shadowEffect.color,
                             offset: CGSize(width: newValue, height: shadowEffect.offset.height),
                             blurRadius: shadowEffect.blurRadius
                         )
                     }
-                ), range: -20...20, step: 0.5, format: "%.1f")
+                ), range: -20...20, step: 0.5, format: "%.1f", onEditingChanged: { isEditing in
+                    if isEditing {
+                        viewModel.beginShadowEffectEditing(atIndex: index)
+                    } else {
+                        viewModel.commitShadowEffectEditing(atIndex: index)
+                    }
+                })
 
                 sliderRow(label: "Y Offset", value: Binding(
                     get: { shadowEffect.offset.height },
                     set: { newValue in
-                        guard let index = findShadowEffectIndex() else { return }
                         viewModel.updateShadowEffect(
                             atIndex: index, color: shadowEffect.color,
                             offset: CGSize(width: shadowEffect.offset.width, height: newValue),
                             blurRadius: shadowEffect.blurRadius
                         )
                     }
-                ), range: -20...20, step: 0.5, format: "%.1f")
+                ), range: -20...20, step: 0.5, format: "%.1f", onEditingChanged: { isEditing in
+                    if isEditing {
+                        viewModel.beginShadowEffectEditing(atIndex: index)
+                    } else {
+                        viewModel.commitShadowEffectEditing(atIndex: index)
+                    }
+                })
 
                 // 削除ボタン
                 Button(role: .destructive) {
@@ -699,7 +733,7 @@ struct TextPropertyPanelView: View {
 
     private var strokeDetailSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let strokeEffect = findStrokeEffect() {
+            if let strokeEffect = findStrokeEffect(), let index = findStrokeEffectIndex() {
                 Text("Stroke")
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(.secondary)
@@ -709,7 +743,6 @@ struct TextPropertyPanelView: View {
                     selection: Binding(
                         get: { Color(strokeEffect.color) },
                         set: { newColor in
-                            guard let index = findStrokeEffectIndex() else { return }
                             viewModel.updateStrokeEffect(
                                 atIndex: index, color: UIColor(newColor), width: strokeEffect.width
                             )
@@ -721,12 +754,17 @@ struct TextPropertyPanelView: View {
                 sliderRow(label: "Width", value: Binding(
                     get: { strokeEffect.width },
                     set: { newValue in
-                        guard let index = findStrokeEffectIndex() else { return }
                         viewModel.updateStrokeEffect(
                             atIndex: index, color: strokeEffect.color, width: newValue
                         )
                     }
-                ), range: 0...20, step: 0.5, format: "%.1f")
+                ), range: 0...20, step: 0.5, format: "%.1f", onEditingChanged: { isEditing in
+                    if isEditing {
+                        viewModel.beginStrokeEffectEditing(atIndex: index)
+                    } else {
+                        viewModel.commitStrokeEffectEditing(atIndex: index)
+                    }
+                })
 
                 Button(role: .destructive) {
                     if let index = findStrokeEffectIndex() {
@@ -751,7 +789,7 @@ struct TextPropertyPanelView: View {
 
     private var glowDetailSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let glowEffect = findGlowEffect() {
+            if let glowEffect = findGlowEffect(), let index = findGlowEffectIndex() {
                 Text("Glow")
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(.secondary)
@@ -761,7 +799,6 @@ struct TextPropertyPanelView: View {
                     selection: Binding(
                         get: { Color(glowEffect.color) },
                         set: { newColor in
-                            guard let index = findGlowEffectIndex() else { return }
                             viewModel.updateGlowEffect(
                                 atIndex: index, color: UIColor(newColor), radius: glowEffect.radius
                             )
@@ -773,12 +810,17 @@ struct TextPropertyPanelView: View {
                 sliderRow(label: "Radius", value: Binding(
                     get: { glowEffect.radius },
                     set: { newValue in
-                        guard let index = findGlowEffectIndex() else { return }
                         viewModel.updateGlowEffect(
                             atIndex: index, color: glowEffect.color, radius: newValue
                         )
                     }
-                ), range: 0...30, step: 0.5, format: "%.1f")
+                ), range: 0...30, step: 0.5, format: "%.1f", onEditingChanged: { isEditing in
+                    if isEditing {
+                        viewModel.beginGlowEffectEditing(atIndex: index)
+                    } else {
+                        viewModel.commitGlowEffectEditing(atIndex: index)
+                    }
+                })
 
                 Button(role: .destructive) {
                     if let index = findGlowEffectIndex() {
@@ -805,7 +847,8 @@ struct TextPropertyPanelView: View {
         value: Binding<CGFloat>,
         range: ClosedRange<CGFloat>,
         step: CGFloat,
-        format: String
+        format: String,
+        onEditingChanged: ((Bool) -> Void)? = nil
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
@@ -813,7 +856,9 @@ struct TextPropertyPanelView: View {
                 .foregroundColor(.secondary)
 
             HStack(spacing: 12) {
-                Slider(value: value, in: range, step: step)
+                Slider(value: value, in: range, step: step, onEditingChanged: { isEditing in
+                    onEditingChanged?(isEditing)
+                })
 
                 Text(String(format: format, value.wrappedValue))
                     .font(.subheadline.monospacedDigit())

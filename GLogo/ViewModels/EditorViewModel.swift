@@ -484,17 +484,173 @@ class EditorViewModel: ObservableObject {
     
     /// フォントの更新
     func updateFont(_ textElement: TextElement, fontName: String, fontSize: CGFloat) {
-        
-        // フォント変更イベントの作成
-        let event = FontChangedEvent(
-            elementId: textElement.id,
+        if textElement.fontName == fontName && textElement.fontSize == fontSize {
+            return
+        }
+
+        updateFont(
+            textElement,
             oldFontName: textElement.fontName,
             newFontName: fontName,
             oldFontSize: textElement.fontSize,
             newFontSize: fontSize
         )
-        
-        // イベントを履歴に記録して適用
+    }
+
+    /// フォントの更新（旧値を明示指定）
+    /// - Parameters:
+    ///   - textElement: 更新対象のテキスト要素
+    ///   - oldFontName: 変更前フォント名
+    ///   - newFontName: 変更後フォント名
+    ///   - oldFontSize: 変更前フォントサイズ
+    ///   - newFontSize: 変更後フォントサイズ
+    /// - Returns: なし
+    func updateFont(
+        _ textElement: TextElement,
+        oldFontName: String,
+        newFontName: String,
+        oldFontSize: CGFloat,
+        newFontSize: CGFloat
+    ) {
+        if oldFontName == newFontName && oldFontSize == newFontSize {
+            return
+        }
+
+        let event = FontChangedEvent(
+            elementId: textElement.id,
+            oldFontName: oldFontName,
+            newFontName: newFontName,
+            oldFontSize: oldFontSize,
+            newFontSize: newFontSize
+        )
+
+        applyEventAndRefreshSelection(event, elementId: textElement.id)
+    }
+
+    /// 行間の更新
+    /// - Parameters:
+    ///   - textElement: 更新対象のテキスト要素
+    ///   - oldSpacing: 変更前の行間
+    ///   - newSpacing: 変更後の行間
+    /// - Returns: なし
+    func updateTextLineSpacing(_ textElement: TextElement, oldSpacing: CGFloat, newSpacing: CGFloat) {
+        if oldSpacing == newSpacing {
+            return
+        }
+
+        let event = TextLineSpacingChangedEvent(
+            elementId: textElement.id,
+            oldSpacing: oldSpacing,
+            newSpacing: newSpacing
+        )
+
+        applyEventAndRefreshSelection(event, elementId: textElement.id)
+    }
+
+    /// 文字間隔の更新
+    /// - Parameters:
+    ///   - textElement: 更新対象のテキスト要素
+    ///   - oldSpacing: 変更前の文字間隔
+    ///   - newSpacing: 変更後の文字間隔
+    /// - Returns: なし
+    func updateTextLetterSpacing(_ textElement: TextElement, oldSpacing: CGFloat, newSpacing: CGFloat) {
+        if oldSpacing == newSpacing {
+            return
+        }
+
+        let event = TextLetterSpacingChangedEvent(
+            elementId: textElement.id,
+            oldSpacing: oldSpacing,
+            newSpacing: newSpacing
+        )
+
+        applyEventAndRefreshSelection(event, elementId: textElement.id)
+    }
+
+    /// シャドウ効果の更新
+    /// - Parameters:
+    ///   - textElement: 更新対象のテキスト要素
+    ///   - effectIndex: 更新対象の効果インデックス
+    ///   - oldOffset: 変更前のオフセット
+    ///   - newOffset: 変更後のオフセット
+    ///   - oldBlurRadius: 変更前のぼかし半径
+    ///   - newBlurRadius: 変更後のぼかし半径
+    /// - Returns: なし
+    func updateTextShadowEffect(
+        _ textElement: TextElement,
+        effectIndex: Int,
+        oldOffset: CGSize,
+        newOffset: CGSize,
+        oldBlurRadius: CGFloat,
+        newBlurRadius: CGFloat
+    ) {
+        if oldOffset == newOffset && oldBlurRadius == newBlurRadius {
+            return
+        }
+
+        let event = TextShadowEffectChangedEvent(
+            elementId: textElement.id,
+            effectIndex: effectIndex,
+            oldOffset: oldOffset,
+            newOffset: newOffset,
+            oldBlurRadius: oldBlurRadius,
+            newBlurRadius: newBlurRadius
+        )
+
+        applyEventAndRefreshSelection(event, elementId: textElement.id)
+    }
+
+    /// ストローク効果の更新
+    /// - Parameters:
+    ///   - textElement: 更新対象のテキスト要素
+    ///   - effectIndex: 更新対象の効果インデックス
+    ///   - oldWidth: 変更前の太さ
+    ///   - newWidth: 変更後の太さ
+    /// - Returns: なし
+    func updateTextStrokeEffect(
+        _ textElement: TextElement,
+        effectIndex: Int,
+        oldWidth: CGFloat,
+        newWidth: CGFloat
+    ) {
+        if oldWidth == newWidth {
+            return
+        }
+
+        let event = TextStrokeEffectChangedEvent(
+            elementId: textElement.id,
+            effectIndex: effectIndex,
+            oldWidth: oldWidth,
+            newWidth: newWidth
+        )
+
+        applyEventAndRefreshSelection(event, elementId: textElement.id)
+    }
+
+    /// グロー効果の更新
+    /// - Parameters:
+    ///   - textElement: 更新対象のテキスト要素
+    ///   - effectIndex: 更新対象の効果インデックス
+    ///   - oldRadius: 変更前の半径
+    ///   - newRadius: 変更後の半径
+    /// - Returns: なし
+    func updateTextGlowEffect(
+        _ textElement: TextElement,
+        effectIndex: Int,
+        oldRadius: CGFloat,
+        newRadius: CGFloat
+    ) {
+        if oldRadius == newRadius {
+            return
+        }
+
+        let event = TextGlowEffectChangedEvent(
+            elementId: textElement.id,
+            effectIndex: effectIndex,
+            oldRadius: oldRadius,
+            newRadius: newRadius
+        )
+
         applyEventAndRefreshSelection(event, elementId: textElement.id)
     }
     

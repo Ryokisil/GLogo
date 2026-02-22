@@ -287,8 +287,14 @@ struct TextEditorPanel: View {
                 Text("行間:")
                 Slider(value: Binding(
                     get: { textElement?.lineSpacing ?? 1.0 },
-                    set: { viewModel.updateLineSpacing($0) }
-                ), in: 0...10, step: 0.1)
+                    set: { viewModel.previewTextLineSpacing($0) }
+                ), in: 0...10, step: 0.1, onEditingChanged: { isEditing in
+                    if isEditing {
+                        viewModel.beginTextLineSpacingEditing()
+                    } else {
+                        viewModel.commitTextLineSpacingEditing()
+                    }
+                })
                 Text("\(textElement?.lineSpacing ?? 1.0, specifier: "%.1f")")
                     .frame(width: 30, alignment: .trailing)
             }
@@ -298,8 +304,14 @@ struct TextEditorPanel: View {
                 Text("文字間隔:")
                 Slider(value: Binding(
                     get: { textElement?.letterSpacing ?? 0 },
-                    set: { viewModel.updateLetterSpacing($0) }
-                ), in: -5...10, step: 0.1)
+                    set: { viewModel.previewTextLetterSpacing($0) }
+                ), in: -5...10, step: 0.1, onEditingChanged: { isEditing in
+                    if isEditing {
+                        viewModel.beginTextLetterSpacingEditing()
+                    } else {
+                        viewModel.commitTextLetterSpacingEditing()
+                    }
+                })
                 Text("\(textElement?.letterSpacing ?? 0, specifier: "%.1f")")
                     .frame(width: 30, alignment: .trailing)
             }
@@ -368,7 +380,13 @@ struct TextEditorPanel: View {
                                             offset: shadowEffect.offset, blurRadius: $0
                                         )
                                     }
-                                ), in: 0...20, step: 0.5)
+                                ), in: 0...20, step: 0.5, onEditingChanged: { isEditing in
+                                    if isEditing {
+                                        viewModel.beginShadowEffectEditing(atIndex: shadowIndex)
+                                    } else {
+                                        viewModel.commitShadowEffectEditing(atIndex: shadowIndex)
+                                    }
+                                })
                                 Text("\(shadowEffect.blurRadius, specifier: "%.1f")")
                                     .frame(width: 30, alignment: .trailing)
                             }
@@ -384,7 +402,13 @@ struct TextEditorPanel: View {
                                             offset: newOffset, blurRadius: shadowEffect.blurRadius
                                         )
                                     }
-                                ), in: -20...20, step: 0.5)
+                                ), in: -20...20, step: 0.5, onEditingChanged: { isEditing in
+                                    if isEditing {
+                                        viewModel.beginShadowEffectEditing(atIndex: shadowIndex)
+                                    } else {
+                                        viewModel.commitShadowEffectEditing(atIndex: shadowIndex)
+                                    }
+                                })
                                 Text("\(shadowEffect.offset.width, specifier: "%.1f")")
                                     .frame(width: 30, alignment: .trailing)
                             }
@@ -400,7 +424,13 @@ struct TextEditorPanel: View {
                                             offset: newOffset, blurRadius: shadowEffect.blurRadius
                                         )
                                     }
-                                ), in: -20...20, step: 0.5)
+                                ), in: -20...20, step: 0.5, onEditingChanged: { isEditing in
+                                    if isEditing {
+                                        viewModel.beginShadowEffectEditing(atIndex: shadowIndex)
+                                    } else {
+                                        viewModel.commitShadowEffectEditing(atIndex: shadowIndex)
+                                    }
+                                })
                                 Text("\(shadowEffect.offset.height, specifier: "%.1f")")
                                     .frame(width: 30, alignment: .trailing)
                             }
@@ -461,7 +491,13 @@ struct TextEditorPanel: View {
                                             atIndex: strokeIndex, color: strokeEffect.color, width: $0
                                         )
                                     }
-                                ), in: 0...20, step: 0.5)
+                                ), in: 0...20, step: 0.5, onEditingChanged: { isEditing in
+                                    if isEditing {
+                                        viewModel.beginStrokeEffectEditing(atIndex: strokeIndex)
+                                    } else {
+                                        viewModel.commitStrokeEffectEditing(atIndex: strokeIndex)
+                                    }
+                                })
                                 Text("\(strokeEffect.width, specifier: "%.1f")")
                                     .frame(width: 30, alignment: .trailing)
                             }
@@ -530,7 +566,13 @@ struct TextEditorPanel: View {
                                             atIndex: glowIndex, color: glowEffect.color, radius: $0
                                         )
                                     }
-                                ), in: 0...30, step: 0.5)
+                                ), in: 0...30, step: 0.5, onEditingChanged: { isEditing in
+                                    if isEditing {
+                                        viewModel.beginGlowEffectEditing(atIndex: glowIndex)
+                                    } else {
+                                        viewModel.commitGlowEffectEditing(atIndex: glowIndex)
+                                    }
+                                })
                                 Text("\(glowEffect.radius, specifier: "%.1f")")
                                     .frame(width: 30, alignment: .trailing)
                             }
