@@ -386,6 +386,18 @@ class EditorViewModel: ObservableObject {
         updateSelectedElement(imageElement)
     }
 
+    /// 選択中の画像要素を初期状態に戻し、Undo可能な履歴として記録
+    /// - Parameters: なし
+    /// - Returns: なし
+    func revertSelectedImageToInitialState() {
+        guard let imageElement = selectedElement as? ImageElement else {
+            return
+        }
+
+        let event = ImageRevertedToInitialStateEvent(element: imageElement)
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
+    }
+
     /// 手動背景除去の結果を画像要素に反映
     /// - Parameters:
     ///   - image: 背景除去後の画像

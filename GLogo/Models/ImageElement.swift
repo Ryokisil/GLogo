@@ -29,6 +29,69 @@ enum ImageRole: String, Codable, CaseIterable {
 
 /// 画像要素クラス
 class ImageElement: LogoElement {
+    /// RGBA成分を保持する簡易カラー表現
+    private struct RGBAColor: Codable, Equatable {
+        let red: CGFloat
+        let green: CGFloat
+        let blue: CGFloat
+        let alpha: CGFloat
+    }
+
+    /// リバート判定/復元に使用する調整値スナップショット
+    private struct RevertAdjustmentSnapshot: Codable, Equatable {
+        let saturationAdjustment: CGFloat
+        let brightnessAdjustment: CGFloat
+        let contrastAdjustment: CGFloat
+        let highlightsAdjustment: CGFloat
+        let shadowsAdjustment: CGFloat
+        let blacksAdjustment: CGFloat
+        let whitesAdjustment: CGFloat
+        let warmthAdjustment: CGFloat
+        let vibranceAdjustment: CGFloat
+        let hueAdjustment: CGFloat
+        let sharpnessAdjustment: CGFloat
+        let gaussianBlurRadius: CGFloat
+        let vignetteAdjustment: CGFloat
+        let bloomAdjustment: CGFloat
+        let grainAdjustment: CGFloat
+        let fadeAdjustment: CGFloat
+        let chromaticAberrationAdjustment: CGFloat
+        let backgroundBlurRadius: CGFloat
+        let backgroundBlurMaskData: Data?
+        let toneCurveData: ToneCurveData
+        let tintColorRGBA: RGBAColor?
+        let tintIntensity: CGFloat
+        let appliedFilterRecipe: FilterRecipe?
+        let appliedFilterPresetId: String?
+
+        static let `default` = RevertAdjustmentSnapshot(
+            saturationAdjustment: 1.0,
+            brightnessAdjustment: 0.0,
+            contrastAdjustment: 1.0,
+            highlightsAdjustment: 0.0,
+            shadowsAdjustment: 0.0,
+            blacksAdjustment: 0.0,
+            whitesAdjustment: 0.0,
+            warmthAdjustment: 0.0,
+            vibranceAdjustment: 0.0,
+            hueAdjustment: 0.0,
+            sharpnessAdjustment: 0.0,
+            gaussianBlurRadius: 0.0,
+            vignetteAdjustment: 0.0,
+            bloomAdjustment: 0.0,
+            grainAdjustment: 0.0,
+            fadeAdjustment: 0.0,
+            chromaticAberrationAdjustment: 0.0,
+            backgroundBlurRadius: 0.0,
+            backgroundBlurMaskData: nil,
+            toneCurveData: ToneCurveData(),
+            tintColorRGBA: nil,
+            tintIntensity: 0.0,
+            appliedFilterRecipe: nil,
+            appliedFilterPresetId: nil
+        )
+    }
+
     /// 画像アセット解決リポジトリ（VMから差し替え可能）
     static var assetRepository: ImageAssetRepositoryProtocol = ImageAssetRepository.shared
     /// 画像ファイル名
@@ -258,6 +321,9 @@ class ImageElement: LogoElement {
     
     /// 角丸の半径
     var cornerRadius: CGFloat = 10.0
+
+    /// リバート基準として扱う初期スナップショット
+    private var initialAdjustmentSnapshot: RevertAdjustmentSnapshot = .default
     
     /// 要素の種類
     override var type: LogoElementType {
@@ -387,6 +453,8 @@ class ImageElement: LogoElement {
         case roundedCorners, cornerRadius
         // 履歴・メタデータ
         case editHistory, metadata
+        // リバート基準スナップショット
+        case initialAdjustmentSnapshot
         // フィルタープリセット
         case appliedFilterRecipe, appliedFilterPresetId
         // インポート順
@@ -443,6 +511,7 @@ class ImageElement: LogoElement {
         // フィルタープリセット
         try container.encodeIfPresent(appliedFilterRecipe, forKey: .appliedFilterRecipe)
         try container.encodeIfPresent(appliedFilterPresetId, forKey: .appliedFilterPresetId)
+        try container.encode(initialAdjustmentSnapshot, forKey: .initialAdjustmentSnapshot)
 
         // インポート順番管理用のプロパティをエンコード
         try container.encode(originalImportOrder, forKey: .originalImportOrder)
@@ -505,6 +574,9 @@ class ImageElement: LogoElement {
         // フィルタープリセット（旧データ互換: nil = フィルター未適用）
         appliedFilterRecipe = try container.decodeIfPresent(FilterRecipe.self, forKey: .appliedFilterRecipe)
         appliedFilterPresetId = try container.decodeIfPresent(String.self, forKey: .appliedFilterPresetId)
+
+        // 旧データ互換: 未保存の場合は復元後の現在値を初期基準として扱う
+        initialAdjustmentSnapshot = try container.decodeIfPresent(RevertAdjustmentSnapshot.self, forKey: .initialAdjustmentSnapshot) ?? makeCurrentAdjustmentSnapshot()
     }
     
     /// 共通の初期化処理
@@ -524,6 +596,9 @@ class ImageElement: LogoElement {
         
         // デフォルトzIndexを設定
         zIndex = ElementPriority.image.rawValue
+
+        // 生成時点の調整値を初期スナップショットとして確定
+        initialAdjustmentSnapshot = makeCurrentAdjustmentSnapshot()
     }
     
     /// 画像とメタデータから初期化
@@ -663,30 +738,7 @@ class ImageElement: LogoElement {
     
     /// 元の画像に戻す
     func resetToOriginal() {
-        saturationAdjustment = 1.0
-        brightnessAdjustment = 0.0
-        contrastAdjustment = 1.0
-        highlightsAdjustment = 0.0
-        shadowsAdjustment = 0.0
-        blacksAdjustment = 0.0
-        whitesAdjustment = 0.0
-        warmthAdjustment = 0.0
-        vibranceAdjustment = 0.0
-        hueAdjustment = 0.0
-        sharpnessAdjustment = 0.0
-        gaussianBlurRadius = 0.0
-        vignetteAdjustment = 0.0
-        bloomAdjustment = 0.0
-        grainAdjustment = 0.0
-        fadeAdjustment = 0.0
-        chromaticAberrationAdjustment = 0.0
-        backgroundBlurRadius = 0.0
-        backgroundBlurMaskData = nil
-        toneCurveData = ToneCurveData()
-        tintColor = nil
-        tintIntensity = 0.0
-        appliedFilterRecipe = nil
-        appliedFilterPresetId = nil
+        applyAdjustmentSnapshot(initialAdjustmentSnapshot)
         editHistory.removeAll()
 
         // キャッシュをクリアして再描画を促す
@@ -1008,6 +1060,7 @@ class ImageElement: LogoElement {
         copy.frameWidth = frameWidth
         copy.roundedCorners = roundedCorners
         copy.cornerRadius = cornerRadius
+        copy.initialAdjustmentSnapshot = initialAdjustmentSnapshot
         
         return copy
     }
@@ -1075,6 +1128,117 @@ class ImageElement: LogoElement {
         // 編集履歴の確認
         let history = ImageMetadataManager.shared.getEditHistory(for: identifier)
         return !history.isEmpty
+    }
+
+    /// リバート対象となる調整値変更があるかを確認
+    /// - Parameters: なし
+    /// - Returns: 現在値が初期スナップショットから外れている場合はtrue、そうでなければfalse
+    private var hasRevertableAdjustmentChanges: Bool {
+        makeCurrentAdjustmentSnapshot() != initialAdjustmentSnapshot
+    }
+
+    /// 現在の状態でリバート実行が有効かどうかを返す
+    /// - Parameters: なし
+    /// - Returns: 編集履歴または調整値変更がある場合はtrue、なければfalse
+    var canRevertToInitialState: Bool {
+        hasEditHistory || hasRevertableAdjustmentChanges
+    }
+
+    /// 現在の調整値スナップショットを生成
+    /// - Parameters: なし
+    /// - Returns: 現在状態を表すスナップショット
+    private func makeCurrentAdjustmentSnapshot() -> RevertAdjustmentSnapshot {
+        RevertAdjustmentSnapshot(
+            saturationAdjustment: saturationAdjustment,
+            brightnessAdjustment: brightnessAdjustment,
+            contrastAdjustment: contrastAdjustment,
+            highlightsAdjustment: highlightsAdjustment,
+            shadowsAdjustment: shadowsAdjustment,
+            blacksAdjustment: blacksAdjustment,
+            whitesAdjustment: whitesAdjustment,
+            warmthAdjustment: warmthAdjustment,
+            vibranceAdjustment: vibranceAdjustment,
+            hueAdjustment: hueAdjustment,
+            sharpnessAdjustment: sharpnessAdjustment,
+            gaussianBlurRadius: gaussianBlurRadius,
+            vignetteAdjustment: vignetteAdjustment,
+            bloomAdjustment: bloomAdjustment,
+            grainAdjustment: grainAdjustment,
+            fadeAdjustment: fadeAdjustment,
+            chromaticAberrationAdjustment: chromaticAberrationAdjustment,
+            backgroundBlurRadius: backgroundBlurRadius,
+            backgroundBlurMaskData: backgroundBlurMaskData,
+            toneCurveData: toneCurveData,
+            tintColorRGBA: makeRGBAColor(from: tintColor),
+            tintIntensity: tintIntensity,
+            appliedFilterRecipe: appliedFilterRecipe,
+            appliedFilterPresetId: appliedFilterPresetId
+        )
+    }
+
+    /// スナップショットを現在の調整値へ反映
+    /// - Parameters:
+    ///   - snapshot: 反映する調整値スナップショット
+    /// - Returns: なし
+    private func applyAdjustmentSnapshot(_ snapshot: RevertAdjustmentSnapshot) {
+        saturationAdjustment = snapshot.saturationAdjustment
+        brightnessAdjustment = snapshot.brightnessAdjustment
+        contrastAdjustment = snapshot.contrastAdjustment
+        highlightsAdjustment = snapshot.highlightsAdjustment
+        shadowsAdjustment = snapshot.shadowsAdjustment
+        blacksAdjustment = snapshot.blacksAdjustment
+        whitesAdjustment = snapshot.whitesAdjustment
+        warmthAdjustment = snapshot.warmthAdjustment
+        vibranceAdjustment = snapshot.vibranceAdjustment
+        hueAdjustment = snapshot.hueAdjustment
+        sharpnessAdjustment = snapshot.sharpnessAdjustment
+        gaussianBlurRadius = snapshot.gaussianBlurRadius
+        vignetteAdjustment = snapshot.vignetteAdjustment
+        bloomAdjustment = snapshot.bloomAdjustment
+        grainAdjustment = snapshot.grainAdjustment
+        fadeAdjustment = snapshot.fadeAdjustment
+        chromaticAberrationAdjustment = snapshot.chromaticAberrationAdjustment
+        backgroundBlurRadius = snapshot.backgroundBlurRadius
+        backgroundBlurMaskData = snapshot.backgroundBlurMaskData
+        toneCurveData = snapshot.toneCurveData
+        tintColor = makeUIColor(from: snapshot.tintColorRGBA)
+        tintIntensity = snapshot.tintIntensity
+        appliedFilterRecipe = snapshot.appliedFilterRecipe
+        appliedFilterPresetId = snapshot.appliedFilterPresetId
+    }
+
+    /// 現在値を初期スナップショットとして再定義
+    /// - Parameters: なし
+    /// - Returns: なし
+    func captureCurrentAdjustmentAsInitialSnapshot() {
+        initialAdjustmentSnapshot = makeCurrentAdjustmentSnapshot()
+    }
+
+    /// UIColorをRGBA成分へ変換
+    /// - Parameters:
+    ///   - color: 変換対象の色
+    /// - Returns: RGBA成分（変換不可時はnil）
+    private func makeRGBAColor(from color: UIColor?) -> RGBAColor? {
+        guard let color else { return nil }
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        if color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
+            return RGBAColor(red: red, green: green, blue: blue, alpha: alpha)
+        }
+
+        let ciColor = CIColor(color: color)
+        return RGBAColor(red: ciColor.red, green: ciColor.green, blue: ciColor.blue, alpha: ciColor.alpha)
+    }
+
+    /// RGBA成分からUIColorを復元
+    /// - Parameters:
+    ///   - rgba: 復元元RGBA成分
+    /// - Returns: 復元後の色（復元失敗時はnil）
+    private func makeUIColor(from rgba: RGBAColor?) -> UIColor? {
+        guard let rgba else { return nil }
+        return UIColor(red: rgba.red, green: rgba.green, blue: rgba.blue, alpha: rgba.alpha)
     }
 }
 

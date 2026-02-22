@@ -741,20 +741,15 @@ struct EditorView: View {
     
     /// 選択された画像のリバートが可能かどうかを判断
     private func canRevert() -> Bool {
-        if let imageElement = viewModel.selectedElement as? ImageElement,
-           imageElement.hasEditHistory {
-            return true
+        if let imageElement = viewModel.selectedElement as? ImageElement {
+            return imageElement.canRevertToInitialState
         }
         return false
     }
     
     /// 選択された画像を初期状態に戻す
     private func revertSelectedImageToInitial() {
-        if let imageElement = viewModel.selectedElement as? ImageElement {
-            imageElement.revertToInitialState()
-            // キャンバスの再描画を促す
-            viewModel.updateSelectedElement(imageElement)
-        }
+        viewModel.revertSelectedImageToInitialState()
     }
 
     /// zIndex降順でヒットテスト

@@ -1378,6 +1378,184 @@ struct ImageTintColorChangedEvent: EditorEvent {
     }
 }
 
+/// リバート時に復元可能な画像調整状態スナップショット
+private struct ImageRevertStateSnapshot: Codable {
+    let saturationAdjustment: CGFloat
+    let brightnessAdjustment: CGFloat
+    let contrastAdjustment: CGFloat
+    let highlightsAdjustment: CGFloat
+    let shadowsAdjustment: CGFloat
+    let blacksAdjustment: CGFloat
+    let whitesAdjustment: CGFloat
+    let warmthAdjustment: CGFloat
+    let vibranceAdjustment: CGFloat
+    let hueAdjustment: CGFloat
+    let sharpnessAdjustment: CGFloat
+    let gaussianBlurRadius: CGFloat
+    let vignetteAdjustment: CGFloat
+    let bloomAdjustment: CGFloat
+    let grainAdjustment: CGFloat
+    let fadeAdjustment: CGFloat
+    let chromaticAberrationAdjustment: CGFloat
+    let backgroundBlurRadius: CGFloat
+    let backgroundBlurMaskData: Data?
+    let toneCurveData: ToneCurveData
+    let tintColor: RGBAColorSnapshot?
+    let tintIntensity: CGFloat
+    let appliedFilterRecipe: FilterRecipe?
+    let appliedFilterPresetId: String?
+    let showFrame: Bool
+    let frameColor: RGBAColorSnapshot
+    let frameWidth: CGFloat
+    let roundedCorners: Bool
+    let cornerRadius: CGFloat
+
+    init(element: ImageElement) {
+        saturationAdjustment = element.saturationAdjustment
+        brightnessAdjustment = element.brightnessAdjustment
+        contrastAdjustment = element.contrastAdjustment
+        highlightsAdjustment = element.highlightsAdjustment
+        shadowsAdjustment = element.shadowsAdjustment
+        blacksAdjustment = element.blacksAdjustment
+        whitesAdjustment = element.whitesAdjustment
+        warmthAdjustment = element.warmthAdjustment
+        vibranceAdjustment = element.vibranceAdjustment
+        hueAdjustment = element.hueAdjustment
+        sharpnessAdjustment = element.sharpnessAdjustment
+        gaussianBlurRadius = element.gaussianBlurRadius
+        vignetteAdjustment = element.vignetteAdjustment
+        bloomAdjustment = element.bloomAdjustment
+        grainAdjustment = element.grainAdjustment
+        fadeAdjustment = element.fadeAdjustment
+        chromaticAberrationAdjustment = element.chromaticAberrationAdjustment
+        backgroundBlurRadius = element.backgroundBlurRadius
+        backgroundBlurMaskData = element.backgroundBlurMaskData
+        toneCurveData = element.toneCurveData
+        tintColor = element.tintColor.map(RGBAColorSnapshot.init)
+        tintIntensity = element.tintIntensity
+        appliedFilterRecipe = element.appliedFilterRecipe
+        appliedFilterPresetId = element.appliedFilterPresetId
+        showFrame = element.showFrame
+        frameColor = RGBAColorSnapshot(element.frameColor)
+        frameWidth = element.frameWidth
+        roundedCorners = element.roundedCorners
+        cornerRadius = element.cornerRadius
+    }
+
+    /// スナップショット状態を画像要素へ反映する
+    /// - Parameters:
+    ///   - element: 反映先画像要素
+    /// - Returns: なし
+    func apply(to element: ImageElement) {
+        element.saturationAdjustment = saturationAdjustment
+        element.brightnessAdjustment = brightnessAdjustment
+        element.contrastAdjustment = contrastAdjustment
+        element.highlightsAdjustment = highlightsAdjustment
+        element.shadowsAdjustment = shadowsAdjustment
+        element.blacksAdjustment = blacksAdjustment
+        element.whitesAdjustment = whitesAdjustment
+        element.warmthAdjustment = warmthAdjustment
+        element.vibranceAdjustment = vibranceAdjustment
+        element.hueAdjustment = hueAdjustment
+        element.sharpnessAdjustment = sharpnessAdjustment
+        element.gaussianBlurRadius = gaussianBlurRadius
+        element.vignetteAdjustment = vignetteAdjustment
+        element.bloomAdjustment = bloomAdjustment
+        element.grainAdjustment = grainAdjustment
+        element.fadeAdjustment = fadeAdjustment
+        element.chromaticAberrationAdjustment = chromaticAberrationAdjustment
+        element.backgroundBlurRadius = backgroundBlurRadius
+        element.backgroundBlurMaskData = backgroundBlurMaskData
+        element.toneCurveData = toneCurveData
+        element.tintColor = tintColor?.uiColor
+        element.tintIntensity = tintIntensity
+        element.appliedFilterRecipe = appliedFilterRecipe
+        element.appliedFilterPresetId = appliedFilterPresetId
+        element.showFrame = showFrame
+        element.frameColor = frameColor.uiColor
+        element.frameWidth = frameWidth
+        element.roundedCorners = roundedCorners
+        element.cornerRadius = cornerRadius
+        element.invalidateRenderedImageCache()
+    }
+}
+
+/// UIColorを保存可能なRGBAへ変換するスナップショット
+private struct RGBAColorSnapshot: Codable {
+    let red: CGFloat
+    let green: CGFloat
+    let blue: CGFloat
+    let alpha: CGFloat
+
+    init(_ color: UIColor) {
+        var redValue: CGFloat = 0
+        var greenValue: CGFloat = 0
+        var blueValue: CGFloat = 0
+        var alphaValue: CGFloat = 0
+
+        if color.getRed(&redValue, green: &greenValue, blue: &blueValue, alpha: &alphaValue) {
+            red = redValue
+            green = greenValue
+            blue = blueValue
+            alpha = alphaValue
+            return
+        }
+
+        let ciColor = CIColor(color: color)
+        red = ciColor.red
+        green = ciColor.green
+        blue = ciColor.blue
+        alpha = ciColor.alpha
+    }
+
+    var uiColor: UIColor {
+        UIColor(red: red, green: green, blue: blue, alpha: alpha)
+    }
+}
+
+/// 画像要素を初期状態へ戻すイベント（UndoでRevert前状態へ復元可能）
+struct ImageRevertedToInitialStateEvent: EditorEvent {
+    var eventName = "ImageRevertedToInitialState"
+    var timestamp = Date()
+    let elementId: UUID
+    private let beforeState: ImageRevertStateSnapshot
+
+    var description: String {
+        "画像を初期状態に戻しました"
+    }
+
+    /// 初期化
+    /// - Parameters:
+    ///   - element: Revert対象画像要素
+    /// - Returns: なし
+    init(element: ImageElement) {
+        self.elementId = element.id
+        self.beforeState = ImageRevertStateSnapshot(element: element)
+    }
+
+    /// Revert操作を適用する
+    /// - Parameters:
+    ///   - project: 対象プロジェクト
+    /// - Returns: なし
+    func apply(to project: LogoProject) {
+        guard let element = project.element(for: elementId, as: ImageElement.self) else {
+            return
+        }
+        element.revertToInitialState()
+    }
+
+    /// Revert適用前の状態に戻す
+    /// - Parameters:
+    ///   - project: 対象プロジェクト
+    /// - Returns: なし
+    func revert(from project: LogoProject) {
+        guard let element = project.element(for: elementId, as: ImageElement.self) else {
+            return
+        }
+        beforeState.apply(to: element)
+    }
+}
+
 /// 画像内容差し替えイベント（手動背景除去などの結果適用）
 struct ImageContentReplacedEvent: EditorEvent {
     var eventName = "ImageContentReplaced"
