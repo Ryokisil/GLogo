@@ -134,11 +134,9 @@ struct EditorView: View {
                         canvasViewportSize = newSize
                     }
             }
-            .navigationTitle(viewModel.project.name)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                // ツールバーアイテム
-                toolbarItems
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                topActionBar
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 EditorBottomToolStrip(
@@ -594,27 +592,29 @@ struct EditorView: View {
     }
     
     // MARK: - ビューコントロール
-    
-    private var viewControls: some View {
+
+    /// 上部のカスタム操作バー（NavigationBar非依存）
+    private var topActionBar: some View {
         HStack(spacing: 12) {
-            // グリッド表示切替
-            Button(action: { uiState.showGrid.toggle() }) {
-                Image(systemName: uiState.showGrid ? "grid" : "grid.circle")
-                    .foregroundColor(uiState.showGrid ? .blue : .primary)
-            }
-            .help("グリッド表示")
-            
-            // 操作履歴
-            HStack(spacing: 4) {
-                // アンドゥ
+            HStack(spacing: 10) {
+                Button("Save") {
+                    saveProjectAuto()
+                }
+                .help("Save")
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Color.gray.opacity(0.15))
+                )
+
                 Button(action: { viewModel.undo() }) {
                     Image(systemName: "arrow.uturn.backward")
                 }
                 .disabled(!viewModel.canUndo)
                 .keyboardShortcut("z", modifiers: .command)
                 .help("元に戻す")
-                
-                // リドゥ
+
                 Button(action: { viewModel.redo() }) {
                     Image(systemName: "arrow.uturn.forward")
                 }
@@ -622,74 +622,83 @@ struct EditorView: View {
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .help("やり直す")
             }
-        }
-    }
-    
-    // MARK: - ツールバーアイテム
-    
-    private var toolbarItems: some ToolbarContent {
-        Group {
-            // 左側に保存ボタン
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button("Save") {
-                    saveProjectAuto()
-                }
-                .help("Save")
-            }
-            
-            // 右側にリバートボタン
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Revert") {
-                    // リバート機能の確認ダイアログを表示
-                    if canRevert() {
-                        showConfirmation(
-                            message: "Do you want to revert the selected image to its original state?",
-                            action: revertSelectedImageToInitial
-                        )
-                    } else {
-                        showAlert(
-                            title: "Cannot Revert",
-                            message: "No editable history was found, or no image is selected."
-                        )
-                    }
-                }
-            }
 
+            Spacer()
+
+            Button("Revert") {
+                if canRevert() {
+                    showConfirmation(
+                        message: "Do you want to revert the selected image to its original state?",
+                        action: revertSelectedImageToInitial
+                    )
+                } else {
+                    showAlert(
+                        title: "Cannot Revert",
+                        message: "No editable history was found, or no image is selected."
+                    )
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.gray.opacity(0.15))
+            )
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            Color(UIColor.systemBackground)
+                .opacity(0.96)
+                .ignoresSafeArea(edges: .top)
+        )
+    }
+
+    private var viewControls: some View {
+        HStack(spacing: 12) {
             // 使い方ガイド
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    uiState.editorIntroStepIndex = 0
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        uiState.isShowingEditorIntro = true
-                    }
-                } label: {
-                    Image(systemName: "questionmark.circle")
-                }
-                .help("使い方ガイド")
+            Button(action: openEditorGuide) {
+                Image(systemName: "questionmark.circle")
+                    .foregroundColor(.primary)
             }
+            .help("使い方ガイド")
 
+            // グリッド表示切替
+            Button(action: { uiState.showGrid.toggle() }) {
+                Image(systemName: uiState.showGrid ? "grid" : "grid.circle")
+                    .foregroundColor(uiState.showGrid ? .blue : .primary)
+            }
+            .help("グリッド表示")
         }
     }
-
+    
     private static let editorIntroSteps: [EditorIntroStep] = [
         EditorIntroStep(
-            title: "画像を追加",
-            message: "写真アイコンをタップして画像を読み込みます。",
+            titleEN: "Add an Image",
+            titleJP: "画像を追加",
+            messageEN: "Tap the photo icon to import an image.",
+            messageJP: "写真アイコンをタップして画像を読み込みます。",
             systemImageName: "photo.on.rectangle"
         ),
         EditorIntroStep(
-            title: "要素を選択",
-            message: "キャンバス上の要素をタップして選択し、移動・拡大縮小・回転ができます。",
+            titleEN: "Select an Element",
+            titleJP: "要素を選択",
+            messageEN: "Tap an element on the canvas to select it. You can move, resize, and rotate.",
+            messageJP: "キャンバス上の要素をタップして選択し、移動・拡大縮小・回転ができます。",
             systemImageName: "hand.tap"
         ),
         EditorIntroStep(
-            title: "下部ツールで編集",
-            message: "Textで文字追加、Adjustで色調整、AI Toolsで背景関連の編集ができます。",
+            titleEN: "Edit with Bottom Tools",
+            titleJP: "下部ツールで編集",
+            messageEN: "Use Text to add text, Adjust for color tuning, and AI Tools for background editing.",
+            messageJP: "Textで文字追加、Adjustで色調整、AI Toolsで背景関連の編集ができます。",
             systemImageName: "slider.horizontal.3"
         ),
         EditorIntroStep(
-            title: "保存",
-            message: "左上の保存ボタンで書き出します。",
+            titleEN: "Save",
+            titleJP: "保存",
+            messageEN: "Tap the save button at the top left to export.",
+            messageJP: "左上の保存ボタンで書き出します。",
             systemImageName: "square.and.arrow.down"
         )
     ]
@@ -750,6 +759,14 @@ struct EditorView: View {
     /// 選択された画像を初期状態に戻す
     private func revertSelectedImageToInitial() {
         viewModel.revertSelectedImageToInitialState()
+    }
+
+    /// 使い方ガイドを表示
+    private func openEditorGuide() {
+        uiState.editorIntroStepIndex = 0
+        withAnimation(.easeInOut(duration: 0.3)) {
+            uiState.isShowingEditorIntro = true
+        }
     }
 
     /// zIndex降順でヒットテスト

@@ -43,31 +43,35 @@ final class ImageAssetRepository: ImageAssetRepositoryProtocol {
         proxyTargetLongSide: CGFloat,
         highResThresholdMP: CGFloat
     ) -> UIImage? {
-        // 1. 識別子・ファイル名からプロキシを探す
+        // 1. 可能なら常にオリジナルから編集用画像を解決する。
+        //    P3/PQなどの非sRGB系は、編集中と確定後で入力画像が変わると見た目差が出やすいため、
+        //    色再現の一貫性を優先して原寸オリジナルを使う。
+        if let original = originalImageProvider() {
+            if shouldPreferOriginalForEditing(original) {
+                return original
+            }
+
+            let mp = (original.size.width * original.size.height) / 1_000_000.0
+            if mp > highResThresholdMP {
+                let resized = resizeImage(original, targetLongSide: proxyTargetLongSide)
+                return resized
+            }
+            return original
+        }
+
+        // 2. オリジナルが取得できない場合のみ既存プロキシへフォールバック
         let candidates: [String] = [fileName, identifier].compactMap { $0 }
         for key in candidates {
             if let proxy = AssetManager.shared.loadProxyImage(named: key) {
                 return proxy
             }
         }
-
-        // 2. 元画像パスに _proxy があれば利用
         if let path = originalPath {
             let proxyPath = (path as NSString).deletingPathExtension + "_proxy.png"
             if let proxy = UIImage(contentsOfFile: proxyPath) {
                 return proxy
             }
         }
-
-        // 3. 必要に応じてオンメモリでプロキシ生成
-        if let original = originalImageProvider() {
-            let mp = (original.size.width * original.size.height) / 1_000_000.0
-            if mp > highResThresholdMP {
-                return resizeImage(original, targetLongSide: proxyTargetLongSide)
-            }
-            return original
-        }
-
         return nil
     }
 
@@ -84,10 +88,24 @@ final class ImageAssetRepository: ImageAssetRepositoryProtocol {
         let scale = targetLongSide / longSide
         let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
 
-        UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
-        image.draw(in: CGRect(origin: .zero, size: newSize))
-        let resized = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        return resized
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        format.opaque = false
+        format.preferredRange = .extended
+        let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: newSize))
+        }
+    }
+
+    /// 編集時にオリジナル優先へ切り替えるべきか判定する
+    /// - Parameters:
+    ///   - image: 判定対象の画像
+    /// - Returns: 非sRGB系（Display P3/PQなど）なら true
+    private func shouldPreferOriginalForEditing(_ image: UIImage) -> Bool {
+        guard let colorSpaceName = image.cgImage?.colorSpace?.name else { return false }
+        let sRGB = CGColorSpace(name: CGColorSpace.sRGB)?.name
+        let extendedSRGB = CGColorSpace(name: CGColorSpace.extendedSRGB)?.name
+        return colorSpaceName != sRGB && colorSpaceName != extendedSRGB
     }
 }

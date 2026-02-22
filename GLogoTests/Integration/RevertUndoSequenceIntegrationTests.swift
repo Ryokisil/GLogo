@@ -25,7 +25,8 @@ final class RevertUndoSequenceIntegrationTests: XCTestCase {
     /// - Undo1回目でRevert前の調整（彩度2.0）へ戻る
     /// - Undo2回目で彩度変更前（1.0）へ戻る
     /// - Undo3回目で要素追加が取り消され、画像要素が消える
-    @MainActor func testRevertThenUndo_UndoFirstRestoresPreRevertAdjustment() throws {
+    @MainActor
+    func testRevertThenUndo_UndoFirstRestoresPreRevertAdjustment() throws {
         let canvasSize = CGSize(width: 1080, height: 1920)
         let project = LogoProject(name: "revert-undo-sequence", canvasSize: canvasSize)
         let viewModel = EditorViewModel(project: project)

@@ -21,6 +21,10 @@ struct ManualBackgroundRemovalView: View {
     @State private var zoomScale: CGFloat = 1.0
     /// 現在のパンオフセット
     @State private var panOffset: CGSize = .zero
+    /// ガイド表示フラグ
+    @State private var isShowingGuide = false
+    /// ガイドの現在ステップ
+    @State private var guideStepIndex = 0
 
     /// 背景除去モード用イニシャライザ
     /// - Parameters:
@@ -208,6 +212,16 @@ struct ManualBackgroundRemovalView: View {
                     .background(Color(.systemBackground))
                 }
             }
+            .overlay {
+                if isShowingGuide {
+                    EditorIntroOverlay(
+                        isPresented: $isShowingGuide,
+                        stepIndex: $guideStepIndex,
+                        steps: Self.removalGuideSteps
+                    ) {}
+                    .transition(.opacity)
+                }
+            }
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbar {
@@ -223,6 +237,18 @@ struct ManualBackgroundRemovalView: View {
                         .font(.headline)
                         .foregroundStyle(Color(uiColor: .label))
                 }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        guideStepIndex = 0
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            isShowingGuide = true
+                        }
+                    } label: {
+                        Image(systemName: "questionmark.circle")
+                            .foregroundColor(.primary)
+                    }
+                }
             }
             .toolbarBackground(Color(uiColor: .systemBackground), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -233,6 +259,39 @@ struct ManualBackgroundRemovalView: View {
                 }
             }
     }
+
+    // MARK: - ガイドステップ定義
+
+    private static let removalGuideSteps: [EditorIntroStep] = [
+        EditorIntroStep(
+            titleEN: "Paint to Remove",
+            titleJP: "塗って除去",
+            messageEN: "Drag the handle to paint over the area you want to remove. The red overlay shows the removal area.",
+            messageJP: "ハンドルをドラッグして除去したい部分をなぞります。赤いオーバーレイが除去範囲を示します。",
+            systemImageName: "paintbrush.pointed"
+        ),
+        EditorIntroStep(
+            titleEN: "Switch Modes",
+            titleJP: "モード切り替え",
+            messageEN: "Use Remove mode to erase the background, or Restore mode to bring back areas you removed by mistake.",
+            messageJP: "Removeモードで背景を除去、Restoreモードで誤って除去した部分を復元できます。",
+            systemImageName: "arrow.left.arrow.right"
+        ),
+        EditorIntroStep(
+            titleEN: "Zoom & Pan",
+            titleJP: "ズームとパン",
+            messageEN: "Pinch with two fingers to zoom in/out. While zoomed in, drag with two fingers to pan around. Double-tap to reset the view.",
+            messageJP: "2本指でピンチしてズームイン/アウト。ズーム中は2本指ドラッグで画面を移動。ダブルタップでリセット。",
+            systemImageName: "hand.pinch"
+        ),
+        EditorIntroStep(
+            titleEN: "AI Remove & Undo",
+            titleJP: "AI除去とアンドゥ",
+            messageEN: "Tap AI Remove for automatic background detection. Use Undo/Redo to fix mistakes, or Reset to start over.",
+            messageJP: "AI Removeで自動背景検出。Undo/Redoでやり直し、Resetで全リセットできます。",
+            systemImageName: "wand.and.stars"
+        ),
+    ]
 }
 
 /// プレビュー

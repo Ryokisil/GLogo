@@ -547,7 +547,9 @@ struct CanvasViewRepresentable: UIViewRepresentable {
                                 if let imageElement = element as? ImageElement,
                                    let image = imageElement.originalImage {
                                     let pixelCount = image.size.width * image.size.height * image.scale * image.scale
-                                    if pixelCount > canvasView.highResolutionThreshold {
+                                    // 調整済み画像はfull経路を維持し、ドラッグ中の色揺れを防止する
+                                    if pixelCount > canvasView.highResolutionThreshold,
+                                       imageElement.shouldUseInstantPreviewForManipulation {
                                         imageElement.startEditing()
                                     }
                                 }

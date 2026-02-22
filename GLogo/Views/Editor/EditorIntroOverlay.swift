@@ -5,14 +5,18 @@
 
 import SwiftUI
 
-/// エディター初回ガイドの表示内容を表すモデル
+/// エディター初回ガイドの表示内容を表すモデル（英語/日本語の二言語対応）
 struct EditorIntroStep: Identifiable {
     /// ステップ識別子
     let id = UUID()
-    /// ステップのタイトル
-    let title: String
-    /// ステップの説明文
-    let message: String
+    /// 英語タイトル
+    let titleEN: String
+    /// 日本語タイトル
+    let titleJP: String
+    /// 英語説明文
+    let messageEN: String
+    /// 日本語説明文
+    let messageJP: String
     /// 補助アイコンのシステム名
     let systemImageName: String
 }
@@ -27,6 +31,9 @@ struct EditorIntroOverlay: View {
     let steps: [EditorIntroStep]
     /// ガイド完了時のコールバック
     let onFinish: () -> Void
+
+    /// 日本語表示フラグ（初期値: 英語）
+    @State private var isJapanese = false
 
     // MARK: - View
 
@@ -75,14 +82,15 @@ struct EditorIntroOverlay: View {
             .environment(\.colorScheme, .light)
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: stepIndex)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isJapanese)
     }
 
     // MARK: - Subviews
 
-    /// ガイドタイトルとスキップボタン
+    /// ガイドタイトル・言語切り替え・スキップボタン
     private var header: some View {
         HStack {
-            Text("使い方ガイド")
+            Text("HOW TO USE")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
@@ -90,7 +98,22 @@ struct EditorIntroOverlay: View {
 
             Spacer()
 
-            Button("スキップ") {
+            // 言語切り替えボタン
+            Button {
+                isJapanese.toggle()
+            } label: {
+                Text(isJapanese ? "EN" : "JP")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 22)
+                    .background(
+                        Capsule()
+                            .fill(Color.blue.opacity(0.7))
+                    )
+                    .contentTransition(.numericText())
+            }
+
+            Button(isJapanese ? "スキップ" : "Skip") {
                 finishGuide()
             }
             .font(.footnote.weight(.medium))
@@ -120,21 +143,25 @@ struct EditorIntroOverlay: View {
         }
     }
 
-    /// ステップのタイトルと説明
+    /// ステップのタイトルと説明（言語に応じて切り替え）
     private var stepContent: some View {
-        VStack(spacing: 8) {
-            Text(steps[safe: stepIndex]?.title ?? "")
+        let step = steps[safe: stepIndex]
+        let title = isJapanese ? step?.titleJP : step?.titleEN
+        let message = isJapanese ? step?.messageJP : step?.messageEN
+
+        return VStack(spacing: 8) {
+            Text(title ?? "")
                 .font(.title3.weight(.bold))
                 .multilineTextAlignment(.center)
 
-            Text(steps[safe: stepIndex]?.message ?? "")
+            Text(message ?? "")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .id("content-\(stepIndex)")
-        .transition(.opacity)
+        .id("content-\(stepIndex)-\(isJapanese)")
+        .transition(.blurReplace)
     }
 
     /// ステップ進捗のドットインジケーター
@@ -155,7 +182,7 @@ struct EditorIntroOverlay: View {
                 Button {
                     stepIndex = max(0, stepIndex - 1)
                 } label: {
-                    Text("戻る")
+                    Text(isJapanese ? "戻る" : "Back")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.primary)
                         .frame(maxWidth: .infinity)
@@ -175,7 +202,7 @@ struct EditorIntroOverlay: View {
                     stepIndex = min(stepIndex + 1, steps.count - 1)
                 }
             } label: {
-                Text(isLastStep ? "完了" : "次へ")
+                Text(isLastStep ? (isJapanese ? "完了" : "Done") : (isJapanese ? "次へ" : "Next"))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)

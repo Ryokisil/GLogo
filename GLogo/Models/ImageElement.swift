@@ -94,6 +94,7 @@ class ImageElement: LogoElement {
 
     /// 画像アセット解決リポジトリ（VMから差し替え可能）
     static var assetRepository: ImageAssetRepositoryProtocol = ImageAssetRepository.shared
+
     /// 画像ファイル名
     var imageFileName: String?
     
@@ -382,7 +383,11 @@ class ImageElement: LogoElement {
     var image: UIImage? {
         // 編集中はプレビュー品質のみ返してメインスレッド負荷を抑える
         if isCurrentlyEditing {
-            return getInstantPreview() ?? editingImage ?? originalImage
+            let instant = getInstantPreview()
+            let fallbackEditing = editingImage
+            let fallbackOriginal = originalImage
+            let resolved = instant ?? fallbackEditing ?? fallbackOriginal
+            return resolved
         }
 
         if let cachedImage = cachedImage {
@@ -871,7 +876,7 @@ class ImageElement: LogoElement {
             mode: currentRenderMode()
         )
     }
-    
+
     /// 即座プレビュー用の画像を取得（低解像度、高速処理）
     func getInstantPreview() -> UIImage? {
         if previewImage == nil {
@@ -1142,6 +1147,16 @@ class ImageElement: LogoElement {
     /// - Returns: 編集履歴または調整値変更がある場合はtrue、なければfalse
     var canRevertToInitialState: Bool {
         hasEditHistory || hasRevertableAdjustmentChanges
+    }
+
+    /// ジェスチャー操作中に即時プレビュー経路へ切り替えるべきかを返す
+    /// - Parameters: なし
+    /// - Returns: 調整未変更の場合はtrue、調整変更ありの場合はfalse
+    ///
+    /// 調整変更ありでプレビュー経路へ切り替えると、proxy画像との色差が視認されることがあるため、
+    /// ドラッグ中の色揺れ防止のためにfull経路を維持する。
+    var shouldUseInstantPreviewForManipulation: Bool {
+        !hasRevertableAdjustmentChanges
     }
 
     /// 現在の調整値スナップショットを生成

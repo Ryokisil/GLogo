@@ -174,12 +174,40 @@ class ElementViewModel: ObservableObject {
     func applyGestureTransform(translation: CGSize?, scale: CGFloat?, rotation: CGFloat?, ended: Bool) {
         guard let element = element else { return }
 
+        // タップ誤検知によるゼロ移動ドラッグを除外し、不要なプレビュー切替を防止
+        let hasMeaningfulTranslation: Bool = {
+            guard let translation else { return false }
+            return abs(translation.width) > 0.5 || abs(translation.height) > 0.5
+        }()
+        let hasMeaningfulScale: Bool = {
+            guard let scale else { return false }
+            return abs(scale - 1.0) > 0.001
+        }()
+        let hasMeaningfulRotation: Bool = {
+            guard let rotation else { return false }
+            return abs(rotation) > 0.001
+        }()
+        let hasMeaningfulInput = hasMeaningfulTranslation || hasMeaningfulScale || hasMeaningfulRotation
+
+        // ジェスチャー中で入力が実質ゼロなら無視（選択タップ時の副作用を抑制）
+        if !ended && !hasMeaningfulInput { return }
+
+        // 終了イベントだけ飛んできたケースは無視（未開始ジェスチャーの終了）
+        if ended, gestureBasePosition == nil, gestureBaseSize == nil, gestureBaseRotation == nil {
+            return
+        }
+
         // 画像要素はジェスチャー中にプレビュー品質へ切り替えて操作遅延を抑える
         if let imageElement = element as? ImageElement {
             if ended {
                 imageElement.endEditing()
             } else {
-                imageElement.startEditing()
+                // 調整変更ありの画像はfull経路を維持し、ドラッグ中の色揺れを防止
+                if imageElement.shouldUseInstantPreviewForManipulation {
+                    imageElement.startEditing()
+                } else {
+                    imageElement.endEditing()
+                }
             }
         }
 
@@ -188,16 +216,16 @@ class ElementViewModel: ObservableObject {
         if gestureBaseSize == nil { gestureBaseSize = element.size }
         if gestureBaseRotation == nil { gestureBaseRotation = element.rotation }
 
-        if let basePos = gestureBasePosition, let delta = translation {
+        if let basePos = gestureBasePosition, let delta = translation, hasMeaningfulTranslation {
             element.position = CGPoint(x: basePos.x + delta.width, y: basePos.y + delta.height)
         }
 
-        if let baseSize = gestureBaseSize, let scale = scale {
+        if let baseSize = gestureBaseSize, let scale = scale, hasMeaningfulScale {
             let clampedScale = max(scale, 0.01) // 極端な縮小を防止
             element.size = CGSize(width: baseSize.width * clampedScale, height: baseSize.height * clampedScale)
         }
 
-        if let baseRot = gestureBaseRotation, let deltaRot = rotation {
+        if let baseRot = gestureBaseRotation, let deltaRot = rotation, hasMeaningfulRotation {
             element.rotation = baseRot + deltaRot
         }
 
@@ -688,12 +716,32 @@ class ElementViewModel: ObservableObject {
     // MARK: - 画像調整の開始/確定（汎用）
 
     /// 画像調整スライダーの開始を記録
-    private func beginImageAdjustment(_ key: ImageAdjustmentKey, currentValue: CGFloat) {
+    private func beginImageAdjustment(
+        _ key: ImageAdjustmentKey,
+        currentValue: CGFloat,
+        descriptor: ImageAdjustmentDescriptor
+    ) {
         if imageAdjustmentStartValues[key] == nil {
             imageAdjustmentStartValues[key] = currentValue
         }
+        guard let imageElement = imageElement else { return }
+        applyEditingModeForImageAdjustment(imageElement, descriptor: descriptor)
+    }
 
-        imageElement?.startEditing()
+    /// 調整キーに応じて編集中の描画経路を切り替える
+    /// - Parameters:
+    ///   - imageElement: 対象画像要素
+    ///   - descriptor: 調整ディスクリプタ
+    /// - Returns: なし
+    private func applyEditingModeForImageAdjustment(
+        _ imageElement: ImageElement,
+        descriptor: ImageAdjustmentDescriptor
+    ) {
+        if descriptor.usesInstantPreviewWhileEditing {
+            imageElement.startEditing()
+        } else {
+            imageElement.endEditing()
+        }
     }
 
     /// 画像調整スライダーの確定（履歴に1件だけ記録）
@@ -734,7 +782,7 @@ class ElementViewModel: ObservableObject {
         // 現在と同じ値なら何もしない
         if imageElement[keyPath: descriptor.keyPath] == value { return }
 
-        imageElement.startEditing()
+        applyEditingModeForImageAdjustment(imageElement, descriptor: descriptor)
         imageElement[keyPath: descriptor.keyPath] = value
 
         editorViewModel?.updateImageElement(imageElement)
@@ -756,7 +804,11 @@ class ElementViewModel: ObservableObject {
     func beginImageAdjustmentEditing(_ key: ImageAdjustmentKey) {
         guard let imageElement = imageElement,
               let descriptor = ImageAdjustmentDescriptor.all[key] else { return }
-        beginImageAdjustment(key, currentValue: imageElement[keyPath: descriptor.keyPath])
+        beginImageAdjustment(
+            key,
+            currentValue: imageElement[keyPath: descriptor.keyPath],
+            descriptor: descriptor
+        )
     }
 
     /// 画像調整の編集確定（onEditingChanged: false 時に呼ばれる）

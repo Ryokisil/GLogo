@@ -14,6 +14,10 @@ struct BackgroundBlurMaskEditView: View {
     @State private var zoomScale: CGFloat = 1.0
     /// 現在のパンオフセット
     @State private var panOffset: CGSize = .zero
+    /// ガイド表示フラグ
+    @State private var isShowingGuide = false
+    /// ガイドの現在ステップ
+    @State private var guideStepIndex = 0
 
     /// 背景ぼかしマスク編集用イニシャライザ
     /// - Parameters:
@@ -210,6 +214,16 @@ struct BackgroundBlurMaskEditView: View {
                 .background(Color(.systemBackground))
             }
         }
+        .overlay {
+            if isShowingGuide {
+                EditorIntroOverlay(
+                    isPresented: $isShowingGuide,
+                    stepIndex: $guideStepIndex,
+                    steps: Self.blurGuideSteps
+                ) {}
+                .transition(.opacity)
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
@@ -225,6 +239,18 @@ struct BackgroundBlurMaskEditView: View {
                     .font(.headline)
                     .foregroundStyle(Color(uiColor: .label))
             }
+
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    guideStepIndex = 0
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        isShowingGuide = true
+                    }
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                        .foregroundColor(.primary)
+                }
+            }
         }
         .toolbarBackground(Color(uiColor: .systemBackground), for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
@@ -235,4 +261,37 @@ struct BackgroundBlurMaskEditView: View {
             }
         }
     }
+
+    // MARK: - ガイドステップ定義
+
+    private static let blurGuideSteps: [EditorIntroStep] = [
+        EditorIntroStep(
+            titleEN: "Paint Blur Area",
+            titleJP: "ぼかし範囲を塗る",
+            messageEN: "Drag the handle to paint the area you want to blur. The masked area will be blurred.",
+            messageJP: "ハンドルをドラッグしてぼかしたい部分をなぞります。マスク範囲がぼかされます。",
+            systemImageName: "paintbrush.pointed"
+        ),
+        EditorIntroStep(
+            titleEN: "Switch Modes",
+            titleJP: "モード切り替え",
+            messageEN: "Use Blur mode to add blur areas, or Restore mode to remove blur from areas you masked by mistake.",
+            messageJP: "Blurモードでぼかし範囲を追加、Restoreモードで誤ったマスクを復元できます。",
+            systemImageName: "arrow.left.arrow.right"
+        ),
+        EditorIntroStep(
+            titleEN: "Zoom & Pan",
+            titleJP: "ズームとパン",
+            messageEN: "Pinch with two fingers to zoom in/out. While zoomed in, drag with two fingers to pan around. Double-tap to reset the view.",
+            messageJP: "2本指でピンチしてズームイン/アウト。ズーム中は2本指ドラッグで画面を移動。ダブルタップでリセット。",
+            systemImageName: "hand.pinch"
+        ),
+        EditorIntroStep(
+            titleEN: "Undo & Reset",
+            titleJP: "アンドゥとリセット",
+            messageEN: "Use Undo/Redo to fix mistakes. Tap Reset to clear the mask and start over.",
+            messageJP: "Undo/Redoでやり直し。Resetでマスクを全消去して最初からやり直せます。",
+            systemImageName: "arrow.uturn.backward"
+        ),
+    ]
 }

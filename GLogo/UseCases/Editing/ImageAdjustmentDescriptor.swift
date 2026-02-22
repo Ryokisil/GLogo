@@ -60,6 +60,12 @@ struct ImageAdjustmentDescriptor {
     /// RenderScheduler経由の更新が必要か（gaussianBlur用）
     let needsRenderScheduler: Bool
 
+    /// スライダー編集中に即時プレビュー経路を使うか
+    ///
+    /// true の場合は `ImageElement.startEditing()` を利用し、preview/proxy画像で高速に追従する。
+    /// false の場合は編集中も full 経路を維持し、指を離した前後での見た目差を抑える。
+    let usesInstantPreviewWhileEditing: Bool
+
     // MARK: - 全ディスクリプタテーブル
 
     /// 画像調整ディスクリプタ
@@ -79,7 +85,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "saturationAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.temperature] = ImageAdjustmentDescriptor(
@@ -93,7 +100,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "warmthAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.vibrance] = ImageAdjustmentDescriptor(
@@ -107,7 +115,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "vibranceAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.hue] = ImageAdjustmentDescriptor(
@@ -121,7 +130,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "hueAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.tintIntensity] = ImageAdjustmentDescriptor(
@@ -137,7 +147,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "tintIntensity",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         // MARK: Light
@@ -153,7 +164,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "brigthtnessAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.contrast] = ImageAdjustmentDescriptor(
@@ -167,7 +179,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "contrastAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.highlights] = ImageAdjustmentDescriptor(
@@ -181,7 +194,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "highlightsAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.shadows] = ImageAdjustmentDescriptor(
@@ -195,7 +209,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "shadowsAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.blacks] = ImageAdjustmentDescriptor(
@@ -209,7 +224,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "blacksAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.whites] = ImageAdjustmentDescriptor(
@@ -223,7 +239,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "whitesAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         // MARK: Detail
@@ -239,7 +256,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "sharpnessAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.gaussianBlur] = ImageAdjustmentDescriptor(
@@ -253,7 +271,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "gaussianBlurRadius",
-            needsRenderScheduler: true
+            needsRenderScheduler: true,
+            usesInstantPreviewWhileEditing: true
         )
 
         // MARK: FX
@@ -269,7 +288,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "vignetteAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.bloom] = ImageAdjustmentDescriptor(
@@ -283,7 +303,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "bloomAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.grain] = ImageAdjustmentDescriptor(
@@ -297,7 +318,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "grainAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.fade] = ImageAdjustmentDescriptor(
@@ -311,7 +333,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "fadeAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.chromaticAberration] = ImageAdjustmentDescriptor(
@@ -325,7 +348,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "chromaticAberrationAdjustment",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         // MARK: Frame / Background
@@ -341,7 +365,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "frameWidth",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.cornerRadius] = ImageAdjustmentDescriptor(
@@ -357,7 +382,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "cornerRadius",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         table[.backgroundBlurRadius] = ImageAdjustmentDescriptor(
@@ -371,7 +397,8 @@ struct ImageAdjustmentDescriptor {
                 )
             },
             metadataKey: "backgroundBlurRadius",
-            needsRenderScheduler: false
+            needsRenderScheduler: false,
+            usesInstantPreviewWhileEditing: true
         )
 
         return table
