@@ -1949,11 +1949,14 @@ struct ImageContentReplacedEvent: EditorEvent {
         guard let element = project.element(for: elementId, as: ImageElement.self) else {
             return
         }
+        // 背景除去の適用ではレイアウトサイズを維持する
+        let preservedSize = element.size
         element.replaceImageSource(
             with: newImageData,
             resetAdjustments: true,
             originalIdentifier: newOriginalImageIdentifier
         )
+        element.size = preservedSize
     }
 
     /// 画像内容を元に戻す
@@ -1965,6 +1968,9 @@ struct ImageContentReplacedEvent: EditorEvent {
             return
         }
 
+        // Undo時も適用前のレイアウトサイズを維持する
+        let preservedSize = element.size
+
         element.restoreImageSource(
             imageData: oldImageData,
             fileName: oldImageFileName,
@@ -1972,6 +1978,7 @@ struct ImageContentReplacedEvent: EditorEvent {
             path: oldOriginalImagePath,
             originalIdentifier: oldOriginalImageIdentifier
         )
+        element.size = preservedSize
 
         element.toneCurveData = oldToneCurveData
         element.saturationAdjustment = oldSaturation
