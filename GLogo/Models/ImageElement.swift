@@ -1066,7 +1066,7 @@ class ImageElement: LogoElement {
         copy.roundedCorners = roundedCorners
         copy.cornerRadius = cornerRadius
         copy.initialAdjustmentSnapshot = initialAdjustmentSnapshot
-        
+
         return copy
     }
     

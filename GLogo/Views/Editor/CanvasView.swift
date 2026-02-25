@@ -505,12 +505,15 @@ class CanvasView: UIView {
 struct CanvasViewRepresentable: UIViewRepresentable {
     /// エディタビューモデル
     @ObservedObject var viewModel: EditorViewModel
-    
+
     /// グリッド表示フラグ
     var showGrid: Bool = true
-    
+
     /// グリッドスナップフラグ
     var snapToGrid: Bool = false
+
+    /// 削除エフェクト状態のバインディング
+    @Binding var deleteEffect: DeleteEffectState
     
     /// コーディネータークラス - UIKitの委託パターンをSwiftUIに橋渡し
     class Coordinator: NSObject {
@@ -611,9 +614,17 @@ struct CanvasViewRepresentable: UIViewRepresentable {
             }
         }
         
-        // 要素削除時のコールバック
-        canvasView.onElementDelete = { [viewModel = parent.viewModel] in
+        // 要素削除時のコールバック（フェードアウトエフェクト付き）
+        canvasView.onElementDelete = { [weak self] in
             Task { @MainActor in
+                guard let self else { return }
+                let viewModel = self.parent.viewModel
+                // 削除前にスナップショットを取得してフェードアウト発火
+                if let element = viewModel.selectedElement {
+                    self.parent.deleteEffect.snapshot = element.renderSnapshot()
+                    self.parent.deleteEffect.frame = element.frame
+                    self.parent.deleteEffect.isActive = true
+                }
                 viewModel.deleteSelectedElement()
             }
         }

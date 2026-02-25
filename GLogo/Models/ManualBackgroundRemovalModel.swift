@@ -12,7 +12,7 @@ import UIKit
 
 /// 手動背景除去の編集モード
 enum RemovalMode: String, CaseIterable {
-    case erase = "Erase"     // 背景を透明化
+    case erase = "Remove"    // 背景を透明化
     case restore = "Restore" // 透明部分を元に戻す
 }
 

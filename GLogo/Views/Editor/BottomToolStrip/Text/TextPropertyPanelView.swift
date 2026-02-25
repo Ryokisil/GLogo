@@ -443,10 +443,39 @@ struct TextPropertyPanelView: View {
         ("橙", .systemOrange),
         ("紫", .systemPurple)
     ]
+    private static let colorTabMaxHeight: CGFloat = 252
+    private static let colorTabColumnMinWidth: CGFloat = 172
 
     private var colorTabContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // プリセットカラースウォッチ
+        ScrollView(.vertical, showsIndicators: false) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 8) {
+                    baseColorSection
+                        .frame(
+                            minWidth: Self.colorTabColumnMinWidth,
+                            maxWidth: .infinity,
+                            alignment: .topLeading
+                        )
+                    gradientDetailSection
+                        .frame(
+                            minWidth: Self.colorTabColumnMinWidth,
+                            maxWidth: .infinity,
+                            alignment: .topLeading
+                        )
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    baseColorSection
+                    gradientDetailSection
+                }
+            }
+            .padding(.vertical, 1)
+        }
+        .frame(maxHeight: Self.colorTabMaxHeight)
+    }
+
+    private var baseColorSection: some View {
+        effectSubsection("Base Color") {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(Self.presetColors, id: \.name) { preset in
@@ -474,9 +503,8 @@ struct TextPropertyPanelView: View {
                 .padding(.horizontal, 1)
             }
 
-            // ColorPicker
-            ColorPicker(
-                "Custom",
+            compactColorPickerRow(
+                label: "Custom",
                 selection: Binding(
                     get: { Color(viewModel.textElement?.textColor ?? .white) },
                     set: { newColor in
@@ -484,7 +512,6 @@ struct TextPropertyPanelView: View {
                     }
                 )
             )
-            .font(.subheadline)
         }
     }
 
@@ -841,6 +868,100 @@ struct TextPropertyPanelView: View {
         }
     }
 
+    // MARK: - Gradient Detail
+
+    private var gradientDetailSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let gradientEffect = findGradientFillEffect(), let index = findGradientFillEffectIndex() {
+                effectSubsection("Gradient Overlay") {
+                    compactColorPickerRow(
+                        label: "Start Color",
+                        selection: Binding(
+                            get: { Color(gradientEffect.startColor) },
+                            set: { newColor in
+                                viewModel.updateGradientFillColor(
+                                    atIndex: index, startColor: UIColor(newColor),
+                                    endColor: gradientEffect.endColor
+                                )
+                            }
+                        )
+                    )
+
+                    compactColorPickerRow(
+                        label: "End Color",
+                        selection: Binding(
+                            get: { Color(gradientEffect.endColor) },
+                            set: { newColor in
+                                viewModel.updateGradientFillColor(
+                                    atIndex: index, startColor: gradientEffect.startColor,
+                                    endColor: UIColor(newColor)
+                                )
+                            }
+                        )
+                    )
+
+                    sliderRow(label: "Angle", value: Binding(
+                        get: { gradientEffect.angle },
+                        set: { newValue in
+                            viewModel.updateGradientFillAngle(atIndex: index, angle: newValue)
+                        }
+                    ), range: 0...180, step: 15, format: "%.0f°", onEditingChanged: { isEditing in
+                        if isEditing {
+                            viewModel.beginGradientFillEffectEditing(atIndex: index)
+                        } else {
+                            viewModel.commitGradientFillEffectEditing(atIndex: index)
+                        }
+                    })
+
+                    sliderRow(label: "Opacity", value: Binding(
+                        get: { gradientEffect.opacity },
+                        set: { newValue in
+                            viewModel.updateGradientFillOpacity(atIndex: index, opacity: newValue)
+                        }
+                    ), range: 0...1, step: 0.01, format: "%.2f", onEditingChanged: { isEditing in
+                        if isEditing {
+                            viewModel.beginGradientFillOpacityEditing(atIndex: index)
+                        } else {
+                            viewModel.commitGradientFillOpacityEditing(atIndex: index)
+                        }
+                    })
+
+                    Button(role: .destructive) {
+                        if let index = findGradientFillEffectIndex() {
+                            viewModel.removeTextEffect(atIndex: index)
+                        }
+                    } label: {
+                        Label("Remove Gradient", systemImage: "trash")
+                            .font(.caption)
+                    }
+                }
+            } else {
+                Button {
+                    viewModel.addTextEffect(GradientFillEffect())
+                } label: {
+                    Label("Add Gradient", systemImage: "plus.circle")
+                        .font(.subheadline)
+                }
+            }
+        }
+    }
+
+    private func compactColorPickerRow(
+        label: String,
+        selection: Binding<Color>
+    ) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.caption.weight(.medium))
+                .foregroundColor(.secondary)
+
+            Spacer(minLength: 8)
+
+            ColorPicker("", selection: selection, supportsOpacity: true)
+                .labelsHidden()
+        }
+    }
+
     /// スライダー行の共通コンポーネント
     private func sliderRow(
         label: String,
@@ -871,6 +992,24 @@ struct TextPropertyPanelView: View {
                     )
             }
         }
+    }
+
+    /// Effects タブ内のサブセクションを描画
+    private func effectSubsection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.subheadline.weight(.medium))
+                .foregroundColor(.secondary)
+            content()
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.gray.opacity(0.10))
+        )
     }
 
     // MARK: - ヘルパーメソッド
@@ -911,6 +1050,16 @@ struct TextPropertyPanelView: View {
         viewModel.textElement?.effects.firstIndex(where: { $0 is GlowEffect })
     }
 
+    /// 最初のGradientFillEffectを取得
+    private func findGradientFillEffect() -> GradientFillEffect? {
+        viewModel.textElement?.effects.compactMap { $0 as? GradientFillEffect }.first
+    }
+
+    /// 最初のGradientFillEffectのインデックスを取得
+    private func findGradientFillEffectIndex() -> Int? {
+        viewModel.textElement?.effects.firstIndex(where: { $0 is GradientFillEffect })
+    }
+
     /// 現在のタブの値をリセット
     private func resetCurrentTab() {
         guard viewModel.textElement != nil else { return }
@@ -923,6 +1072,14 @@ struct TextPropertyPanelView: View {
             viewModel.updateFont(name: viewModel.textElement?.fontName ?? "HelveticaNeue", size: 36.0)
         case .color:
             viewModel.updateTextColor(.white)
+            if let index = findGradientFillEffectIndex(), let effect = findGradientFillEffect() {
+                viewModel.updateGradientFillColor(atIndex: index, startColor: .red, endColor: .blue)
+                viewModel.commitGradientFillAngle(atIndex: index, angle: 0.0)
+                viewModel.commitGradientFillOpacity(atIndex: index, opacity: 1.0)
+                if !effect.isEnabled {
+                    viewModel.updateTextEffect(atIndex: index, isEnabled: true)
+                }
+            }
         case .align:
             viewModel.updateTextAlignment(.center)
         case .spacing:

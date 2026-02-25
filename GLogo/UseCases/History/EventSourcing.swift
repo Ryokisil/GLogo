@@ -543,6 +543,165 @@ struct TextGlowEffectChangedEvent: EditorEvent {
     }
 }
 
+/// グラデーション塗り効果の色変更イベント
+struct TextGradientFillColorChangedEvent: EditorEvent {
+    var eventName = "TextGradientFillColorChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let effectIndex: Int
+    let oldStartColor: UIColor
+    let newStartColor: UIColor
+    let oldEndColor: UIColor
+    let newEndColor: UIColor
+
+    var description: String {
+        return "テキストのグラデーション色を変更しました"
+    }
+
+    // Codable対応のためのプロパティ
+    private enum CodingKeys: String, CodingKey {
+        case timestamp, elementId, effectIndex
+        case oldStartColorData, newStartColorData
+        case oldEndColorData, newEndColorData
+    }
+
+    // カスタムエンコーダー
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(elementId, forKey: .elementId)
+        try container.encode(effectIndex, forKey: .effectIndex)
+
+        let oldStartData = try NSKeyedArchiver.archivedData(withRootObject: oldStartColor, requiringSecureCoding: false)
+        let newStartData = try NSKeyedArchiver.archivedData(withRootObject: newStartColor, requiringSecureCoding: false)
+        let oldEndData = try NSKeyedArchiver.archivedData(withRootObject: oldEndColor, requiringSecureCoding: false)
+        let newEndData = try NSKeyedArchiver.archivedData(withRootObject: newEndColor, requiringSecureCoding: false)
+
+        try container.encode(oldStartData, forKey: .oldStartColorData)
+        try container.encode(newStartData, forKey: .newStartColorData)
+        try container.encode(oldEndData, forKey: .oldEndColorData)
+        try container.encode(newEndData, forKey: .newEndColorData)
+    }
+
+    // カスタムデコーダー
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        elementId = try container.decode(UUID.self, forKey: .elementId)
+        effectIndex = try container.decode(Int.self, forKey: .effectIndex)
+
+        let oldStartData = try container.decode(Data.self, forKey: .oldStartColorData)
+        let newStartData = try container.decode(Data.self, forKey: .newStartColorData)
+        let oldEndData = try container.decode(Data.self, forKey: .oldEndColorData)
+        let newEndData = try container.decode(Data.self, forKey: .newEndColorData)
+
+        guard let decodedOldStart = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: oldStartData),
+              let decodedNewStart = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: newStartData),
+              let decodedOldEnd = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: oldEndData),
+              let decodedNewEnd = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: newEndData) else {
+            throw DecodingError.dataCorrupted(DecodingError.Context(
+                codingPath: container.codingPath,
+                debugDescription: "Failed to decode UIColor"
+            ))
+        }
+
+        oldStartColor = decodedOldStart
+        newStartColor = decodedNewStart
+        oldEndColor = decodedOldEnd
+        newEndColor = decodedNewEnd
+    }
+
+    // 通常のイニシャライザ
+    init(elementId: UUID, effectIndex: Int,
+         oldStartColor: UIColor, newStartColor: UIColor,
+         oldEndColor: UIColor, newEndColor: UIColor) {
+        self.elementId = elementId
+        self.effectIndex = effectIndex
+        self.oldStartColor = oldStartColor
+        self.newStartColor = newStartColor
+        self.oldEndColor = oldEndColor
+        self.newEndColor = newEndColor
+    }
+
+    func apply(to project: LogoProject) {
+        guard let element = project.element(for: elementId, as: TextElement.self),
+              effectIndex < element.effects.count,
+              let gradientEffect = element.effects[effectIndex] as? GradientFillEffect else { return }
+
+        gradientEffect.startColor = newStartColor
+        gradientEffect.endColor = newEndColor
+    }
+
+    func revert(from project: LogoProject) {
+        guard let element = project.element(for: elementId, as: TextElement.self),
+              effectIndex < element.effects.count,
+              let gradientEffect = element.effects[effectIndex] as? GradientFillEffect else { return }
+
+        gradientEffect.startColor = oldStartColor
+        gradientEffect.endColor = oldEndColor
+    }
+}
+
+/// グラデーション塗り効果の角度変更イベント
+struct TextGradientFillEffectChangedEvent: EditorEvent {
+    var eventName = "TextGradientFillEffectChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let effectIndex: Int
+    let oldAngle: CGFloat
+    let newAngle: CGFloat
+
+    var description: String {
+        return "テキストのグラデーション角度を調整しました"
+    }
+
+    func apply(to project: LogoProject) {
+        guard let element = project.element(for: elementId, as: TextElement.self),
+              effectIndex < element.effects.count,
+              let gradientEffect = element.effects[effectIndex] as? GradientFillEffect else { return }
+
+        gradientEffect.angle = newAngle
+    }
+
+    func revert(from project: LogoProject) {
+        guard let element = project.element(for: elementId, as: TextElement.self),
+              effectIndex < element.effects.count,
+              let gradientEffect = element.effects[effectIndex] as? GradientFillEffect else { return }
+
+        gradientEffect.angle = oldAngle
+    }
+}
+
+/// グラデーション塗り効果の不透明度変更イベント
+struct TextGradientFillOpacityChangedEvent: EditorEvent {
+    var eventName = "TextGradientFillOpacityChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let effectIndex: Int
+    let oldOpacity: CGFloat
+    let newOpacity: CGFloat
+
+    var description: String {
+        return "テキストのグラデーション不透明度を調整しました"
+    }
+
+    func apply(to project: LogoProject) {
+        guard let element = project.element(for: elementId, as: TextElement.self),
+              effectIndex < element.effects.count,
+              let gradientEffect = element.effects[effectIndex] as? GradientFillEffect else { return }
+
+        gradientEffect.opacity = newOpacity
+    }
+
+    func revert(from project: LogoProject) {
+        guard let element = project.element(for: elementId, as: TextElement.self),
+              effectIndex < element.effects.count,
+              let gradientEffect = element.effects[effectIndex] as? GradientFillEffect else { return }
+
+        gradientEffect.opacity = oldOpacity
+    }
+}
+
 // MARK: - 図形に関するイベントの実装
 
 /// 図形タイプ変更イベント
@@ -1967,7 +2126,6 @@ struct ImageContentReplacedEvent: EditorEvent {
         guard let element = project.element(for: elementId, as: ImageElement.self) else {
             return
         }
-
         // Undo時も適用前のレイアウトサイズを維持する
         let preservedSize = element.size
 

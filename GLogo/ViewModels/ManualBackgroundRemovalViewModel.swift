@@ -22,6 +22,12 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
     /// 元画像（編集開始時の状態）
     let originalImage: UIImage
 
+    /// 完了時に使用するフル解像度画像
+    private let fullResolutionImage: UIImage
+
+    /// 編集時にプロキシ画像を使用しているか
+    private let isUsingProxyForEditing: Bool
+
     /// 完了時のコールバック（画像を返す）
     private let completion: (UIImage) -> Void
 
@@ -30,6 +36,11 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
 
     /// AI背景除去ユースケース
     private let backgroundRemovalUseCase: BackgroundRemovalUseCase
+
+    /// マスク適用プレビューのキャッシュ
+    private var cachedMaskedImage: UIImage?
+    /// キャッシュに対応するマスク更新ID
+    private var cachedMaskedImageMaskUpdateId: UUID?
 
     // MARK: - イニシャライザ
 
@@ -49,10 +60,22 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
         self.completion = completion
         self.useCase = useCase
         self.backgroundRemovalUseCase = backgroundRemovalUseCase
-        // ImageElementから現在の表示用画像を取得
-        let resolvedImage = imageElement.image ?? imageElement.originalImage
-        let isSourceImageAvailable = (resolvedImage != nil)
-        self.originalImage = resolvedImage ?? Self.makeFallbackImage()
+        // フル解像度画像を基準として保持し、編集時は必要に応じて軽量画像を使用する
+        let resolvedFullResolutionImage = imageElement.originalImage ?? imageElement.image
+        let isSourceImageAvailable = (resolvedFullResolutionImage != nil)
+        self.fullResolutionImage = resolvedFullResolutionImage ?? Self.makeFallbackImage()
+
+        let editingImage = ImageElement.assetRepository.loadEditingImage(
+            identifier: imageElement.originalImageIdentifier,
+            fileName: imageElement.imageFileName,
+            originalPath: imageElement.originalImagePath,
+            originalImageProvider: { resolvedFullResolutionImage },
+            proxyTargetLongSide: 1920,
+            highResThresholdMP: 18.0
+        ) ?? self.fullResolutionImage
+
+        self.originalImage = editingImage
+        self.isUsingProxyForEditing = Self.pixelSize(of: editingImage) != Self.pixelSize(of: self.fullResolutionImage)
 
         // 初期状態の設定
         var initialState = ManualBackgroundRemovalState()
@@ -181,6 +204,7 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
         } else {
             state.maskImage = useCase.createInitialMask(for: originalImage)
         }
+        state.maskUpdateId = UUID()
         state.editedImage = originalImage
         state.history = [originalImage]
         state.historyIndex = 0
@@ -190,24 +214,31 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
 
     /// 編集完了
     func complete() {
-        // マスクを適用した最終画像を生成
-        if let maskImage = state.maskImage,
-           let finalImage = useCase.applyMask(maskImage, to: originalImage) {
+        if let outputMask = outputMaskImage(),
+           let finalImage = useCase.applyMask(outputMask, to: fullResolutionImage) {
             completion(finalImage)
         } else {
-            completion(originalImage)
+            completion(fullResolutionImage)
         }
     }
 
     /// 編集キャンセル
     func cancel() {
-        completion(originalImage)
+        completion(fullResolutionImage)
     }
 
     /// マスクを適用した画像を取得
     func getMaskedImage() -> UIImage? {
         guard let maskImage = state.maskImage else { return nil }
-        return useCase.applyMask(maskImage, to: originalImage)
+        if cachedMaskedImageMaskUpdateId == state.maskUpdateId,
+           let cachedMaskedImage {
+            return cachedMaskedImage
+        }
+
+        let rendered = useCase.applyMask(maskImage, to: originalImage)
+        cachedMaskedImage = rendered
+        cachedMaskedImageMaskUpdateId = state.maskUpdateId
+        return rendered
     }
 
     /// AIで生成したマスクを適用する
@@ -243,5 +274,41 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
         let clampedX = min(max(point.x, 0), maxX)
         let clampedY = min(max(point.y, 0), maxY)
         return CGPoint(x: clampedX, y: clampedY)
+    }
+
+    /// 完了時に出力へ適用するマスク画像を返す
+    /// - Parameters: なし
+    /// - Returns: フル解像度画像に対応したマスク
+    private func outputMaskImage() -> UIImage? {
+        guard let maskImage = state.maskImage else { return nil }
+        guard isUsingProxyForEditing else { return maskImage }
+        return Self.resizeMask(maskImage, toMatch: fullResolutionImage)
+    }
+
+    /// 画像の実ピクセルサイズを返す
+    /// - Parameter image: 対象画像
+    /// - Returns: 実ピクセルサイズ
+    private static func pixelSize(of image: UIImage) -> CGSize {
+        if let cgImage = image.cgImage {
+            return CGSize(width: CGFloat(cgImage.width), height: CGFloat(cgImage.height))
+        }
+        return CGSize(width: image.size.width * image.scale, height: image.size.height * image.scale)
+    }
+
+    /// マスク画像をターゲット画像サイズへリサイズする
+    /// - Parameters:
+    ///   - mask: 元マスク
+    ///   - targetImage: 目標サイズ基準画像
+    /// - Returns: リサイズ後マスク
+    private static func resizeMask(_ mask: UIImage, toMatch targetImage: UIImage) -> UIImage {
+        let targetSize = targetImage.size
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = targetImage.scale
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        return renderer.image { context in
+            context.cgContext.interpolationQuality = .none
+            mask.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
     }
 }

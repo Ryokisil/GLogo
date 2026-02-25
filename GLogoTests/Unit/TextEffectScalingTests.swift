@@ -73,6 +73,18 @@ final class TextEffectScalingTests: XCTestCase {
         XCTAssertEqual(glow.radius, 10.0, accuracy: 0.001, "元のインスタンスが汚染されていないこと")
     }
 
+    /// GradientFillEffect のディープコピーが独立していること
+    func testDeepCopy_GradientFillEffect_independentMutation() {
+        let gradient = GradientFillEffect(startColor: .red, endColor: .blue, angle: 45, opacity: 0.6)
+        let copy = gradient.deepCopy() as! GradientFillEffect
+
+        copy.angle = 180
+        copy.opacity = 0.2
+
+        XCTAssertEqual(gradient.angle, 45.0, accuracy: 0.001, "元のインスタンスが汚染されていないこと")
+        XCTAssertEqual(gradient.opacity, 0.6, accuracy: 0.001, "元のインスタンスが汚染されていないこと")
+    }
+
     /// TextElement.copy() がエフェクトをディープコピーすること
     func testTextElement_copy_deepCopiesEffects() {
         let textElement = TextElement(text: "Test", fontName: "HelveticaNeue", fontSize: 20, textColor: .white)
@@ -126,6 +138,19 @@ final class TextEffectScalingTests: XCTestCase {
         XCTAssertEqual(result.radius, 12.0, accuracy: 0.001)
     }
 
+    /// GradientFillEffect の Codable ラウンドトリップ
+    func testAnyTextEffect_codableRoundTrip_gradient() throws {
+        let gradient = GradientFillEffect(startColor: .red, endColor: .blue, angle: 120, opacity: 0.35)
+        let wrapped = AnyTextEffect(gradient)
+
+        let data = try JSONEncoder().encode(wrapped)
+        let decoded = try JSONDecoder().decode(AnyTextEffect.self, from: data)
+
+        let result = try XCTUnwrap(decoded.effect as? GradientFillEffect)
+        XCTAssertEqual(result.angle, 120.0, accuracy: 0.001)
+        XCTAssertEqual(result.opacity, 0.35, accuracy: 0.001)
+    }
+
     /// 混合エフェクト配列の Codable ラウンドトリップ
     func testTextElement_codableRoundTrip_mixedEffects() throws {
         let textElement = TextElement(text: "Hello", fontName: "HelveticaNeue", fontSize: 24, textColor: .white)
@@ -157,5 +182,19 @@ final class TextEffectScalingTests: XCTestCase {
 
         let decoded = try JSONDecoder().decode(TextElement.self, from: modifiedData)
         XCTAssertTrue(decoded.effects.isEmpty, "effects キーなしの場合に空配列であること")
+    }
+
+    /// opacity キーなしの GradientFillEffect をデコードした場合に 1.0 になること（後方互換）
+    func testGradientFillEffect_decode_missingOpacity_defaultsToOne() throws {
+        let gradient = GradientFillEffect(startColor: .red, endColor: .blue, angle: 30, opacity: 0.2)
+        let data = try JSONEncoder().encode(AnyTextEffect(gradient))
+
+        var json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        json.removeValue(forKey: "opacity")
+        let modifiedData = try JSONSerialization.data(withJSONObject: json)
+
+        let decoded = try JSONDecoder().decode(AnyTextEffect.self, from: modifiedData)
+        let result = try XCTUnwrap(decoded.effect as? GradientFillEffect)
+        XCTAssertEqual(result.opacity, 1.0, accuracy: 0.001)
     }
 }

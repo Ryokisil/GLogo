@@ -135,7 +135,7 @@ struct AIToolsPanelView: View {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button {
                     viewModel.requestAIBackgroundRemoval()
                 } label: {
@@ -143,26 +143,30 @@ struct AIToolsPanelView: View {
                         ProgressView()
                             .progressViewStyle(.circular)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, 7)
                     } else {
                         Label("AI Remove", systemImage: "sparkles")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.footnote.weight(.semibold))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, 7)
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .buttonBorderShape(.roundedRectangle(radius: 10))
                 .disabled(!hasSelectedImage || viewModel.isProcessingAI)
 
                 Button {
                     onOpenManualBackgroundRemoval()
                 } label: {
                     Label("Manual Edit", systemImage: "paintbrush.pointed")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 7)
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.small)
+                .buttonBorderShape(.roundedRectangle(radius: 10))
                 .disabled(!hasSelectedImage || viewModel.isProcessingAI)
             }
         }
@@ -207,7 +211,7 @@ struct AIToolsPanelView: View {
             }
             .disabled(!hasSelectedImage)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button {
                     viewModel.requestAIBackgroundBlur()
                 } label: {
@@ -215,26 +219,30 @@ struct AIToolsPanelView: View {
                         ProgressView()
                             .progressViewStyle(.circular)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, 7)
                     } else {
                         Label("Generate AI Mask", systemImage: "sparkles")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.footnote.weight(.semibold))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, 7)
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .buttonBorderShape(.roundedRectangle(radius: 10))
                 .disabled(!hasSelectedImage || viewModel.isProcessingAI)
 
                 Button {
                     viewModel.requestBackgroundBlurMaskEdit()
                 } label: {
                     Label("Edit Mask", systemImage: "pencil")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 7)
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.small)
+                .buttonBorderShape(.roundedRectangle(radius: 10))
                 .disabled(!hasSelectedImage)
             }
 
@@ -242,11 +250,13 @@ struct AIToolsPanelView: View {
                 viewModel.removeBackgroundBlurMask()
             } label: {
                 Label("Clear Blur Mask", systemImage: "xmark.circle")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.footnote.weight(.semibold))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 7)
             }
             .buttonStyle(.bordered)
+            .controlSize(.small)
+            .buttonBorderShape(.roundedRectangle(radius: 10))
             .disabled(!hasSelectedImage || !hasBlurMask)
         }
     }

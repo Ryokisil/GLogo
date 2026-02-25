@@ -280,6 +280,84 @@ class GlowEffect: TextEffect {
     }
 }
 
+/// グラデーション塗り効果
+class GradientFillEffect: TextEffect {
+    /// グラデーション開始色
+    var startColor: UIColor = .red
+
+    /// グラデーション終了色
+    var endColor: UIColor = .blue
+
+    /// グラデーション角度（度数: 0=左→右, 90=上→下）
+    var angle: CGFloat = 0.0
+
+    /// グラデーションの不透明度（0.0...1.0）
+    var opacity: CGFloat = 1.0
+
+    /// エンコード用のコーディングキー
+    private enum GradientCodingKeys: String, CodingKey {
+        case startColorData, endColorData, angle, opacity
+    }
+
+    init(startColor: UIColor = .red, endColor: UIColor = .blue, angle: CGFloat = 0.0, opacity: CGFloat = 1.0) {
+        super.init(type: .gradient)
+        self.startColor = startColor
+        self.endColor = endColor
+        self.angle = angle
+        self.opacity = opacity
+    }
+
+    required init(from decoder: Decoder) throws {
+        _ = try decoder.container(keyedBy: CodingKeys.self)
+        try super.init(from: decoder)
+
+        let gradientContainer = try decoder.container(keyedBy: GradientCodingKeys.self)
+        if let colorData = try? gradientContainer.decode(Data.self, forKey: .startColorData),
+           let decodedColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: colorData) {
+            startColor = decodedColor
+        }
+        if let colorData = try? gradientContainer.decode(Data.self, forKey: .endColorData),
+           let decodedColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: colorData) {
+            endColor = decodedColor
+        }
+
+        angle = try gradientContainer.decodeIfPresent(CGFloat.self, forKey: .angle) ?? 0.0
+        opacity = try gradientContainer.decodeIfPresent(CGFloat.self, forKey: .opacity) ?? 1.0
+    }
+
+    override func encode(to encoder: Encoder) throws {
+        try super.encode(to: encoder)
+
+        var gradientContainer = encoder.container(keyedBy: GradientCodingKeys.self)
+
+        // UIColorのエンコード
+        let startData = try NSKeyedArchiver.archivedData(withRootObject: startColor, requiringSecureCoding: false)
+        try gradientContainer.encode(startData, forKey: .startColorData)
+        let endData = try NSKeyedArchiver.archivedData(withRootObject: endColor, requiringSecureCoding: false)
+        try gradientContainer.encode(endData, forKey: .endColorData)
+        try gradientContainer.encode(angle, forKey: .angle)
+        try gradientContainer.encode(opacity, forKey: .opacity)
+    }
+
+    /// グラデーションはマルチパス描画で直接処理するため apply は no-op
+    override func apply(to attributes: inout [NSAttributedString.Key: Any]) {
+        // マルチパス描画で直接処理
+    }
+
+    override func deepCopy() -> TextEffect {
+        let copy = GradientFillEffect(startColor: startColor, endColor: endColor, angle: angle, opacity: opacity)
+        copy.isEnabled = isEnabled
+        return copy
+    }
+
+    override func scaled(by scale: CGFloat) -> TextEffect {
+        // 角度はスケール不要
+        let copy = GradientFillEffect(startColor: startColor, endColor: endColor, angle: angle, opacity: opacity)
+        copy.isEnabled = isEnabled
+        return copy
+    }
+}
+
 // MARK: - 多態 Codable ラッパー
 
 /// TextEffect のサブクラス情報を保持して Codable ラウンドトリップを実現するラッパー
@@ -303,8 +381,7 @@ struct AnyTextEffect: Codable {
         case .glow:
             effect = try GlowEffect(from: decoder)
         case .gradient:
-            // 未実装フォールバック
-            effect = try TextEffect(from: decoder)
+            effect = try GradientFillEffect(from: decoder)
         }
     }
 
@@ -477,6 +554,13 @@ class TextElement: LogoElement {
         // パス3: テキスト本体＋シャドウ（最前面）
         drawFillPass(in: drawRect, options: drawingOptions)
 
+        // パス4: グラデーション塗り（テキスト本体の上にクリッピングマスクで描画）
+        for effect in effects where effect.isEnabled {
+            if let gradient = effect as? GradientFillEffect {
+                drawGradientFillPass(gradient, in: context, drawRect: drawRect, options: drawingOptions)
+            }
+        }
+
         context.restoreGState()
     }
 
@@ -598,6 +682,102 @@ class TextElement: LogoElement {
         attrString.draw(with: rect, options: options, context: nil)
     }
     
+    /// グラデーション塗りパスを描画（テキスト形状にクリッピングしてグラデーション描画）
+    private func drawGradientFillPass(
+        _ gradient: GradientFillEffect,
+        in context: CGContext,
+        drawRect: CGRect,
+        options: NSStringDrawingOptions
+    ) {
+        // オフスクリーンコンテキストでテキストをマスク用に描画
+        // コンテキストの CTM からスケールを取得（回転・オフスクリーン描画にも対応）
+        let ctm = context.ctm
+        let scaleX = hypot(ctm.a, ctm.c)
+        let scaleY = hypot(ctm.b, ctm.d)
+        let scale = max(scaleX, scaleY, 1.0)
+        let maskWidth = Int(drawRect.width * scale)
+        let maskHeight = Int(drawRect.height * scale)
+        guard maskWidth > 0, maskHeight > 0 else { return }
+
+        guard let maskContext = CGContext(
+            data: nil,
+            width: maskWidth,
+            height: maskHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: maskWidth,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return }
+
+        // マスク用コンテキストの座標変換（UIKit座標系に合わせる）
+        maskContext.scaleBy(x: scale, y: scale)
+        maskContext.translateBy(x: -drawRect.origin.x, y: -drawRect.origin.y)
+
+        // 黒背景で初期化（マスクでは白=表示、黒=非表示）
+        maskContext.setFillColor(UIColor.black.cgColor)
+        maskContext.fill(CGRect(origin: drawRect.origin, size: drawRect.size))
+
+        // テキストを白で描画
+        UIGraphicsPushContext(maskContext)
+        let maskAttrString = attributedStringForMask()
+        maskAttrString.draw(with: drawRect, options: options, context: nil)
+        UIGraphicsPopContext()
+
+        guard let maskImage = maskContext.makeImage() else { return }
+
+        // メインコンテキストでクリッピング＋グラデーション描画
+        context.saveGState()
+        context.clip(to: drawRect, mask: maskImage)
+
+        // 角度からグラデーションの始点・終点を計算
+        let angleRad = gradient.angle * .pi / 180.0
+        let centerX = drawRect.midX
+        let centerY = drawRect.midY
+        let halfDiag = sqrt(drawRect.width * drawRect.width + drawRect.height * drawRect.height) / 2
+
+        let startPoint = CGPoint(
+            x: centerX - cos(angleRad) * halfDiag,
+            y: centerY - sin(angleRad) * halfDiag
+        )
+        let endPoint = CGPoint(
+            x: centerX + cos(angleRad) * halfDiag,
+            y: centerY + sin(angleRad) * halfDiag
+        )
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let colors = [gradient.startColor.cgColor, gradient.endColor.cgColor] as CFArray
+        let locations: [CGFloat] = [0.0, 1.0]
+
+        if let cgGradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: locations) {
+            context.setAlpha(max(0.0, min(gradient.opacity, 1.0)))
+            context.drawLinearGradient(
+                cgGradient,
+                start: startPoint,
+                end: endPoint,
+                options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+            )
+        }
+
+        context.restoreGState()
+    }
+
+    /// マスク描画用の属性付き文字列（白色・エフェクトなし）
+    private func attributedStringForMask() -> NSAttributedString {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = alignment.nsTextAlignment
+        paragraphStyle.lineSpacing = lineSpacing
+
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: UIColor.white,
+            .paragraphStyle: paragraphStyle
+        ]
+        if letterSpacing != 0 {
+            attributes[.kern] = letterSpacing
+        }
+        return NSAttributedString(string: text, attributes: attributes)
+    }
+
     /// 要素のコピーを作成
     override func copy() -> LogoElement {
         let copy = TextElement(text: text, fontName: fontName, fontSize: fontSize, textColor: textColor)

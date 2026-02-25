@@ -98,6 +98,9 @@ struct EditorView: View {
     /// キーボード非表示時のキャンバスサイズ（テキスト編集中のリサイズ防止用）
     @State private var stableCanvasSize: CGSize = .zero
 
+    /// 削除エフェクトの状態
+    @State private var deleteEffect = DeleteEffectState()
+
     // MARK: - 永続化
 
     /// 初回ガイド表示の判定
@@ -377,7 +380,8 @@ struct EditorView: View {
             CanvasViewRepresentable(
                 viewModel: viewModel,
                 showGrid: uiState.showGrid,
-                snapToGrid: uiState.snapToGrid
+                snapToGrid: uiState.snapToGrid,
+                deleteEffect: $deleteEffect
             )
             
             if viewModel.editorMode == .select {
@@ -458,6 +462,18 @@ struct EditorView: View {
                 .offset(y: -110)
             }
 
+            // 削除フェードアウトエフェクト
+            if deleteEffect.isActive, let snapshot = deleteEffect.snapshot {
+                DeleteFadeEffect(
+                    snapshot: snapshot,
+                    frame: deleteEffect.frame
+                ) {
+                    deleteEffect.isActive = false
+                    deleteEffect.snapshot = nil
+                }
+                .zIndex(999)
+            }
+
             // ツールバー
             VStack {
                 toolbarOverlay
@@ -491,56 +507,6 @@ struct EditorView: View {
     
     private var modeSelector: some View {
         HStack(spacing: 12) {
-            // 図形作成モード
-            Menu {
-                // 各図形タイプのメニュー項目
-                Button(action: {
-                    viewModel.nextShapeType = .rectangle
-                    viewModel.editorMode = .shapeCreate
-                }) {
-                    Label("四角形", systemImage: "square")
-                }
-                
-                Button(action: {
-                    viewModel.nextShapeType = .roundedRectangle
-                    viewModel.editorMode = .shapeCreate
-                }) {
-                    Label("角丸四角形", systemImage: "square.rounded")
-                }
-                
-                Button(action: {
-                    viewModel.nextShapeType = .circle
-                    viewModel.editorMode = .shapeCreate
-                }) {
-                    Label("円", systemImage: "circle")
-                }
-                
-                Button(action: {
-                    viewModel.nextShapeType = .triangle
-                    viewModel.editorMode = .shapeCreate
-                }) {
-                    Label("三角形", systemImage: "triangle")
-                }
-                
-                Button(action: {
-                    viewModel.nextShapeType = .star
-                    viewModel.editorMode = .shapeCreate
-                }) {
-                    Label("星", systemImage: "star")
-                }
-                
-                Button(action: {
-                    viewModel.nextShapeType = .polygon
-                    viewModel.editorMode = .shapeCreate
-                }) {
-                    Label("多角形", systemImage: "hexagon")
-                }
-            } label: {
-                Image(systemName: "square.on.circle")
-                    .foregroundColor(viewModel.editorMode == .shapeCreate ? .blue : .primary)
-            }
-            .help("図形ツール")
-            
             // 画像インポートモード
             Button(action: {
                 viewModel.editorMode = .imageImport
@@ -554,12 +520,16 @@ struct EditorView: View {
             
             // 削除モード
             Button(action: {
-                if viewModel.selectedElement != nil {
+                if let element = viewModel.selectedElement {
                     // 選択中の要素がある場合は削除の確認
                     showConfirmation(
                         message: "Delete the selected element?",
                         action: {
-                        viewModel.deleteSelectedElement()
+                            // スナップショットを取得してフェードアウト
+                            deleteEffect.snapshot = element.renderSnapshot()
+                            deleteEffect.frame = element.frame
+                            deleteEffect.isActive = true
+                            viewModel.deleteSelectedElement()
                         }
                     )
                 } else {
@@ -662,13 +632,6 @@ struct EditorView: View {
                     .foregroundColor(.primary)
             }
             .help("使い方ガイド")
-
-            // グリッド表示切替
-            Button(action: { uiState.showGrid.toggle() }) {
-                Image(systemName: uiState.showGrid ? "grid" : "grid.circle")
-                    .foregroundColor(uiState.showGrid ? .blue : .primary)
-            }
-            .help("グリッド表示")
         }
     }
     

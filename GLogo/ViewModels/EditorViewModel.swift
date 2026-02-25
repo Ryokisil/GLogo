@@ -653,7 +653,87 @@ class EditorViewModel: ObservableObject {
 
         applyEventAndRefreshSelection(event, elementId: textElement.id)
     }
-    
+
+    /// グラデーション塗り効果の色更新
+    /// - Parameters:
+    ///   - textElement: 更新対象のテキスト要素
+    ///   - effectIndex: 更新対象の効果インデックス
+    ///   - oldStartColor: 変更前の開始色
+    ///   - newStartColor: 変更後の開始色
+    ///   - oldEndColor: 変更前の終了色
+    ///   - newEndColor: 変更後の終了色
+    func updateTextGradientFillColor(
+        _ textElement: TextElement,
+        effectIndex: Int,
+        oldStartColor: UIColor,
+        newStartColor: UIColor,
+        oldEndColor: UIColor,
+        newEndColor: UIColor
+    ) {
+        let event = TextGradientFillColorChangedEvent(
+            elementId: textElement.id,
+            effectIndex: effectIndex,
+            oldStartColor: oldStartColor,
+            newStartColor: newStartColor,
+            oldEndColor: oldEndColor,
+            newEndColor: newEndColor
+        )
+
+        applyEventAndRefreshSelection(event, elementId: textElement.id)
+    }
+
+    /// グラデーション塗り効果の角度更新
+    /// - Parameters:
+    ///   - textElement: 更新対象のテキスト要素
+    ///   - effectIndex: 更新対象の効果インデックス
+    ///   - oldAngle: 変更前の角度
+    ///   - newAngle: 変更後の角度
+    func updateTextGradientFillEffect(
+        _ textElement: TextElement,
+        effectIndex: Int,
+        oldAngle: CGFloat,
+        newAngle: CGFloat
+    ) {
+        if oldAngle == newAngle {
+            return
+        }
+
+        let event = TextGradientFillEffectChangedEvent(
+            elementId: textElement.id,
+            effectIndex: effectIndex,
+            oldAngle: oldAngle,
+            newAngle: newAngle
+        )
+
+        applyEventAndRefreshSelection(event, elementId: textElement.id)
+    }
+
+    /// グラデーション塗り効果の不透明度更新
+    /// - Parameters:
+    ///   - textElement: 更新対象のテキスト要素
+    ///   - effectIndex: 更新対象の効果インデックス
+    ///   - oldOpacity: 変更前の不透明度
+    ///   - newOpacity: 変更後の不透明度
+    func updateTextGradientFillOpacity(
+        _ textElement: TextElement,
+        effectIndex: Int,
+        oldOpacity: CGFloat,
+        newOpacity: CGFloat
+    ) {
+        if oldOpacity == newOpacity {
+            return
+        }
+
+        let event = TextGradientFillOpacityChangedEvent(
+            elementId: textElement.id,
+            effectIndex: effectIndex,
+            oldOpacity: oldOpacity,
+            newOpacity: newOpacity
+        )
+
+        applyEventAndRefreshSelection(event, elementId: textElement.id)
+    }
+
     // MARK: - 図形の操作
     
     /// 図形タイプの更新
@@ -1160,7 +1240,7 @@ class EditorViewModel: ObservableObject {
 
             // 選択要素の状態を適切に更新
             if let selectedElement = selectedElement {
-                
+
                 // 現在選択中の要素がまだ存在するか確認
                 if let updatedElement = project.elements.first(where: { $0.id == selectedElement.id }) {
                     self.selectedElement = updatedElement
@@ -1169,17 +1249,17 @@ class EditorViewModel: ObservableObject {
                     self.selectedElement = nil
                 }
             }
-            
+
             isProjectModified = true
             objectWillChange.send()
         }
     }
-    
+
     /// リドゥ操作
     func redo() {
         if history.canRedo {
             history.redo()
-            
+
             // リドゥ後、選択要素の状態を適切に更新
             if let selectedElement = selectedElement {
                 // 現在選択中の要素がまだ存在するか確認
@@ -1190,7 +1270,7 @@ class EditorViewModel: ObservableObject {
                     self.selectedElement = nil
                 }
             }
-            
+
             isProjectModified = true
             objectWillChange.send()
         }
@@ -1207,13 +1287,13 @@ class EditorViewModel: ObservableObject {
     }
     
     // MARK: - イベント適用
-    
+
     /// イベントを適用して記録
     func applyEvent(_ event: EditorEvent) {
         history.recordAndApply(event)
         isProjectModified = true
     }
-    
+
     // MARK: - 履歴情報
     
     /// 操作履歴の説明を取得

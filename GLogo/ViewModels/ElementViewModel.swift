@@ -19,9 +19,8 @@ import Combine
 class ElementViewModel: ObservableObject {
     // MARK: - プロパティ
 
-    /// エディタビューモデルへの弱参照 - 循環参照を防ぐため弱参照で保持。
-    /// ElementViewModel　は　EditorViewによって所有され、EditorViewModelとは参照のみの関係を持つ。
-    /// この設計により、EditorViewModelが解放されたときに自動的にnilになる。
+    /// EditorViewModel への参照（非所有）
+    /// 循環参照を避けるため weak で保持する。
     private weak var editorViewModel: EditorViewModel?
 
     /// 現在編集中の要素
@@ -71,6 +70,12 @@ class ElementViewModel: ObservableObject {
     /// グロー編集の開始値（ドラッグ開始時）
     private var textGlowStartState: (index: Int, radius: CGFloat)?
 
+    /// グラデーション塗り編集の開始値（ドラッグ開始時）
+    private var textGradientFillStartState: (index: Int, angle: CGFloat)?
+
+    /// グラデーション不透明度編集の開始値（ドラッグ開始時）
+    private var textGradientFillOpacityStartState: (index: Int, opacity: CGFloat)?
+
     /// 現在適用中のフィルタープリセットID（ImageElement から読み出す）
     var appliedFilterPresetId: String? {
         imageElement?.appliedFilterPresetId
@@ -116,6 +121,8 @@ class ElementViewModel: ObservableObject {
             textShadowStartState = nil
             textStrokeStartState = nil
             textGlowStartState = nil
+            textGradientFillStartState = nil
+            textGradientFillOpacityStartState = nil
         }
 
         self.element = element
@@ -624,6 +631,166 @@ class ElementViewModel: ObservableObject {
             effectIndex: index,
             oldRadius: startRadius,
             newRadius: glowEffect.radius
+        )
+    }
+
+    /// グラデーション塗り効果の色更新（即時イベント発行）
+    func updateGradientFillColor(atIndex index: Int, startColor: UIColor, endColor: UIColor) {
+        guard let textElement = textElement, index < textElement.effects.count,
+              let gradientEffect = textElement.effects[index] as? GradientFillEffect else { return }
+
+        let oldStartColor = gradientEffect.startColor
+        let oldEndColor = gradientEffect.endColor
+
+        // 変更がなければスキップ
+        if oldStartColor.isEqual(startColor) && oldEndColor.isEqual(endColor) { return }
+
+        gradientEffect.startColor = startColor
+        gradientEffect.endColor = endColor
+
+        editorViewModel?.updateTextGradientFillColor(
+            textElement,
+            effectIndex: index,
+            oldStartColor: oldStartColor,
+            newStartColor: startColor,
+            oldEndColor: oldEndColor,
+            newEndColor: endColor
+        )
+    }
+
+    /// グラデーション塗り効果の角度更新（プレビュー用、確定は commit で行う）
+    func updateGradientFillAngle(atIndex index: Int, angle: CGFloat) {
+        guard let textElement = textElement, index < textElement.effects.count,
+              let gradientEffect = textElement.effects[index] as? GradientFillEffect else { return }
+
+        gradientEffect.angle = angle
+
+        updateElement(to: textElement)
+    }
+
+    /// グラデーション塗り効果の不透明度更新（プレビュー用、確定は commit で行う）
+    func updateGradientFillOpacity(atIndex index: Int, opacity: CGFloat) {
+        guard let textElement = textElement, index < textElement.effects.count,
+              let gradientEffect = textElement.effects[index] as? GradientFillEffect else { return }
+
+        gradientEffect.opacity = opacity
+
+        updateElement(to: textElement)
+    }
+
+    /// グラデーション塗り効果の角度を即時確定（リセット等、スライダー外からの呼び出し用）
+    func commitGradientFillAngle(atIndex index: Int, angle: CGFloat) {
+        guard let textElement = textElement, index < textElement.effects.count,
+              let gradientEffect = textElement.effects[index] as? GradientFillEffect else { return }
+
+        let oldAngle = gradientEffect.angle
+        if oldAngle == angle { return }
+
+        gradientEffect.angle = angle
+
+        editorViewModel?.updateTextGradientFillEffect(
+            textElement,
+            effectIndex: index,
+            oldAngle: oldAngle,
+            newAngle: angle
+        )
+    }
+
+    /// グラデーション塗り効果の不透明度を即時確定（リセット等、スライダー外からの呼び出し用）
+    func commitGradientFillOpacity(atIndex index: Int, opacity: CGFloat) {
+        guard let textElement = textElement, index < textElement.effects.count,
+              let gradientEffect = textElement.effects[index] as? GradientFillEffect else { return }
+
+        let oldOpacity = gradientEffect.opacity
+        if oldOpacity == opacity { return }
+
+        gradientEffect.opacity = opacity
+
+        editorViewModel?.updateTextGradientFillOpacity(
+            textElement,
+            effectIndex: index,
+            oldOpacity: oldOpacity,
+            newOpacity: opacity
+        )
+    }
+
+    /// グラデーション塗り編集の開始（onEditingChanged: true 時に呼ばれる）
+    /// - Parameters:
+    ///   - index: 編集対象グラデーション効果のインデックス
+    func beginGradientFillEffectEditing(atIndex index: Int) {
+        guard let textElement = textElement,
+              index < textElement.effects.count,
+              let gradientEffect = textElement.effects[index] as? GradientFillEffect else { return }
+
+        if textGradientFillStartState == nil || textGradientFillStartState?.index != index {
+            textGradientFillStartState = (index: index, angle: gradientEffect.angle)
+        }
+    }
+
+    /// グラデーション不透明度編集の開始（onEditingChanged: true 時に呼ばれる）
+    /// - Parameters:
+    ///   - index: 編集対象グラデーション効果のインデックス
+    func beginGradientFillOpacityEditing(atIndex index: Int) {
+        guard let textElement = textElement,
+              index < textElement.effects.count,
+              let gradientEffect = textElement.effects[index] as? GradientFillEffect else { return }
+
+        if textGradientFillOpacityStartState == nil || textGradientFillOpacityStartState?.index != index {
+            textGradientFillOpacityStartState = (index: index, opacity: gradientEffect.opacity)
+        }
+    }
+
+    /// グラデーション塗り編集の確定（onEditingChanged: false 時に呼ばれる）
+    /// - Parameters:
+    ///   - index: 編集対象グラデーション効果のインデックス
+    func commitGradientFillEffectEditing(atIndex index: Int) {
+        guard let textElement = textElement,
+              index < textElement.effects.count,
+              let gradientEffect = textElement.effects[index] as? GradientFillEffect else {
+            textGradientFillStartState = nil
+            return
+        }
+
+        let startAngle = textGradientFillStartState?.index == index ? textGradientFillStartState?.angle ?? gradientEffect.angle : gradientEffect.angle
+        textGradientFillStartState = nil
+
+        if startAngle == gradientEffect.angle {
+            return
+        }
+
+        editorViewModel?.updateTextGradientFillEffect(
+            textElement,
+            effectIndex: index,
+            oldAngle: startAngle,
+            newAngle: gradientEffect.angle
+        )
+    }
+
+    /// グラデーション不透明度編集の確定（onEditingChanged: false 時に呼ばれる）
+    /// - Parameters:
+    ///   - index: 編集対象グラデーション効果のインデックス
+    func commitGradientFillOpacityEditing(atIndex index: Int) {
+        guard let textElement = textElement,
+              index < textElement.effects.count,
+              let gradientEffect = textElement.effects[index] as? GradientFillEffect else {
+            textGradientFillOpacityStartState = nil
+            return
+        }
+
+        let startOpacity = textGradientFillOpacityStartState?.index == index
+            ? textGradientFillOpacityStartState?.opacity ?? gradientEffect.opacity
+            : gradientEffect.opacity
+        textGradientFillOpacityStartState = nil
+
+        if startOpacity == gradientEffect.opacity {
+            return
+        }
+
+        editorViewModel?.updateTextGradientFillOpacity(
+            textElement,
+            effectIndex: index,
+            oldOpacity: startOpacity,
+            newOpacity: gradientEffect.opacity
         )
     }
 

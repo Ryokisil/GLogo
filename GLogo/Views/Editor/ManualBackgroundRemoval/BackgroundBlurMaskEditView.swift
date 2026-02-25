@@ -275,8 +275,8 @@ struct BackgroundBlurMaskEditView: View {
         EditorIntroStep(
             titleEN: "Switch Modes",
             titleJP: "モード切り替え",
-            messageEN: "Use Blur mode to add blur areas, or Restore mode to remove blur from areas you masked by mistake.",
-            messageJP: "Blurモードでぼかし範囲を追加、Restoreモードで誤ったマスクを復元できます。",
+            messageEN: "Use Remove mode to add blur areas, or Restore mode to remove blur from areas you masked by mistake.",
+            messageJP: "Removeモードでぼかし範囲を追加、Restoreモードで誤ったマスクを復元できます。",
             systemImageName: "arrow.left.arrow.right"
         ),
         EditorIntroStep(
