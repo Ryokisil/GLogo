@@ -5,12 +5,21 @@
 import UIKit
 import OSLog
 
-struct SaveImageCoordinator {
+struct SaveImageCoordinator: Sendable {
     private static let logger = Logger(subsystem: "com.silvia.GLogo", category: "Save")
     private let policy: SaveImagePolicy
     private let selectionService: any ImageSelecting
     private let processingService: any ImageProcessing
     private let writer: any PhotoLibraryWriting
+
+    /// detached タスクへ安全に渡す参照ラッパー
+    private final class DetachedProjectBox: @unchecked Sendable {
+        let project: LogoProject
+
+        init(project: LogoProject) {
+            self.project = project
+        }
+    }
 
     init(
         policy: SaveImagePolicy = SaveImagePolicy(),
@@ -25,80 +34,96 @@ struct SaveImageCoordinator {
     }
 
     /// 保存モードを自動判定して通常/合成どちらかを保存する入口
-    func save(project: LogoProject, completion: @escaping (Bool) -> Void) {
+    @MainActor
+    func save(project: LogoProject, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        let mode = policy.resolveMode(elements: project.elements)
+        let projectBox = DetachedProjectBox(project: project)
+
         authorizeIfNeeded { authorized in
             guard authorized else {
                 completion(false)
                 return
             }
 
-            let mode = policy.resolveMode(elements: project.elements)
-            performSave(project: project, mode: mode, completion: completion)
+            performSave(projectBox: projectBox, mode: mode, completion: completion)
         }
     }
 
     /// 合成保存を強制実行する入口（互換用）
-    func saveComposite(project: LogoProject, completion: @escaping (Bool) -> Void) {
+    @MainActor
+    func saveComposite(project: LogoProject, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        let projectBox = DetachedProjectBox(project: project)
+
         authorizeIfNeeded { authorized in
             guard authorized else {
                 completion(false)
                 return
             }
 
-            performSave(project: project, mode: .composite, completion: completion)
+            performSave(projectBox: projectBox, mode: .composite, completion: completion)
         }
     }
 
     /// 写真ライブラリ権限を確認（未決定ならリクエスト）
-    private func authorizeIfNeeded(completion: @escaping (Bool) -> Void) {
+    private func authorizeIfNeeded(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         let authStatus = writer.authorizationStatus(for: .addOnly)
 
         switch authStatus {
         case .authorized, .limited:
-            completion(true)
+            Task { @MainActor in
+                completion(true)
+            }
         case .notDetermined:
             writer.requestAuthorization(for: .addOnly) { status in
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     completion(status == .authorized || status == .limited)
                 }
             }
         default:
-            completion(false)
+            Task { @MainActor in
+                completion(false)
+            }
         }
     }
 
     /// モード別に保存フローを実行（要素選定 → フィルター/合成 → 保存）
-    private func performSave(project: LogoProject, mode: SaveImageMode, completion: @escaping (Bool) -> Void) {
+    /// バックグラウンドスレッドで実行し、メインスレッドのブロックを防止する
+    private func performSave(
+        projectBox: DetachedProjectBox,
+        mode: SaveImageMode,
+        completion: @escaping @MainActor @Sendable (Bool) -> Void
+    ) {
         Task.detached(priority: .userInitiated) {
+            let project = projectBox.project
             let imageElements = project.elements.compactMap { $0 as? ImageElement }
             if imageElements.isEmpty {
-                await MainActor.run { completion(false) }
+                await completion(false)
                 return
             }
 
             switch mode {
             case .failure:
-                await MainActor.run { completion(false) }
+                await completion(false)
             case .individual:
                 let targetImageElement = selectionService.selectHighestResolutionImageElement(from: imageElements)
                 guard let imageElement = targetImageElement,
                       let processedImage = processingService.applyFilters(to: imageElement) else {
-                    await MainActor.run { completion(false) }
+                    await completion(false)
                     return
                 }
 
                 do {
-                    let format = resolveFormat(for: processedImage, mode: mode)
+                    let format = SaveImageCoordinator.resolveFormat(for: processedImage, mode: mode)
                     try await writer.performSave(of: processedImage, format: format)
-                    await MainActor.run { completion(true) }
+                    await completion(true)
                 } catch {
-                    await MainActor.run { completion(false) }
+                    await completion(false)
                 }
             case .composite:
                 let baseImageElement = selectionService.selectBaseImageElement(from: imageElements)
                 guard let selectedBaseImageElement = baseImageElement,
                       let baseImage = processingService.applyFilters(to: selectedBaseImageElement) else {
-                    await MainActor.run { completion(false) }
+                    await completion(false)
                     return
                 }
 
@@ -107,22 +132,22 @@ struct SaveImageCoordinator {
                     project: project
                 ) else {
                     Self.logger.warning("合成保存に失敗: makeCompositeImage が nil を返却")
-                    await MainActor.run { completion(false) }
+                    await completion(false)
                     return
                 }
 
                 do {
-                    let format = resolveFormat(for: finalImage, mode: mode)
+                    let format = SaveImageCoordinator.resolveFormat(for: finalImage, mode: mode)
                     try await writer.performSave(of: finalImage, format: format)
-                    await MainActor.run { completion(true) }
+                    await completion(true)
                 } catch {
-                    await MainActor.run { completion(false) }
+                    await completion(false)
                 }
             }
         }
     }
 
-    private func resolveFormat(for image: UIImage, mode: SaveImageMode) -> SaveImageFormat {
+    private static func resolveFormat(for image: UIImage, mode: SaveImageMode) -> SaveImageFormat {
         switch mode {
         case .individual:
             return imageHasAlpha(image) ? .png : .heic
@@ -133,7 +158,7 @@ struct SaveImageCoordinator {
         }
     }
 
-    private func imageHasAlpha(_ image: UIImage) -> Bool {
+    private static func imageHasAlpha(_ image: UIImage) -> Bool {
         let cgImage = image.cgImage ?? makeCGImage(from: image)
         guard let alphaInfo = cgImage?.alphaInfo else { return false }
         switch alphaInfo {
@@ -144,7 +169,7 @@ struct SaveImageCoordinator {
         }
     }
 
-    private func makeCGImage(from image: UIImage) -> CGImage? {
+    private static func makeCGImage(from image: UIImage) -> CGImage? {
         if image.imageOrientation == .up, let cgImage = image.cgImage {
             return cgImage
         }

@@ -10,8 +10,21 @@
 import UIKit
 
 /// SDR専用のプレビュー・フィルタ適用実装
-final class SDRImagePreviewService: ImagePreviewing {
+final class SDRImagePreviewService: ImagePreviewing, @unchecked Sendable {
+    /// 非同期フィルタ処理専用キュー（上限を設けてスレッド増殖を防止）
+    private static let asyncRenderQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "com.silvia.GLogo.sdr-preview"
+        queue.qualityOfService = .userInitiated
+        queue.maxConcurrentOperationCount = 2
+        return queue
+    }()
+
     private let filterPipeline = FilterPipeline()
+    /// 非同期経路専用のパイプライン（再生成コスト削減）
+    private let asyncFilterPipeline = FilterPipeline()
+    /// 非同期パイプライン利用時の排他制御
+    private let asyncPipelineLock = NSLock()
     private let previewCache = PreviewCache()
 
     /// プレビュー用ベースを生成（プロキシ優先）
@@ -20,7 +33,7 @@ final class SDRImagePreviewService: ImagePreviewing {
     ///   - originalImage: オリジナル画像
     ///   - mode: レンダリング経路（SDRでは未使用）
     /// - Returns: プレビューで使う画像
-    func generatePreviewImage(
+    func generatePreviewImage (
         editingImage: UIImage?,
         originalImage: UIImage?,
         mode _: ImageRenderMode
@@ -36,7 +49,7 @@ final class SDRImagePreviewService: ImagePreviewing {
     ///   - quality: プレビュー品質
     ///   - mode: レンダリング経路（SDRでは未使用）
     /// - Returns: フィルタ適用済みプレビュー
-    func instantPreview(
+    func instantPreview (
         baseImage: UIImage?,
         params: ImageFilterParams,
         quality: ToneCurveFilter.Quality,
@@ -50,7 +63,7 @@ final class SDRImagePreviewService: ImagePreviewing {
         }
 
         previewCache.markInProgress()
-        let filtered = applyFilters(
+        let filtered = applyFilters (
             to: preview,
             params: params,
             quality: quality,
@@ -71,42 +84,15 @@ final class SDRImagePreviewService: ImagePreviewing {
         to image: UIImage,
         params: ImageFilterParams,
         quality: ToneCurveFilter.Quality,
-        mode _: ImageRenderMode
+        mode: ImageRenderMode
     ) -> UIImage? {
-        let policy: RenderPolicy = (quality == .preview) ? .preview : .full
-
-        let adjustments = AdjustmentStages.makeClosure(params: Self.makeAdjustmentParams(from: params))
-        guard var base = filterPipeline.applyAllFilters(
-            to: image,
-            toneCurveData: params.toneCurveData,
-            policy: policy,
-            adjustments: adjustments
-        ) else {
-            return image
-        }
-
-        // 背景ぼかし合成を適用（マスクがある場合のみ）
-        if params.backgroundBlurRadius > 0,
-           let maskData = params.backgroundBlurMaskData,
-           let blurred = ImageFilterUtility.applyBackgroundBlur(
-            to: base,
-            maskData: maskData,
-            radius: params.backgroundBlurRadius
-           ) {
-            base = blurred
-        }
-
-        // ティントカラーを適用
-        if let tintColor = params.tintColor, params.tintIntensity > 0,
-           let tinted = ImageFilterUtility.applyTintOverlay(
-            to: base,
-            color: tintColor,
-            intensity: params.tintIntensity
-           ) {
-            return tinted
-        }
-
-        return base
+        Self.applyFiltersCore(
+            pipeline: filterPipeline,
+            image: image,
+            params: params,
+            quality: quality,
+            mode: mode
+        )
     }
 
     /// フィルタ適用（非同期）
@@ -120,40 +106,22 @@ final class SDRImagePreviewService: ImagePreviewing {
         to image: UIImage,
         params: ImageFilterParams,
         quality: ToneCurveFilter.Quality,
-        mode _: ImageRenderMode
+        mode: ImageRenderMode
     ) async -> UIImage? {
-        await Task.detached(priority: .userInitiated) { [filterPipeline, params] in
-            let policy: RenderPolicy = (quality == .preview) ? .preview : .full
-            let adjustments = AdjustmentStages.makeClosure(params: Self.makeAdjustmentParams(from: params))
-            var result = filterPipeline.applyAllFilters(
-                to: image,
-                toneCurveData: params.toneCurveData,
-                policy: policy,
-                adjustments: adjustments
-            ) ?? image
-
-            // 背景ぼかし合成を適用（マスクがある場合のみ）
-            if params.backgroundBlurRadius > 0,
-               let maskData = params.backgroundBlurMaskData,
-               let blurred = ImageFilterUtility.applyBackgroundBlur(
-                to: result,
-                maskData: maskData,
-                radius: params.backgroundBlurRadius
-               ) {
-                result = blurred
+        await withCheckedContinuation { continuation in
+            Self.asyncRenderQueue.addOperation { [self] in
+                asyncPipelineLock.lock()
+                defer { asyncPipelineLock.unlock() }
+                let result = Self.applyFiltersCore(
+                    pipeline: asyncFilterPipeline,
+                    image: image,
+                    params: params,
+                    quality: quality,
+                    mode: mode
+                )
+                continuation.resume(returning: result)
             }
-
-            // ティントカラーを適用
-            if let tintColor = params.tintColor, params.tintIntensity > 0,
-               let tinted = ImageFilterUtility.applyTintOverlay(
-                to: result,
-                color: tintColor,
-                intensity: params.tintIntensity
-               ) {
-                return tinted
-            }
-            return result
-        }.value
+        }
     }
 
     /// プレビューキャッシュをリセットする
@@ -255,5 +223,56 @@ final class SDRImagePreviewService: ImagePreviewing {
             fadeIntensity: params.fadeIntensity,
             chromaticAberrationIntensity: params.chromaticAberrationIntensity
         )
+    }
+
+    /// フィルタ適用の共通本体（同期/非同期で共通利用）
+    /// - Parameters:
+    ///   - pipeline: 使用するフィルターパイプライン
+    ///   - image: 入力画像
+    ///   - params: フィルターパラメータ
+    ///   - quality: レンダリング品質
+    ///   - mode: レンダリング経路（SDRでは未使用）
+    /// - Returns: フィルタ適用済み画像
+    private static func applyFiltersCore(
+        pipeline: FilterPipeline,
+        image: UIImage,
+        params: ImageFilterParams,
+        quality: ToneCurveFilter.Quality,
+        mode _: ImageRenderMode
+    ) -> UIImage? {
+        let policy: RenderPolicy = (quality == .preview) ? .preview : .full
+
+        let adjustments = AdjustmentStages.makeClosure(params: makeAdjustmentParams(from: params))
+        guard var base = pipeline.applyAllFilters(
+            to: image,
+            toneCurveData: params.toneCurveData,
+            policy: policy,
+            adjustments: adjustments
+        ) else {
+            return image
+        }
+
+        // 背景ぼかし合成を適用（マスクがある場合のみ）
+        if params.backgroundBlurRadius > 0,
+           let maskData = params.backgroundBlurMaskData,
+           let blurred = ImageFilterUtility.applyBackgroundBlur(
+            to: base,
+            maskData: maskData,
+            radius: params.backgroundBlurRadius
+           ) {
+            base = blurred
+        }
+
+        // ティントカラーを適用
+        if let tintColor = params.tintColor, params.tintIntensity > 0,
+           let tinted = ImageFilterUtility.applyTintOverlay(
+            to: base,
+            color: tintColor,
+            intensity: params.tintIntensity
+           ) {
+            return tinted
+        }
+
+        return base
     }
 }

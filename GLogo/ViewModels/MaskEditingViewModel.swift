@@ -10,6 +10,7 @@ import SwiftUI
 import UIKit
 
 /// マスク編集ViewModelが満たすべき要件
+@MainActor
 protocol MaskEditingViewModeling: ObservableObject {
     /// 元画像
     var originalImage: UIImage { get }

@@ -149,7 +149,7 @@ struct EditorView: View {
                     }
                 )
                 .opacity(isBottomToolStripHidden ? 0 : 1)
-                .allowsHitTesting(!isBottomToolStripHidden)
+                .allowsHitTesting(!isBottomToolStripHidden && !viewModel.isSavingImage)
                 .accessibilityHidden(isBottomToolStripHidden)
             }
             .overlay(alignment: .bottom) {
@@ -318,6 +318,11 @@ struct EditorView: View {
                 Button("Cancel", role: .cancel) {}
             }
             .applySystemOverlayVisibility(isHidden: isSystemOverlayHidden)
+            .overlay {
+                if viewModel.isSavingImage {
+                    savingOverlay
+                }
+            }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom) // キーボードによるレイアウト変化を画面全体で抑制
     }
@@ -617,6 +622,7 @@ struct EditorView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .disabled(viewModel.isSavingImage)
         .background(
             Color(UIColor.systemBackground)
                 .opacity(0.96)
@@ -740,6 +746,25 @@ struct EditorView: View {
                 if let excludeId = excludeId, element.id == excludeId { return false }
                 return element.hitTest(location)
             }
+    }
+
+    /// 保存中に入力をロックするオーバーレイ
+    private var savingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.18)
+                .ignoresSafeArea()
+
+            VStack(spacing: 10) {
+                ProgressView()
+                Text("保存中...")
+                    .font(.callout)
+                    .foregroundColor(.primary)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .shadow(radius: 6)
+        }
     }
 }
 

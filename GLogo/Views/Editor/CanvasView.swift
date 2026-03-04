@@ -13,6 +13,7 @@ import UIKit
 import SwiftUI
 
 /// キャンバスビュー - ロゴ要素を描画・編集するためのUIKitビュー
+@MainActor
 class CanvasView: UIView {
     // MARK: - プロパティ
     
@@ -50,25 +51,25 @@ class CanvasView: UIView {
     let highResolutionThreshold: CGFloat = 8300000
     
     /// 要素を選択したときのコールバック
-    var onElementSelected: ((LogoElement?) -> Void)?
+    var onElementSelected: (@MainActor (LogoElement?) -> Void)?
     
     /// 要素の操作を開始するときのコールバック
-    var onManipulationStarted: ((ElementManipulationType, CGPoint) -> Void)?
+    var onManipulationStarted: (@MainActor (ElementManipulationType, CGPoint) -> Void)?
     
     /// 要素の操作中のコールバック
-    var onManipulationChanged: ((CGPoint) -> Void)?
+    var onManipulationChanged: (@MainActor (CGPoint) -> Void)?
     
     /// 要素の操作を終了するときのコールバック
-    var onManipulationEnded: (() -> Void)?
+    var onManipulationEnded: (@MainActor () -> Void)?
     
     /// 選択要素の変形変更通知（位置・サイズ・回転）
     var onElementTransformChanged: ((LogoElement, CGPoint, CGSize, CGFloat) -> Void)?
     
     /// 新しい要素を作成するときのコールバック
-    var onCreateElement: ((CGPoint) -> Void)?
+    var onCreateElement: (@MainActor (CGPoint) -> Void)?
     
     /// 要素の削除を実行するときのコールバック
-    var onElementDelete: (() -> Void)?
+    var onElementDelete: (@MainActor () -> Void)?
 
     /// 編集中のテキスト要素のID
     var editingTextElementId: UUID?
@@ -430,7 +431,9 @@ class CanvasView: UIView {
         if let hitElement = hitTestElement(at: location) {
             onElementSelected?(hitElement)
             // 少し遅延を入れて削除（ユーザーがどの要素を削除するか視覚的に確認できるように）
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(100))
+                guard let self else { return }
                 self.onElementDelete?()
                 self.onElementSelected?(nil) // 選択解除
             }
@@ -516,6 +519,7 @@ struct CanvasViewRepresentable: UIViewRepresentable {
     @Binding var deleteEffect: DeleteEffectState
     
     /// コーディネータークラス - UIKitの委託パターンをSwiftUIに橋渡し
+    @MainActor
     class Coordinator: NSObject {
         var parent: CanvasViewRepresentable
         
@@ -527,78 +531,69 @@ struct CanvasViewRepresentable: UIViewRepresentable {
         func setupCallbacks(canvasView: CanvasView) {
             // 要素選択時のコールバック
             canvasView.onElementSelected = { [viewModel = parent.viewModel] element in
-                DispatchQueue.main.async {
-                    // 要素が選択された場合は明示的に設定
-                    if let element = element {
-                        viewModel.selectElement(element)
-                    } else {
-                        viewModel.clearSelection()
-                    }
+                // 要素が選択された場合は明示的に設定
+                if let element = element {
+                    viewModel.selectElement(element)
+                } else {
+                    viewModel.clearSelection()
                 }
             }
             
             // 操作開始時のコールバック
             canvasView.onManipulationStarted = { [weak canvasView, weak self] type, point in
-                DispatchQueue.main.async {
-                    // 4K+画像の操作中品質低下判定と設定
-                    if let canvasView = canvasView {
-                        canvasView.isReducingQualityDuringManipulation = canvasView.shouldReduceQualityDuringManipulation()
-                        
-                        // 高解像度画像要素の編集開始フラグを設定
-                        if let project = canvasView.project {
-                            for element in project.elements {
-                                if let imageElement = element as? ImageElement,
-                                   let image = imageElement.originalImage {
-                                    let pixelCount = image.size.width * image.size.height * image.scale * image.scale
-                                    // 調整済み画像はfull経路を維持し、ドラッグ中の色揺れを防止する
-                                    if pixelCount > canvasView.highResolutionThreshold,
-                                       imageElement.shouldUseInstantPreviewForManipulation {
-                                        imageElement.startEditing()
-                                    }
+                // 4K+画像の操作中品質低下判定と設定
+                if let canvasView = canvasView {
+                    canvasView.isReducingQualityDuringManipulation = canvasView.shouldReduceQualityDuringManipulation()
+                    
+                    // 高解像度画像要素の編集開始フラグを設定
+                    if let project = canvasView.project {
+                        for element in project.elements {
+                            if let imageElement = element as? ImageElement,
+                               let image = imageElement.originalImage {
+                                let pixelCount = image.size.width * image.size.height * image.scale * image.scale
+                                // 調整済み画像はfull経路を維持し、ドラッグ中の色揺れを防止する
+                                if pixelCount > canvasView.highResolutionThreshold,
+                                   imageElement.shouldUseInstantPreviewForManipulation {
+                                    imageElement.startEditing()
                                 }
                             }
                         }
-                        
-                        canvasView.setNeedsDisplay()
                     }
                     
-                    self?.parent.viewModel.startManipulation(type, at: point)
+                    canvasView.setNeedsDisplay()
                 }
+                
+                self?.parent.viewModel.startManipulation(type, at: point)
             }
             
             // 操作中のコールバック
             canvasView.onManipulationChanged = { [viewModel = parent.viewModel] point in
-                DispatchQueue.main.async {
-                    viewModel.continueManipulation(at: point)
-                }
+                viewModel.continueManipulation(at: point)
             }
             
             // 操作終了時のコールバック
             canvasView.onManipulationEnded = { [weak canvasView, weak self] in
-                DispatchQueue.main.async {
-                    // 4K+画像の操作中品質低下を解除
-                    if let canvasView = canvasView {
-                        canvasView.isReducingQualityDuringManipulation = false
-                        
-                        // 高解像度画像要素の編集終了フラグを設定
-                        if let project = canvasView.project {
-                            for element in project.elements {
-                                if let imageElement = element as? ImageElement {
-                                    imageElement.endEditing()
-                                }
+                // 4K+画像の操作中品質低下を解除
+                if let canvasView = canvasView {
+                    canvasView.isReducingQualityDuringManipulation = false
+                    
+                    // 高解像度画像要素の編集終了フラグを設定
+                    if let project = canvasView.project {
+                        for element in project.elements {
+                            if let imageElement = element as? ImageElement {
+                                imageElement.endEditing()
                             }
                         }
-                        
-                        canvasView.setNeedsDisplay()
                     }
                     
-                    self?.parent.viewModel.endManipulation()
+                    canvasView.setNeedsDisplay()
                 }
-        }
+                
+                self?.parent.viewModel.endManipulation()
+            }
         
-        // 要素作成時のコールバック
-        canvasView.onCreateElement = { [viewModel = parent.viewModel] point in
-            Task { @MainActor in
+            // 要素作成時のコールバック
+            canvasView.onCreateElement = { [viewModel = parent.viewModel] point in
                 switch viewModel.editorMode {
                 case .shapeCreate:
                     viewModel.addShapeElement(type: viewModel.nextShapeType, position: point)
@@ -612,11 +607,9 @@ struct CanvasViewRepresentable: UIViewRepresentable {
                 // 要素を作成したら選択モードに戻る
                 viewModel.editorMode = .select
             }
-        }
-        
-        // 要素削除時のコールバック（フェードアウトエフェクト付き）
-        canvasView.onElementDelete = { [weak self] in
-            Task { @MainActor in
+            
+            // 要素削除時のコールバック（フェードアウトエフェクト付き）
+            canvasView.onElementDelete = { [weak self] in
                 guard let self else { return }
                 let viewModel = self.parent.viewModel
                 // 削除前にスナップショットを取得してフェードアウト発火
@@ -627,8 +620,6 @@ struct CanvasViewRepresentable: UIViewRepresentable {
                 }
                 viewModel.deleteSelectedElement()
             }
-        }
-
         }
     }
     

@@ -212,6 +212,7 @@ final class FilterAdjustSeparationTests: XCTestCase {
     }
 
     /// tintColor のみ変更でプレビュー再生成キーが変わることを確認
+    @MainActor
     func testAdjustmentFingerprint_ChangesWhenTintColorChanges() {
         let (_, element) = makeProjectWithImageElement()
 

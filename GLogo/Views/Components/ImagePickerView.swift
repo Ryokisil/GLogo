@@ -99,6 +99,11 @@ struct PhotoPicker: UIViewControllerRepresentable {
     }
     
     class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        /// `UIImage` をスレッド境界で受け渡すための軽量ラッパー
+        private struct SendableUIImageBox: @unchecked Sendable {
+            let value: UIImage?
+        }
+
         let parent: PhotoPicker
         
         init(_ parent: PhotoPicker) {
@@ -106,22 +111,43 @@ struct PhotoPicker: UIViewControllerRepresentable {
         }
         
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            var assetIdentifier: String?
+            if #available(iOS 15.0, *) {
+                if let identifier = results.first?.assetIdentifier {
+                    assetIdentifier = identifier
+                }
+            }
+
+            handlePickedItemProvider(
+                results.first?.itemProvider,
+                assetIdentifier: assetIdentifier,
+                picker: picker
+            )
+        }
+
+        /// itemProvider から画像選択結果を処理する
+        /// - Parameters:
+        ///   - provider: 選択結果の `NSItemProvider`
+        ///   - assetIdentifier: PHAsset のローカル識別子
+        ///   - picker: 呼び出し元 picker
+        /// - Returns: なし
+        func handlePickedItemProvider(
+            _ provider: NSItemProvider?,
+            assetIdentifier: String?,
+            picker: PHPickerViewController
+        ) {
             // 選択がキャンセルされた場合
-            guard let provider = results.first?.itemProvider else {
+            guard let provider else {
                 parent.onSelect(SelectedImageInfo(image: nil))
                 picker.dismiss(animated: true)
                 return
             }
-            
-            var assetIdentifier: String?
-            var selectedAsset: PHAsset?
-            if #available(iOS 15.0, *) {
-                if let identifier = results.first?.assetIdentifier {
-                    assetIdentifier = identifier
-                    let assets = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
-                    selectedAsset = assets.firstObject
-                }
-            }
+
+            let selectedAsset: PHAsset? = {
+                guard let identifier = assetIdentifier else { return nil }
+                let assets = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
+                return assets.firstObject
+            }()
             
             guard provider.canLoadObject(ofClass: UIImage.self) else {
                 parent.onSelect(
@@ -136,8 +162,9 @@ struct PhotoPicker: UIViewControllerRepresentable {
             }
 
             provider.loadObject(ofClass: UIImage.self) { [weak self] image, error in
+                let sendableImage = SendableUIImageBox(value: image as? UIImage)
                 DispatchQueue.main.async {
-                    guard let image = image as? UIImage else {
+                    guard let image = sendableImage.value else {
                         self?.parent.onSelect(
                             SelectedImageInfo(
                                 image: nil,

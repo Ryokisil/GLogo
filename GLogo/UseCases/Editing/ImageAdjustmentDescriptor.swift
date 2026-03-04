@@ -10,7 +10,7 @@ import Foundation
 import UIKit
 
 /// 画像調整スライダーのキー
-enum ImageAdjustmentKey: Hashable {
+enum ImageAdjustmentKey: Hashable, Sendable {
     // Color
     case saturation
     case temperature
@@ -44,7 +44,7 @@ enum ImageAdjustmentKey: Hashable {
 }
 
 /// 画像調整パラメータのディスクリプタ
-struct ImageAdjustmentDescriptor {
+struct ImageAdjustmentDescriptor: @unchecked Sendable {
     /// 調整キー
     let key: ImageAdjustmentKey
 
@@ -69,6 +69,7 @@ struct ImageAdjustmentDescriptor {
     // MARK: - 全ディスクリプタテーブル
 
     /// 画像調整ディスクリプタ
+    /// ディスクリプタ定義は初期化後に不変として扱う。
     static let all: [ImageAdjustmentKey: ImageAdjustmentDescriptor] = {
         var table: [ImageAdjustmentKey: ImageAdjustmentDescriptor] = [:]
 

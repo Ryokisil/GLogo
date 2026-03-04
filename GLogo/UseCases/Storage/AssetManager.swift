@@ -11,7 +11,7 @@
 import UIKit
 
 /// アセット管理ユーティリティ
-class AssetManager {
+final class AssetManager: @unchecked Sendable {
     /// シングルトンインスタンス
     static let shared = AssetManager()
     
@@ -29,6 +29,9 @@ class AssetManager {
     
     /// プリロードされた画像キャッシュ
     private var preloadedImages: [String: UIImage] = [:]
+
+    /// preloadedImages の排他制御
+    private let preloadedImagesLock = NSLock()
     
     /// 初期化
     private init() {
@@ -214,6 +217,8 @@ class AssetManager {
         }
         
         // プリロードキャッシュをチェック
+        preloadedImagesLock.lock()
+        defer { preloadedImagesLock.unlock() }
         return preloadedImages[cacheKey]
     }
     
@@ -221,7 +226,9 @@ class AssetManager {
     private func removeCachedImage(for name: String, type: AssetType) {
         let cacheKey = cacheKey(for: name, type: type)
         imageCache.removeObject(forKey: cacheKey as NSString)
+        preloadedImagesLock.lock()
         preloadedImages.removeValue(forKey: cacheKey)
+        preloadedImagesLock.unlock()
     }
     
     /// キャッシュキーを生成
@@ -232,7 +239,9 @@ class AssetManager {
     /// メモリキャッシュをクリア
     @objc func clearMemoryCache() {
         imageCache.removeAllObjects()
+        preloadedImagesLock.lock()
         preloadedImages.removeAll()
+        preloadedImagesLock.unlock()
     }
     
     // MARK: - プリロード
@@ -246,17 +255,27 @@ class AssetManager {
             
             if let image = UIImage(contentsOfFile: fileURL.path) {
                 let key = cacheKey(for: name, type: type)
+                preloadedImagesLock.lock()
                 preloadedImages[key] = image
+                preloadedImagesLock.unlock()
             }
         }
-        
-        completion?(preloadedImages.count)
+
+        preloadedImagesLock.lock()
+        let count = preloadedImages.count
+        preloadedImagesLock.unlock()
+        completion?(count)
     }
     
     // MARK: - アセットインポート
     
     /// 外部URLから画像をインポート
-    func importImageFromURL(_ url: URL, name: String? = nil, type: AssetType = .image, completion: @escaping (Bool, String?) -> Void) {
+    func importImageFromURL(
+        _ url: URL,
+        name: String? = nil,
+        type: AssetType = .image,
+        completion: @escaping @Sendable (Bool, String?) -> Void
+    ) {
         // URLSessionを使用してダウンロード
         URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
             guard let self = self, let data = data, error == nil else {

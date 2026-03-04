@@ -10,8 +10,21 @@
 import UIKit
 
 /// HDR専用のプレビュー・フィルタ適用実装
-final class HDRImagePreviewService: ImagePreviewing {
+final class HDRImagePreviewService: ImagePreviewing, @unchecked Sendable {
+    /// 非同期フィルタ処理専用キュー（上限を設けてスレッド増殖を防止）
+    private static let asyncRenderQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "com.silvia.GLogo.hdr-preview"
+        queue.qualityOfService = .userInitiated
+        queue.maxConcurrentOperationCount = 2
+        return queue
+    }()
+
     private let filterPipeline = HDRFilterPipeline()
+    /// 非同期経路専用のパイプライン（再生成コスト削減）
+    private let asyncFilterPipeline = HDRFilterPipeline()
+    /// 非同期パイプライン利用時の排他制御
+    private let asyncPipelineLock = NSLock()
     private let previewCache = PreviewCache()
 
     /// プレビュー用ベースを生成（プロキシ優先）
@@ -71,43 +84,15 @@ final class HDRImagePreviewService: ImagePreviewing {
         to image: UIImage,
         params: ImageFilterParams,
         quality: ToneCurveFilter.Quality,
-        mode _: ImageRenderMode
+        mode: ImageRenderMode
     ) -> UIImage? {
-        let policy: RenderPolicy = (quality == .preview) ? .preview : .full
-
-        // AdjustmentStagesのCIFilter操作は色空間非依存のため共通利用
-        let adjustments = AdjustmentStages.makeClosure(params: Self.makeAdjustmentParams(from: params))
-        guard var base = filterPipeline.applyAllFilters(
-            to: image,
-            toneCurveData: params.toneCurveData,
-            policy: policy,
-            adjustments: adjustments
-        ) else {
-            return image
-        }
-
-        // 背景ぼかし合成を適用（P3変換版）
-        if params.backgroundBlurRadius > 0,
-           let maskData = params.backgroundBlurMaskData,
-           let blurred = HDRImageFilterUtility.applyBackgroundBlur(
-            to: base,
-            maskData: maskData,
-            radius: params.backgroundBlurRadius
-           ) {
-            base = blurred
-        }
-
-        // ティントカラーを適用（広色域版）
-        if let tintColor = params.tintColor, params.tintIntensity > 0,
-           let tinted = HDRImageFilterUtility.applyTintOverlay(
-            to: base,
-            color: tintColor,
-            intensity: params.tintIntensity
-           ) {
-            return tinted
-        }
-
-        return base
+        Self.applyFiltersCore(
+            pipeline: filterPipeline,
+            image: image,
+            params: params,
+            quality: quality,
+            mode: mode
+        )
     }
 
     /// フィルタ適用（非同期）
@@ -121,40 +106,22 @@ final class HDRImagePreviewService: ImagePreviewing {
         to image: UIImage,
         params: ImageFilterParams,
         quality: ToneCurveFilter.Quality,
-        mode _: ImageRenderMode
+        mode: ImageRenderMode
     ) async -> UIImage? {
-        await Task.detached(priority: .userInitiated) { [filterPipeline, params] in
-            let policy: RenderPolicy = (quality == .preview) ? .preview : .full
-            let adjustments = AdjustmentStages.makeClosure(params: Self.makeAdjustmentParams(from: params))
-            var result = filterPipeline.applyAllFilters(
-                to: image,
-                toneCurveData: params.toneCurveData,
-                policy: policy,
-                adjustments: adjustments
-            ) ?? image
-
-            // 背景ぼかし合成を適用（P3変換版）
-            if params.backgroundBlurRadius > 0,
-               let maskData = params.backgroundBlurMaskData,
-               let blurred = HDRImageFilterUtility.applyBackgroundBlur(
-                to: result,
-                maskData: maskData,
-                radius: params.backgroundBlurRadius
-               ) {
-                result = blurred
+        await withCheckedContinuation { continuation in
+            Self.asyncRenderQueue.addOperation { [self] in
+                asyncPipelineLock.lock()
+                defer { asyncPipelineLock.unlock() }
+                let result = Self.applyFiltersCore(
+                    pipeline: asyncFilterPipeline,
+                    image: image,
+                    params: params,
+                    quality: quality,
+                    mode: mode
+                )
+                continuation.resume(returning: result)
             }
-
-            // ティントカラーを適用（広色域版）
-            if let tintColor = params.tintColor, params.tintIntensity > 0,
-               let tinted = HDRImageFilterUtility.applyTintOverlay(
-                to: result,
-                color: tintColor,
-                intensity: params.tintIntensity
-               ) {
-                return tinted
-            }
-            return result
-        }.value
+        }
     }
 
     /// プレビューキャッシュをリセットする
@@ -246,5 +213,57 @@ final class HDRImagePreviewService: ImagePreviewing {
             fadeIntensity: params.fadeIntensity,
             chromaticAberrationIntensity: params.chromaticAberrationIntensity
         )
+    }
+
+    /// フィルタ適用の共通本体（同期/非同期で共通利用）
+    /// - Parameters:
+    ///   - pipeline: 使用するHDRフィルターパイプライン
+    ///   - image: 入力画像
+    ///   - params: フィルターパラメータ
+    ///   - quality: レンダリング品質
+    ///   - mode: レンダリング経路（HDRでは未使用）
+    /// - Returns: フィルタ適用済み画像
+    private static func applyFiltersCore(
+        pipeline: HDRFilterPipeline,
+        image: UIImage,
+        params: ImageFilterParams,
+        quality: ToneCurveFilter.Quality,
+        mode _: ImageRenderMode
+    ) -> UIImage? {
+        let policy: RenderPolicy = (quality == .preview) ? .preview : .full
+
+        // AdjustmentStagesのCIFilter操作は色空間非依存のため共通利用
+        let adjustments = AdjustmentStages.makeClosure(params: makeAdjustmentParams(from: params))
+        guard var base = pipeline.applyAllFilters(
+            to: image,
+            toneCurveData: params.toneCurveData,
+            policy: policy,
+            adjustments: adjustments
+        ) else {
+            return image
+        }
+
+        // 背景ぼかし合成を適用（P3変換版）
+        if params.backgroundBlurRadius > 0,
+           let maskData = params.backgroundBlurMaskData,
+           let blurred = HDRImageFilterUtility.applyBackgroundBlur(
+            to: base,
+            maskData: maskData,
+            radius: params.backgroundBlurRadius
+           ) {
+            base = blurred
+        }
+
+        // ティントカラーを適用（広色域版）
+        if let tintColor = params.tintColor, params.tintIntensity > 0,
+           let tinted = HDRImageFilterUtility.applyTintOverlay(
+            to: base,
+            color: tintColor,
+            intensity: params.tintIntensity
+           ) {
+            return tinted
+        }
+
+        return base
     }
 }
