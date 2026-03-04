@@ -14,7 +14,7 @@ struct PhotoLibraryWriter: PhotoLibraryWriting {
     }
 
     /// 権限リクエストを行う（結果はハンドラで受け取る）
-    func requestAuthorization(for accessLevel: PHAccessLevel, handler: @escaping (PHAuthorizationStatus) -> Void) {
+    func requestAuthorization(for accessLevel: PHAccessLevel, handler: @escaping @Sendable (PHAuthorizationStatus) -> Void) {
         PHPhotoLibrary.requestAuthorization(for: accessLevel, handler: handler)
     }
 

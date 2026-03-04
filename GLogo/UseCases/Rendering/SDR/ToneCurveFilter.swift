@@ -20,6 +20,41 @@ class ToneCurveFilter {
         case full      // 保存・最終描画用
     }
 
+    /// LUTキャッシュの排他制御つきストア
+    private final class LUTCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private let maxEntries: Int
+        private var storage: [String: Data] = [:]
+
+        init(maxEntries: Int) {
+            self.maxEntries = maxEntries
+        }
+
+        func value(for key: String) -> Data? {
+            lock.lock()
+            defer { lock.unlock() }
+            return storage[key]
+        }
+
+        /// 値を保存し、上限超過で削除が発生したら `true` を返す
+        func insert(_ data: Data, for key: String) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            storage[key] = data
+            guard storage.count > maxEntries, let firstKey = storage.keys.first else {
+                return false
+            }
+            storage.removeValue(forKey: firstKey)
+            return true
+        }
+
+        func clear() {
+            lock.lock()
+            storage.removeAll()
+            lock.unlock()
+        }
+    }
+
     // MARK: - 定数
 
     /// 3D LUTのキューブ次元
@@ -40,9 +75,7 @@ class ToneCurveFilter {
     }()
 
     /// LUTキャッシュ（ToneCurveDataをキーに生成済みLUTを保持）
-    private static var lutCache: [String: Data] = [:]
-    private static let lutCacheQueue = DispatchQueue(label: "com.gllogo.tonecurve.lutcache")
-    private static let maxCacheSize = 10  // 最大キャッシュ数
+    private static let lutCache = LUTCache(maxEntries: 10)
 
     // MARK: - 公開メソッド
 
@@ -156,7 +189,7 @@ class ToneCurveFilter {
         let cacheKey = generateCacheKey(from: curveData, quality: quality)
 
         // キャッシュをチェック
-        if let cachedLUT = lutCacheQueue.sync(execute: { lutCache[cacheKey] }) {
+        if let cachedLUT = lutCache.value(for: cacheKey) {
             #if DEBUG
             print("🎯 [ToneCurve] LUTキャッシュヒット")
             #endif
@@ -252,20 +285,12 @@ class ToneCurveFilter {
         print("✅ [ToneCurve] LUT生成完了: \(data.count / 1024)KB")
         #endif
 
-        // キャッシュに保存（同期的に書き込み、次回すぐヒットできるようにする）
-        lutCacheQueue.sync {
-            lutCache[cacheKey] = data
-
-            // キャッシュサイズ制限（LRU的な削除）
-            if lutCache.count > maxCacheSize {
-                // 最初のキーを削除（簡易的な実装）
-                if let firstKey = lutCache.keys.first {
-                    lutCache.removeValue(forKey: firstKey)
-                    #if DEBUG
-                    print("🗑️ [ToneCurve] LUTキャッシュ削除（上限到達）")
-                    #endif
-                }
-            }
+        // キャッシュに保存（次回すぐヒットできるようにする）
+        let didEvict = lutCache.insert(data, for: cacheKey)
+        if didEvict {
+            #if DEBUG
+            print("🗑️ [ToneCurve] LUTキャッシュ削除（上限到達）")
+            #endif
         }
 
         return data
@@ -290,12 +315,10 @@ class ToneCurveFilter {
 
     /// LUTキャッシュをクリア（メモリ解放用）
     static func clearCache() {
-        lutCacheQueue.async {
-            lutCache.removeAll()
-            #if DEBUG
-            print("🗑️ [ToneCurve] LUTキャッシュをクリア")
-            #endif
-        }
+        lutCache.clear()
+        #if DEBUG
+        print("🗑️ [ToneCurve] LUTキャッシュをクリア")
+        #endif
     }
 
     /// 制御点がデフォルト状態（対角線）かチェック

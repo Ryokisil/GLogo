@@ -14,6 +14,41 @@ import CoreImage
 /// HDR用トーンカーブフィルター適用ユーティリティ（Display P3色空間）
 class HDRToneCurveFilter {
 
+    /// LUTキャッシュの排他制御つきストア
+    private final class LUTCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private let maxEntries: Int
+        private var storage: [String: Data] = [:]
+
+        init(maxEntries: Int) {
+            self.maxEntries = maxEntries
+        }
+
+        func value(for key: String) -> Data? {
+            lock.lock()
+            defer { lock.unlock() }
+            return storage[key]
+        }
+
+        /// 値を保存し、上限超過で削除が発生したら `true` を返す
+        func insert(_ data: Data, for key: String) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            storage[key] = data
+            guard storage.count > maxEntries, let firstKey = storage.keys.first else {
+                return false
+            }
+            storage.removeValue(forKey: firstKey)
+            return true
+        }
+
+        func clear() {
+            lock.lock()
+            storage.removeAll()
+            lock.unlock()
+        }
+    }
+
     // MARK: - 定数
 
     /// 3D LUTのキューブ次元
@@ -29,9 +64,7 @@ class HDRToneCurveFilter {
     private static let p3ColorSpace: CGColorSpace = RenderContext.hdr.colorSpace
 
     /// LUTキャッシュ（SDRキャッシュとは独立）
-    private static var lutCache: [String: Data] = [:]
-    private static let lutCacheQueue = DispatchQueue(label: "com.gllogo.hdr.tonecurve.lutcache")
-    private static let maxCacheSize = 10
+    private static let lutCache = LUTCache(maxEntries: 10)
 
     // MARK: - 公開メソッド
 
@@ -135,7 +168,7 @@ class HDRToneCurveFilter {
         let cacheKey = generateCacheKey(from: curveData, quality: quality)
 
         // キャッシュをチェック
-        if let cachedLUT = lutCacheQueue.sync(execute: { lutCache[cacheKey] }) {
+        if let cachedLUT = lutCache.value(for: cacheKey) {
             #if DEBUG
             print("🎯 [HDRToneCurve] LUTキャッシュヒット")
             #endif
@@ -222,17 +255,11 @@ class HDRToneCurveFilter {
         #endif
 
         // キャッシュに保存
-        lutCacheQueue.sync {
-            lutCache[cacheKey] = data
-
-            if lutCache.count > maxCacheSize {
-                if let firstKey = lutCache.keys.first {
-                    lutCache.removeValue(forKey: firstKey)
-                    #if DEBUG
-                    print("🗑️ [HDRToneCurve] LUTキャッシュ削除（上限到達）")
-                    #endif
-                }
-            }
+        let didEvict = lutCache.insert(data, for: cacheKey)
+        if didEvict {
+            #if DEBUG
+            print("🗑️ [HDRToneCurve] LUTキャッシュ削除（上限到達）")
+            #endif
         }
 
         return data
@@ -253,12 +280,10 @@ class HDRToneCurveFilter {
 
     /// LUTキャッシュをクリア
     static func clearCache() {
-        lutCacheQueue.async {
-            lutCache.removeAll()
-            #if DEBUG
-            print("🗑️ [HDRToneCurve] LUTキャッシュをクリア")
-            #endif
-        }
+        lutCache.clear()
+        #if DEBUG
+        print("🗑️ [HDRToneCurve] LUTキャッシュをクリア")
+        #endif
     }
 
     /// 制御点がデフォルト状態（対角線）かチェック

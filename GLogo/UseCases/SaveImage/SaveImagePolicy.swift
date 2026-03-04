@@ -5,7 +5,7 @@
 
 import UIKit
 
-struct SaveImagePolicy {
+struct SaveImagePolicy: Sendable {
     /// 要素構成から保存モードを決定（画像なし→失敗、画像1枚→通常、複数/他要素あり→合成）
     func resolveMode(elements: [LogoElement]) -> SaveImageMode {
         let imageElements = elements.compactMap { $0 as? ImageElement }
@@ -26,13 +26,13 @@ struct SaveImagePolicy {
     }
 }
 
-enum SaveImageMode {
+enum SaveImageMode: Sendable {
     case individual
     case composite
     case failure(SaveImageError)
 }
 
-enum SaveImageError: Error {
+enum SaveImageError: Error, Sendable {
     case noImageElements
     case encodingFailed
 }

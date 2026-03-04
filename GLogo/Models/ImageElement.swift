@@ -92,8 +92,56 @@ class ImageElement: LogoElement {
         )
     }
 
+    /// `ImageElement` 共有依存の読み書きを直列化するストア
+    private final class DependencyStore: @unchecked Sendable {
+        private let lock = NSLock()
+        private var currentAssetRepository: ImageAssetRepositoryProtocol
+        private var currentPreviewService: ImagePreviewing
+
+        init(
+            assetRepository: ImageAssetRepositoryProtocol,
+            previewService: ImagePreviewing
+        ) {
+            self.currentAssetRepository = assetRepository
+            self.currentPreviewService = previewService
+        }
+
+        var assetRepository: ImageAssetRepositoryProtocol {
+            lock.lock()
+            defer { lock.unlock() }
+            return currentAssetRepository
+        }
+
+        var previewService: ImagePreviewing {
+            lock.lock()
+            defer { lock.unlock() }
+            return currentPreviewService
+        }
+
+        func updateAssetRepository(_ repository: ImageAssetRepositoryProtocol) {
+            lock.lock()
+            currentAssetRepository = repository
+            lock.unlock()
+        }
+
+        func updatePreviewService(_ service: ImagePreviewing) {
+            lock.lock()
+            currentPreviewService = service
+            lock.unlock()
+        }
+    }
+
+    /// 共有依存ストア（差し替え時のみ書き込み、通常は読み取り）
+    private static let dependencyStore = DependencyStore(
+        assetRepository: ImageAssetRepository.shared,
+        previewService: ImagePreviewService()
+    )
+
     /// 画像アセット解決リポジトリ（VMから差し替え可能）
-    static var assetRepository: ImageAssetRepositoryProtocol = ImageAssetRepository.shared
+    static var assetRepository: ImageAssetRepositoryProtocol {
+        get { dependencyStore.assetRepository }
+        set { dependencyStore.updateAssetRepository(newValue) }
+    }
 
     /// 画像ファイル名
     var imageFileName: String?
@@ -231,7 +279,10 @@ class ImageElement: LogoElement {
     private var previewImage: UIImage?
     
     /// プレビュー・フィルタサービス（差し替え可能）
-    static var previewService: ImagePreviewing = ImagePreviewService()
+    static var previewService: ImagePreviewing {
+        get { dependencyStore.previewService }
+        set { dependencyStore.updatePreviewService(newValue) }
+    }
     
     /// 編集中かどうかのフラグ（プレビュー/高品質の切り替え用）
     private var isCurrentlyEditing: Bool = false
@@ -427,9 +478,16 @@ class ImageElement: LogoElement {
         guard let originalImage = self.originalImage else {
             return nil
         }
-        
+
         // 非同期でフィルターをフル品質適用
-        let processedImage = await applyFiltersAsync(to: originalImage, quality: .full)
+        let params = currentFilterParams()
+        let mode = currentRenderMode()
+        let processedImage = await ImageElement.previewService.applyFiltersAsync(
+            to: originalImage,
+            params: params,
+            quality: .full,
+            mode: mode
+        )
         
         // 編集後の画像をキャッシュ
         cachedImage = processedImage
@@ -916,6 +974,7 @@ class ImageElement: LogoElement {
     }
     
     /// 画像にフィルターを非同期で適用（彩度調整特化）
+    @MainActor
     private func applyFiltersAsync(to image: UIImage, quality: ToneCurveFilter.Quality = .full) async -> UIImage? {
         await ImageElement.previewService.applyFiltersAsync(
             to: image,

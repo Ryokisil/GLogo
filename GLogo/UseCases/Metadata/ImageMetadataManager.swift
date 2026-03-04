@@ -12,7 +12,7 @@ import ImageIO
 import OSLog
 
 /// メタデータマネージャークラス
-final class ImageMetadataManager {
+final class ImageMetadataManager: @unchecked Sendable {
     /// シングルトンインスタンス
     static let shared = ImageMetadataManager()
 
@@ -22,14 +22,43 @@ final class ImageMetadataManager {
     /// 永続化ストア
     private let fileStore = MetadataFileStore()
 
+    /// 永続化処理の直列化キュー（ロック内I/O回避）
+    private let fileIOQueue = DispatchQueue(
+        label: "com.silvia.GLogo.metadata.fileIO",
+        qos: .utility
+    )
+
+    /// キャッシュ状態の排他制御
+    private let stateLock = NSLock()
+
     /// 編集履歴キャッシュ - 画像IDをキーとしたディクショナリ
     private var editHistoryCache: [String: [MetadataEditOperation]] = [:]
 
     /// メタデータキャッシュ - 画像IDをキーとしたディクショナリ
     private var metadataCache: [String: ImageMetadata] = [:]
 
+    /// メタデータ永続化の世代管理（古い書き込み抑止）
+    private var metadataPersistVersion: [String: Int] = [:]
+
+    /// 編集履歴永続化の世代管理（古い書き込み抑止）
+    private var editHistoryPersistVersion: [String: Int] = [:]
+
+    /// 変更通知の実体
+    private var metadataChangedHandler: ((String, ImageMetadata) -> Void)?
+
     /// 変更通知
-    var onMetadataChanged: ((String, ImageMetadata) -> Void)?
+    var onMetadataChanged: ((String, ImageMetadata) -> Void)? {
+        get {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            return metadataChangedHandler
+        }
+        set {
+            stateLock.lock()
+            metadataChangedHandler = newValue
+            stateLock.unlock()
+        }
+    }
 
     /// プライベートイニシャライザ（シングルトンパターン）
     private init() {}
@@ -124,12 +153,21 @@ final class ImageMetadataManager {
     ///   - identifier: 画像識別子。
     /// - Returns: キャッシュまたはストレージから取得したメタデータ。未保存時は `nil`。
     func getMetadata(for identifier: String) -> ImageMetadata? {
+        stateLock.lock()
         if let cachedMetadata = metadataCache[identifier] {
+            stateLock.unlock()
             return cachedMetadata
         }
+        stateLock.unlock()
 
         if let metadata = fileStore.loadMetadata(for: identifier) {
+            stateLock.lock()
+            if let latestMetadata = metadataCache[identifier] {
+                stateLock.unlock()
+                return latestMetadata
+            }
             metadataCache[identifier] = metadata
+            stateLock.unlock()
             return metadata
         }
 
@@ -142,8 +180,25 @@ final class ImageMetadataManager {
     ///   - identifier: 画像識別子。
     /// - Returns: 保存成功時は `true`、失敗時は `false`。
     func saveMetadata(_ metadata: ImageMetadata, for identifier: String) -> Bool {
+        stateLock.lock()
         metadataCache[identifier] = metadata
-        return fileStore.saveMetadata(metadata, for: identifier)
+        let persistVersion = (metadataPersistVersion[identifier] ?? 0) + 1
+        metadataPersistVersion[identifier] = persistVersion
+        stateLock.unlock()
+
+        return fileIOQueue.sync { [weak self] in
+            guard let self else { return false }
+
+            self.stateLock.lock()
+            let latestVersion = self.metadataPersistVersion[identifier] ?? 0
+            self.stateLock.unlock()
+
+            guard latestVersion == persistVersion else {
+                // より新しい保存が既にキュー済みのため、古い書き込みはスキップ
+                return true
+            }
+            return self.fileStore.saveMetadata(metadata, for: identifier)
+        }
     }
 
     /// 編集履歴を取得
@@ -151,12 +206,21 @@ final class ImageMetadataManager {
     ///   - identifier: 画像識別子。
     /// - Returns: 編集履歴配列。未保存時は空配列。
     func getEditHistory(for identifier: String) -> [MetadataEditOperation] {
+        stateLock.lock()
         if let cachedHistory = editHistoryCache[identifier] {
+            stateLock.unlock()
             return cachedHistory
         }
+        stateLock.unlock()
 
         if let history = fileStore.loadEditHistory(for: identifier) {
+            stateLock.lock()
+            if let latestHistory = editHistoryCache[identifier] {
+                stateLock.unlock()
+                return latestHistory
+            }
             editHistoryCache[identifier] = history
+            stateLock.unlock()
             return history
         }
 
@@ -215,9 +279,12 @@ final class ImageMetadataManager {
             }
         }
 
-        metadataCache[identifier] = metadata
         let updatedHistory = Array(history.prefix(targetIndex))
+        stateLock.lock()
+        metadataCache[identifier] = metadata
         editHistoryCache[identifier] = updatedHistory
+        let onMetadataChanged = metadataChangedHandler
+        stateLock.unlock()
 
         onMetadataChanged?(identifier, metadata)
         return .success
@@ -229,10 +296,27 @@ final class ImageMetadataManager {
     ///   - operation: 追加する操作イベント。
     /// - Returns: なし
     func addToEditHistory(identifier: String, operation: MetadataEditOperation) {
+        stateLock.lock()
         var history = editHistoryCache[identifier] ?? []
         history.append(operation)
         editHistoryCache[identifier] = history
-        _ = fileStore.saveEditHistory(history, for: identifier)
+        let persistVersion = (editHistoryPersistVersion[identifier] ?? 0) + 1
+        editHistoryPersistVersion[identifier] = persistVersion
+        stateLock.unlock()
+
+        _ = fileIOQueue.sync { [weak self] in
+            guard let self else { return false }
+
+            self.stateLock.lock()
+            let latestVersion = self.editHistoryPersistVersion[identifier] ?? 0
+            self.stateLock.unlock()
+
+            guard latestVersion == persistVersion else {
+                // より新しい履歴が保存対象になっているため、古いスナップショットはスキップ
+                return true
+            }
+            return self.fileStore.saveEditHistory(history, for: identifier)
+        }
     }
 
     /// 画像データにメタデータを適用

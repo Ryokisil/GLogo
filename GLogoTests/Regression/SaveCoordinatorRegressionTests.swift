@@ -45,7 +45,7 @@ private struct StubPhotoLibraryWriter: PhotoLibraryWriting {
         .authorized
     }
 
-    func requestAuthorization(for accessLevel: PHAccessLevel, handler: @escaping (PHAuthorizationStatus) -> Void) {
+    func requestAuthorization(for accessLevel: PHAccessLevel, handler: @escaping @Sendable (PHAuthorizationStatus) -> Void) {
         handler(.authorized)
     }
 
@@ -61,6 +61,7 @@ final class SaveCoordinatorRegressionTests: XCTestCase {
 
     /// makeCompositeImage が nil を返した場合に completion(false) になること
     /// - 以前は `?? baseImage` で無言成功していたが、修正後はエラー扱いとなる
+    @MainActor
     func testSaveComposite_CompositeFails_CompletionIsFalse() {
         let coordinator = SaveImageCoordinator(
             selectionService: StubImageSelecting(),

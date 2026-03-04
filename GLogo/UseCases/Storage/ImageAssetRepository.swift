@@ -30,7 +30,7 @@ protocol ImageAssetRepositoryProtocol {
 }
 
 /// デフォルト実装。AssetManager を利用してプロキシを解決する。
-final class ImageAssetRepository: ImageAssetRepositoryProtocol {
+final class ImageAssetRepository: ImageAssetRepositoryProtocol, Sendable {
     static let shared = ImageAssetRepository()
 
     private init() {}

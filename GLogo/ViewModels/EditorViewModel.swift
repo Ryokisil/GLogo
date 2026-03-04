@@ -33,6 +33,30 @@ enum ElementManipulationType {
 /// エディタビューモデル - エディタ画面の状態とロジックを管理
 @MainActor
 class EditorViewModel: ObservableObject {
+    /// メモリ警告監視トークンのライフサイクル管理
+    private final class MemoryWarningObserver {
+        typealias Handler = @MainActor @Sendable () -> Void
+        private var token: NSObjectProtocol?
+
+        init(handler: @escaping Handler) {
+            token = NotificationCenter.default.addObserver(
+                forName: UIApplication.didReceiveMemoryWarningNotification,
+                object: nil,
+                queue: nil
+            ) { _ in
+                Task { @MainActor in
+                    handler()
+                }
+            }
+        }
+
+        deinit {
+            if let token {
+                NotificationCenter.default.removeObserver(token)
+            }
+        }
+    }
+
     // MARK: - プロパティ
     
     /// 現在のプロジェクト
@@ -72,8 +96,11 @@ class EditorViewModel: ObservableObject {
     /// プロジェクトが変更されたかどうか
     @Published private(set) var isProjectModified = false
 
-    /// メモリ警告監視のトークン
-    private var memoryWarningObserver: NSObjectProtocol?
+    /// 画像保存処理の実行中フラグ（保存中は編集入力をロック）
+    @Published private(set) var isSavingImage = false
+
+    /// メモリ警告監視
+    private var memoryWarningObserver: MemoryWarningObserver?
 
     /// 外部からプロジェクト変更フラグを立てる
     func markProjectModified() {
@@ -98,20 +125,8 @@ class EditorViewModel: ObservableObject {
         // 履歴管理の初期化
         history = EditorHistory(project: project)
 
-        memoryWarningObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.handleMemoryWarning()
-            }
-        }
-    }
-
-    deinit {
-        if let memoryWarningObserver {
-            NotificationCenter.default.removeObserver(memoryWarningObserver)
+        memoryWarningObserver = MemoryWarningObserver { [weak self] in
+            self?.handleMemoryWarning()
         }
     }
     
@@ -1139,6 +1154,8 @@ class EditorViewModel: ObservableObject {
     
     /// 操作開始
     func startManipulation(_ type: ElementManipulationType, at point: CGPoint) {
+        guard !isSavingImage else { return }
+
         manipulationType = type
         manipulationStartPoint = point
         
@@ -1152,6 +1169,7 @@ class EditorViewModel: ObservableObject {
     
     /// 操作中
     func continueManipulation(at point: CGPoint) {
+        guard !isSavingImage else { return }
         guard let element = selectedElement, manipulationType != .none else { return }
         
         let deltaX = point.x - manipulationStartPoint.x
@@ -1204,6 +1222,12 @@ class EditorViewModel: ObservableObject {
     
     /// 操作終了 - イベントを記録
     func endManipulation() {
+        if isSavingImage {
+            manipulationType = .none
+            manipulationStartElement = nil
+            return
+        }
+
         if let startElement = manipulationStartElement, let element = selectedElement {
             // 実際に変更があった場合のみイベントを記録
             let positionChanged = startElement.position != element.position
@@ -1310,14 +1334,57 @@ class EditorViewModel: ObservableObject {
     
     /// 写真アプリに画像を保存（通常の1枚保存）
     /// プロジェクトの編集内容をフィルター適用済み画像として写真ライブラリに保存する
-    func saveProject(completion: @escaping (Bool) -> Void) {
-        saveCoordinator.save(project: project, completion: completion)
+    func saveProject(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        performImageSave(
+            operation: { [project] done in
+                saveCoordinator.save(project: project, completion: done)
+            },
+            completion: completion
+        )
     }
     
     /// - 役割：ユーザーが「保存」ボタンを押した時の最初の受け口（エントリーポイント）
     /// - 処理：写真ライブラリの権限確認と合成保存フローの呼び出し
-    func saveAsCompositeImage(completion: @escaping (Bool) -> Void) {
-        saveCoordinator.saveComposite(project: project, completion: completion)
+    func saveAsCompositeImage(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        performImageSave(
+            operation: { [project] done in
+                saveCoordinator.saveComposite(project: project, completion: done)
+            },
+            completion: completion
+        )
+    }
+
+    /// 保存共通処理（再入防止・編集入力ロック・完了時解除）
+    /// - Parameters:
+    ///   - operation: 実行する保存処理
+    ///   - completion: 保存完了コールバック
+    /// - Returns: なし
+    private func performImageSave(
+        operation: (@escaping @MainActor @Sendable (Bool) -> Void) -> Void,
+        completion: @escaping @MainActor @Sendable (Bool) -> Void
+    ) {
+        guard !isSavingImage else { return }
+
+        prepareForImageSave()
+        isSavingImage = true
+
+        operation { [weak self] success in
+            guard let self else { return }
+            self.isSavingImage = false
+            completion(success)
+        }
+    }
+
+    /// 保存開始前に操作状態を整える
+    /// - Parameters: なし
+    /// - Returns: なし
+    private func prepareForImageSave() {
+        manipulationType = .none
+        manipulationStartElement = nil
+
+        for element in project.elements {
+            (element as? ImageElement)?.endEditing()
+        }
     }
     
     // MARK: - インポート

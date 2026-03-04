@@ -62,6 +62,7 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
     }
 
     /// 画像調整イベントでキャッシュが無効化されることを確認
+    @MainActor
     func testAdjustmentEventsInvalidateCache() {
         let (project, element) = makeProjectWithImageElement()
         let cachedImage = makeSolidImage(color: .blue, size: CGSize(width: 4, height: 4))
@@ -204,6 +205,7 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
     }
 
     /// 装飾系イベントでキャッシュが無効化されることを確認
+    @MainActor
     func testDecorationEventsInvalidateCache() {
         let (project, element) = makeProjectWithImageElement()
         let cachedImage = makeSolidImage(color: .green, size: CGSize(width: 4, height: 4))

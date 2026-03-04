@@ -22,7 +22,7 @@ enum ProjectStorageError: Error {
 }
 
 /// プロジェクトストレージ - プロジェクトの保存と読み込みを管理
-class ProjectStorage {
+final class ProjectStorage: Sendable {
     /// シングルトンインスタンス
     static let shared = ProjectStorage()
     
@@ -31,16 +31,6 @@ class ProjectStorage {
     
     /// アセットディレクトリ名
     private let assetDirectoryName = "Assets"
-    
-    /// JSONエンコーダー
-    private let encoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .prettyPrinted
-        return encoder
-    }()
-    
-    /// JSONデコーダー
-    private let decoder = JSONDecoder()
     
     /// 初期化
     private init() {
@@ -88,39 +78,37 @@ class ProjectStorage {
     // MARK: - プロジェクト保存
     
     /// プロジェクトを保存
-    func saveProject(_ project: LogoProject, completion: @escaping (Bool) -> Void) {
-        DispatchQueue.global(qos: .background).async { [weak self] in
-            guard let self = self else {
-                DispatchQueue.main.async { completion(false) }
-                return
+    func saveProject(_ project: LogoProject, completion: @escaping @Sendable (Bool) -> Void) {
+        do {
+            let jsonData = try Self.makeEncoder().encode(project)
+            let projectURL = url(for: project.id)
+
+            DispatchQueue.global(qos: .background).async {
+                do {
+                    try jsonData.write(to: projectURL)
+                    DispatchQueue.main.async { completion(true) }
+                } catch {
+                    print("Failed to save project: \(error)")
+                    DispatchQueue.main.async { completion(false) }
+                }
             }
-            
-            do {
-                // プロジェクトをJSONデータに変換
-                let jsonData = try self.encoder.encode(project)
-                
-                // プロジェクトURLを取得
-                let projectURL = self.url(for: project.id)
-                
-                // JSONデータをファイルに書き込み
-                try jsonData.write(to: projectURL)
-                
-                DispatchQueue.main.async { completion(true) }
-            } catch {
-                print("Failed to save project: \(error)")
-                DispatchQueue.main.async { completion(false) }
-            }
+        } catch {
+            print("Failed to save project: \(error)")
+            DispatchQueue.main.async { completion(false) }
         }
     }
     
     /// プロジェクトを非同期で保存（Promise風）
     func saveProject(_ project: LogoProject) async throws {
-        return try await withCheckedThrowingContinuation { continuation in
-            saveProject(project) { success in
-                if success {
+        let jsonData = try Self.makeEncoder().encode(project)
+        let projectURL = url(for: project.id)
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    try jsonData.write(to: projectURL)
                     continuation.resume()
-                } else {
-                    continuation.resume(throwing: ProjectStorageError.saveFailed)
+                } catch {
+                    continuation.resume(throwing: error)
                 }
             }
         }
@@ -129,23 +117,12 @@ class ProjectStorage {
     // MARK: - プロジェクト読み込み
     
     /// プロジェクトを読み込み
-    func loadProject(withId id: UUID, completion: @escaping (LogoProject?) -> Void) {
-        DispatchQueue.global(qos: .background).async { [weak self] in
-            guard let self = self else {
-                DispatchQueue.main.async { completion(nil) }
-                return
-            }
-            
-            // プロジェクトURLを取得
-            let projectURL = self.url(for: id)
-            
+    func loadProject(withId id: UUID, completion: @escaping @Sendable (LogoProject?) -> Void) {
+        let projectURL = url(for: id)
+        DispatchQueue.global(qos: .background).async {
             do {
-                // ファイルからJSONデータを読み込み
                 let jsonData = try Data(contentsOf: projectURL)
-                
-                // JSONデータをプロジェクトオブジェクトに変換
-                let project = try self.decoder.decode(LogoProject.self, from: jsonData)
-                
+                let project = try Self.makeDecoder().decode(LogoProject.self, from: jsonData)
                 DispatchQueue.main.async { completion(project) }
             } catch {
                 print("Failed to load project: \(error)")
@@ -156,12 +133,15 @@ class ProjectStorage {
     
     /// プロジェクトを非同期で読み込み（Promise風）
     func loadProject(withId id: UUID) async throws -> LogoProject {
+        let projectURL = url(for: id)
         return try await withCheckedThrowingContinuation { continuation in
-            loadProject(withId: id) { project in
-                if let project = project {
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    let jsonData = try Data(contentsOf: projectURL)
+                    let project = try Self.makeDecoder().decode(LogoProject.self, from: jsonData)
                     continuation.resume(returning: project)
-                } else {
-                    continuation.resume(throwing: ProjectStorageError.loadFailed)
+                } catch {
+                    continuation.resume(throwing: error)
                 }
             }
         }
@@ -170,30 +150,23 @@ class ProjectStorage {
     // MARK: - プロジェクト一覧
     
     /// 保存されているプロジェクト一覧を取得
-    func getProjects(completion: @escaping ([LogoProject]) -> Void) {
-        DispatchQueue.global(qos: .background).async { [weak self] in
-            guard let self = self else {
-                DispatchQueue.main.async { completion([]) }
-                return
-            }
-            
+    func getProjects(completion: @escaping @Sendable ([LogoProject]) -> Void) {
+        let projectDirectoryURL = self.projectDirectoryURL
+        DispatchQueue.global(qos: .background).async {
             var projects: [LogoProject] = []
             
             do {
-                // プロジェクトディレクトリ内のファイル一覧を取得
                 let fileURLs = try FileManager.default.contentsOfDirectory(
-                    at: self.projectDirectoryURL,
+                    at: projectDirectoryURL,
                     includingPropertiesForKeys: nil
                 )
                 
-                // 各ファイルからプロジェクトを読み込み
                 for fileURL in fileURLs where fileURL.pathExtension == "json" {
-                    if let project = try? self.loadProjectFromURL(fileURL) {
+                    if let project = try? Self.loadProjectFromURL(fileURL) {
                         projects.append(project)
                     }
                 }
                 
-                // 更新日時の新しい順にソート
                 projects.sort { $0.updatedAt > $1.updatedAt }
                 
                 DispatchQueue.main.async { completion(projects) }
@@ -206,9 +179,26 @@ class ProjectStorage {
     
     /// プロジェクトを非同期で一覧取得（Promise風）
     func getProjects() async -> [LogoProject] {
+        let projectDirectoryURL = self.projectDirectoryURL
         return await withCheckedContinuation { continuation in
-            getProjects { projects in
-                continuation.resume(returning: projects)
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    let fileURLs = try FileManager.default.contentsOfDirectory(
+                        at: projectDirectoryURL,
+                        includingPropertiesForKeys: nil
+                    )
+                    var projects: [LogoProject] = []
+                    for fileURL in fileURLs where fileURL.pathExtension == "json" {
+                        if let project = try? Self.loadProjectFromURL(fileURL) {
+                            projects.append(project)
+                        }
+                    }
+                    projects.sort { $0.updatedAt > $1.updatedAt }
+                    continuation.resume(returning: projects)
+                } catch {
+                    print("Failed to get projects: \(error)")
+                    continuation.resume(returning: [])
+                }
             }
         }
     }
@@ -216,19 +206,11 @@ class ProjectStorage {
     // MARK: - プロジェクト削除
     
     /// プロジェクトを削除
-    func deleteProject(withId id: UUID, completion: @escaping (Bool) -> Void) {
-        DispatchQueue.global(qos: .background).async { [weak self] in
-            guard let self = self else {
-                DispatchQueue.main.async { completion(false) }
-                return
-            }
-            
-            let projectURL = self.url(for: id)
-            
+    func deleteProject(withId id: UUID, completion: @escaping @Sendable (Bool) -> Void) {
+        let projectURL = url(for: id)
+        DispatchQueue.global(qos: .background).async {
             do {
-                // ファイルが存在するか確認
                 if FileManager.default.fileExists(atPath: projectURL.path) {
-                    // ファイルを削除
                     try FileManager.default.removeItem(at: projectURL)
                     DispatchQueue.main.async { completion(true) }
                 } else {
@@ -243,12 +225,17 @@ class ProjectStorage {
     
     /// プロジェクトを非同期で削除（Promise風）
     func deleteProject(withId id: UUID) async throws {
-        return try await withCheckedThrowingContinuation { continuation in
-            deleteProject(withId: id) { success in
-                if success {
+        let projectURL = url(for: id)
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    guard FileManager.default.fileExists(atPath: projectURL.path) else {
+                        throw ProjectStorageError.projectNotFound
+                    }
+                    try FileManager.default.removeItem(at: projectURL)
                     continuation.resume()
-                } else {
-                    continuation.resume(throwing: ProjectStorageError.projectNotFound)
+                } catch {
+                    continuation.resume(throwing: error)
                 }
             }
         }
@@ -305,8 +292,20 @@ class ProjectStorage {
     }
     
     /// URLからプロジェクトを読み込み
-    private func loadProjectFromURL(_ url: URL) throws -> LogoProject {
+    private static func loadProjectFromURL(_ url: URL) throws -> LogoProject {
         let jsonData = try Data(contentsOf: url)
-        return try decoder.decode(LogoProject.self, from: jsonData)
+        return try makeDecoder().decode(LogoProject.self, from: jsonData)
+    }
+
+    /// JSONEncoder を毎回生成（スレッド競合回避）
+    private static func makeEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        return encoder
+    }
+
+    /// JSONDecoder を毎回生成（スレッド競合回避）
+    private static func makeDecoder() -> JSONDecoder {
+        JSONDecoder()
     }
 }
