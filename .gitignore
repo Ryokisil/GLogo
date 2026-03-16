@@ -5,3 +5,9 @@ AGENTS.md
 GLogo.xcodeproj/**/xcuserdata/
 GLogo.xcodeproj/xcshareddata/
 *.xcuserstate
+.venv-ai/
+.codex-realesrgan/
+tools/ml/.venv/
+tools/ml/checkpoints/
+tools/ml/artifacts/
+build/

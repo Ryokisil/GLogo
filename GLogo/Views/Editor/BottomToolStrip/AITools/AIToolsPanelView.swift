@@ -4,7 +4,7 @@
 //
 //  概要:
 //  エディタ下部のAI Toolsカードを提供します。
-//  背景除去と背景ぼかしに関連する操作を1つのカードに集約します。
+//  背景除去・背景ぼかし・AI高画質化を1つのカードに集約し、画像編集まわりのAI導線をまとめます。
 //
 
 import SwiftUI
@@ -13,6 +13,7 @@ import SwiftUI
 private enum AIToolsTab: CaseIterable, Identifiable {
     case backgroundRemoval
     case backgroundBlur
+    case upscale
 
     var id: String { title }
 
@@ -25,6 +26,8 @@ private enum AIToolsTab: CaseIterable, Identifiable {
             return "Background Remove"
         case .backgroundBlur:
             return "Background Blur"
+        case .upscale:
+            return "Enhance"
         }
     }
 }
@@ -43,6 +46,10 @@ struct AIToolsPanelView: View {
 
     private var hasBlurMask: Bool {
         viewModel.imageElement?.backgroundBlurMaskData != nil
+    }
+
+    private var isProcessingAnyAITask: Bool {
+        viewModel.isProcessingAI || viewModel.isProcessingUpscale
     }
 
     var body: some View {
@@ -126,6 +133,8 @@ struct AIToolsPanelView: View {
             backgroundRemovalContent
         case .backgroundBlur:
             backgroundBlurContent
+        case .upscale:
+            upscaleContent
         }
     }
 
@@ -154,7 +163,7 @@ struct AIToolsPanelView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .buttonBorderShape(.roundedRectangle(radius: 10))
-                .disabled(!hasSelectedImage || viewModel.isProcessingAI)
+                .disabled(!hasSelectedImage || isProcessingAnyAITask)
 
                 Button {
                     onOpenManualBackgroundRemoval()
@@ -167,7 +176,7 @@ struct AIToolsPanelView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .buttonBorderShape(.roundedRectangle(radius: 10))
-                .disabled(!hasSelectedImage || viewModel.isProcessingAI)
+                .disabled(!hasSelectedImage || isProcessingAnyAITask)
             }
         }
     }
@@ -230,7 +239,7 @@ struct AIToolsPanelView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .buttonBorderShape(.roundedRectangle(radius: 10))
-                .disabled(!hasSelectedImage || viewModel.isProcessingAI)
+                .disabled(!hasSelectedImage || isProcessingAnyAITask)
 
                 Button {
                     viewModel.requestBackgroundBlurMaskEdit()
@@ -261,6 +270,46 @@ struct AIToolsPanelView: View {
         }
     }
 
+    private var upscaleContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("AI super-resolution improves the selected image with a bundled Real-ESRGAN model.")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            if let errorMessage = viewModel.lastUpscaleErrorMessage, !errorMessage.isEmpty {
+                Text(errorMessage)
+                    .font(.footnote)
+                    .foregroundColor(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if !viewModel.isRealESRGANAvailable {
+                Text("The AI model `realesr-general-x4v3` is not bundled yet. Add it under `GLogo/Resources/MLModels` to enable this feature.")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button {
+                viewModel.requestImageUpscale()
+            } label: {
+                if viewModel.isProcessingUpscale {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                } else {
+                    Label("Enhance Image", systemImage: "sparkles.tv")
+                        .font(.footnote.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .buttonBorderShape(.roundedRectangle(radius: 10))
+            .disabled(!hasSelectedImage || isProcessingAnyAITask || !viewModel.isRealESRGANAvailable)
+        }
+    }
+
     /// 現在選択中のタブがリセット可能かどうかを判定します。
     /// - Parameters: なし
     /// - Returns: リセット可能な場合は`true`
@@ -272,6 +321,8 @@ struct AIToolsPanelView: View {
             return false
         case .backgroundBlur:
             return imageElement.backgroundBlurRadius != 0 || imageElement.backgroundBlurMaskData != nil
+        case .upscale:
+            return viewModel.lastUpscaleErrorMessage != nil
         }
     }
 
@@ -293,6 +344,8 @@ struct AIToolsPanelView: View {
             if imageElement.backgroundBlurMaskData != nil {
                 viewModel.removeBackgroundBlurMask()
             }
+        case .upscale:
+            viewModel.clearUpscaleError()
         }
     }
 }

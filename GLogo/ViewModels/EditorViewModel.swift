@@ -83,6 +83,7 @@ class EditorViewModel: ObservableObject {
     /// 保存フローのオーケストレーター
     private let saveCoordinator = SaveImageCoordinator()
     private let imageImportCoordinator = ImageImportCoordinator()
+    private let imageUpscaleUseCase = ImageUpscaleUseCase()
     
     /// 要素操作の開始位置
     private var manipulationStartPoint: CGPoint = .zero
@@ -112,7 +113,7 @@ class EditorViewModel: ObservableObject {
         for element in project.elements {
             (element as? ImageElement)?.handleMemoryWarning()
         }
-        ImageElement.previewService.resetCache()
+        ImageElementRenderingService.shared.resetCache()
         ToneCurveFilter.clearCache()
     }
 
@@ -413,12 +414,40 @@ class EditorViewModel: ObservableObject {
         applyEventAndRefreshSelection(event, elementId: imageElement.id)
     }
 
+    /// 選択中の画像要素が初期状態へ戻せるかを返す
+    /// - Parameters: なし
+    /// - Returns: リバート可能な場合は true
+    func canRevertSelectedImageToInitialState() -> Bool {
+        guard let imageElement = selectedElement as? ImageElement else {
+            return false
+        }
+        return ImageElementMetadataService.canRevertToInitialState(imageElement)
+    }
+
     /// 手動背景除去の結果を画像要素に反映
     /// - Parameters:
     ///   - image: 背景除去後の画像
     ///   - imageElement: 更新対象の画像要素
     /// - Returns: なし
     func applyManualBackgroundRemovalResult(_ image: UIImage, to imageElement: ImageElement) {
+        applyReplacedImage(image, to: imageElement)
+    }
+
+    /// 高画質化結果を画像要素に反映
+    /// - Parameters:
+    ///   - image: 高画質化後の画像
+    ///   - imageElement: 更新対象の画像要素
+    /// - Returns: なし
+    func applyUpscaledImageResult(_ image: UIImage, to imageElement: ImageElement) {
+        applyReplacedImage(image, to: imageElement)
+    }
+
+    /// 差し替え画像を既存履歴へ反映
+    /// - Parameters:
+    ///   - image: 差し替え後の画像
+    ///   - imageElement: 更新対象の画像要素
+    /// - Returns: なし
+    private func applyReplacedImage(_ image: UIImage, to imageElement: ImageElement) {
         guard let newImageData = image.pngData() else { return }
 
         let newOriginalIdentifier = UUID().uuidString
@@ -457,7 +486,15 @@ class EditorViewModel: ObservableObject {
 
         history.recordAndApply(event)
 
-        if let updatedElement = project.elements.first(where: { $0.id == imageElement.id }) {
+        refreshSelectionAfterImageReplacement(elementId: imageElement.id)
+    }
+
+    /// 画像差し替え後に選択状態と変更フラグを更新
+    /// - Parameters:
+    ///   - elementId: 更新対象の要素ID
+    /// - Returns: なし
+    private func refreshSelectionAfterImageReplacement(elementId: UUID) {
+        if let updatedElement = project.elements.first(where: { $0.id == elementId }) {
             selectedElement = updatedElement
         }
         isProjectModified = true
@@ -957,6 +994,17 @@ class EditorViewModel: ObservableObject {
     /// AI処理中フラグ
     @Published private(set) var isProcessingAI: Bool = false
 
+    /// 高画質化処理中フラグ
+    @Published private(set) var isProcessingUpscale: Bool = false
+
+    /// 高画質化エラーメッセージ
+    @Published private(set) var lastUpscaleErrorMessage: String?
+
+    /// Real-ESRGAN モデルが利用可能かどうか
+    var isRealESRGANAvailable: Bool {
+        imageUpscaleUseCase.isRealESRGANAvailable
+    }
+
     /// AI背景除去をリクエスト（ワンタップで背景を透過に置換）
     /// - Parameter imageElement: 対象の画像要素
     func requestAIBackgroundRemoval(for imageElement: ImageElement) {
@@ -976,6 +1024,50 @@ class EditorViewModel: ObservableObject {
             } catch {
             }
         }
+    }
+
+    /// 高画質化をリクエスト
+    /// - Parameters:
+    ///   - imageElement: 対象の画像要素
+    ///   - method: 高画質化方式
+    ///   - scaleFactor: 出力倍率
+    ///   - appliesSharpening: シャープ化を併用するかどうか
+    /// - Returns: なし
+    func requestImageUpscale(
+        for imageElement: ImageElement,
+        method: ImageUpscaleMethod = .realESRGAN,
+        scaleFactor: ImageUpscaleScaleFactor = .x2,
+        appliesSharpening: Bool = true
+    ) {
+        guard !isProcessingUpscale else { return }
+        guard let originalImage = imageElement.originalImage else { return }
+        lastUpscaleErrorMessage = nil
+        isProcessingUpscale = true
+
+        let request = ImageUpscaleRequest(
+            sourceImage: originalImage,
+            method: method,
+            scaleFactor: scaleFactor,
+            appliesSharpening: appliesSharpening
+        )
+
+        Task {
+            defer { isProcessingUpscale = false }
+
+            do {
+                let result = try await imageUpscaleUseCase.upscale(request)
+                applyUpscaledImageResult(result.image, to: imageElement)
+            } catch {
+                lastUpscaleErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+        }
+    }
+
+    /// 高画質化エラーメッセージをクリア
+    /// - Parameters: なし
+    /// - Returns: なし
+    func clearUpscaleError() {
+        lastUpscaleErrorMessage = nil
     }
 
     /// AI背景ぼかしをリクエスト
@@ -1165,6 +1257,69 @@ class EditorViewModel: ObservableObject {
         } else {
             manipulationStartElement = nil
         }
+    }
+
+    /// ジェスチャー操作開始時に画像要素の描画経路を準備する
+    /// - Parameters:
+    ///   - project: 対象プロジェクト
+    ///   - highResolutionThreshold: 高解像度判定しきい値
+    /// - Returns: 品質低下描画を有効にすべき場合は true
+    func prepareImageRenderingForManipulation(
+        in project: LogoProject?,
+        highResolutionThreshold: CGFloat
+    ) -> Bool {
+        guard let project else { return false }
+
+        var shouldReduceQuality = false
+
+        for element in project.elements {
+            guard let imageElement = element as? ImageElement,
+                  let originalImage = imageElement.originalImage else {
+                continue
+            }
+
+            let pixelCount = originalImage.size.width * originalImage.size.height * originalImage.scale * originalImage.scale
+            if pixelCount > highResolutionThreshold {
+                shouldReduceQuality = true
+            }
+
+            guard pixelCount > highResolutionThreshold,
+                  imageElement.shouldUseInstantPreviewForManipulation else {
+                continue
+            }
+
+            prepareEditingProxyIfNeeded(for: imageElement, originalImage: originalImage)
+            imageElement.startEditing()
+        }
+
+        return shouldReduceQuality
+    }
+
+    /// ジェスチャー操作終了時に画像要素の描画状態を戻す
+    /// - Parameters:
+    ///   - project: 対象プロジェクト
+    /// - Returns: なし
+    func finishImageRenderingAfterManipulation(in project: LogoProject?) {
+        guard let project else { return }
+
+        for element in project.elements {
+            guard let imageElement = element as? ImageElement else { continue }
+            imageElement.endEditing()
+        }
+    }
+
+    /// 編集用プロキシ画像を必要なときだけ解決する
+    /// - Parameters:
+    ///   - imageElement: 対象画像要素
+    ///   - originalImage: 既に解決済みの元画像
+    /// - Returns: なし
+    private func prepareEditingProxyIfNeeded(for imageElement: ImageElement, originalImage: UIImage) {
+        guard !imageElement.hasEditingProxyImage else { return }
+        let proxyImage = ImageEditingProxyResolver.resolve(
+            for: imageElement,
+            originalImage: originalImage
+        )
+        imageElement.setEditingProxyImage(proxyImage)
     }
     
     /// 操作中

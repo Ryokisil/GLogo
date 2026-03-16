@@ -19,6 +19,8 @@ import Combine
 class ElementViewModel: ObservableObject {
     // MARK: - プロパティ
 
+    private let imageRenderingService = ImageElementRenderingService.shared
+
     /// EditorViewModel への参照（非所有）
     /// 循環参照を避けるため weak で保持する。
     private weak var editorViewModel: EditorViewModel?
@@ -48,6 +50,15 @@ class ElementViewModel: ObservableObject {
 
     /// AI処理中フラグ（EditorViewModelの状態を反映）
     @Published var isProcessingAI: Bool = false
+
+    /// 高画質化処理中フラグ（EditorViewModelの状態を反映）
+    @Published var isProcessingUpscale: Bool = false
+
+    /// 高画質化エラーメッセージ（EditorViewModelの状態を反映）
+    @Published var lastUpscaleErrorMessage: String?
+
+    /// Real-ESRGAN モデルが利用可能かどうか
+    @Published private(set) var isRealESRGANAvailable: Bool = false
 
     /// 画像調整スライダーの開始値（ドラッグ開始時）
     private var imageAdjustmentStartValues: [ImageAdjustmentKey: CGFloat] = [:]
@@ -81,6 +92,12 @@ class ElementViewModel: ObservableObject {
         imageElement?.appliedFilterPresetId
     }
 
+    /// 選択中画像要素の表示用プレビュー画像
+    var renderedPreviewImage: UIImage? {
+        guard let imageElement else { return nil }
+        return imageRenderingService.renderedImage(for: imageElement)
+    }
+
     /// ジェスチャー変形用の基準値
     private var gestureBasePosition: CGPoint?
     private var gestureBaseSize: CGSize?
@@ -106,6 +123,24 @@ class ElementViewModel: ObservableObject {
                 self?.isProcessingAI = isProcessing
             }
             .store(in: &cancellables)
+
+        // 高画質化処理中フラグを監視
+        editorViewModel.$isProcessingUpscale
+            .receive(on: RunLoop.main)
+            .sink { [weak self] isProcessing in
+                self?.isProcessingUpscale = isProcessing
+            }
+            .store(in: &cancellables)
+
+        // 高画質化エラーメッセージを監視
+        editorViewModel.$lastUpscaleErrorMessage
+            .receive(on: RunLoop.main)
+            .sink { [weak self] message in
+                self?.lastUpscaleErrorMessage = message
+            }
+            .store(in: &cancellables)
+
+        isRealESRGANAvailable = editorViewModel.isRealESRGANAvailable
     }
 
     // MARK: - メソッド
@@ -123,6 +158,7 @@ class ElementViewModel: ObservableObject {
             textGlowStartState = nil
             textGradientFillStartState = nil
             textGradientFillOpacityStartState = nil
+            lastUpscaleErrorMessage = nil
         }
 
         self.element = element
@@ -211,6 +247,7 @@ class ElementViewModel: ObservableObject {
             } else {
                 // 調整変更ありの画像はfull経路を維持し、ドラッグ中の色揺れを防止
                 if imageElement.shouldUseInstantPreviewForManipulation {
+                    prepareEditingProxyIfNeeded(for: imageElement)
                     imageElement.startEditing()
                 } else {
                     imageElement.endEditing()
@@ -905,10 +942,21 @@ class ElementViewModel: ObservableObject {
         descriptor: ImageAdjustmentDescriptor
     ) {
         if descriptor.usesInstantPreviewWhileEditing {
+            prepareEditingProxyIfNeeded(for: imageElement)
             imageElement.startEditing()
         } else {
             imageElement.endEditing()
         }
+    }
+
+    /// 編集用プロキシ画像を必要時にだけ解決する
+    /// - Parameters:
+    ///   - imageElement: 対象画像要素
+    /// - Returns: なし
+    private func prepareEditingProxyIfNeeded(for imageElement: ImageElement) {
+        guard !imageElement.hasEditingProxyImage else { return }
+        let proxyImage = ImageEditingProxyResolver.resolve(for: imageElement)
+        imageElement.setEditingProxyImage(proxyImage)
     }
 
     /// 画像調整スライダーの確定（履歴に1件だけ記録）
@@ -931,7 +979,8 @@ class ElementViewModel: ObservableObject {
         editorViewModel?.applyEvent(event)
 
         if imageElement.originalImageIdentifier != nil {
-            imageElement.recordMetadataEdit(
+            ImageElementMetadataService.recordEdit(
+                for: imageElement,
                 fieldKey: metadataKey,
                 oldValue: startValue,
                 newValue: finalValue
@@ -1002,6 +1051,7 @@ class ElementViewModel: ObservableObject {
         guard let imageElement = imageElement else { return }
 
         imageElement.toneCurveData = newData
+        prepareEditingProxyIfNeeded(for: imageElement)
         imageElement.startEditing()
 
         imageElement.cachedImage = nil
@@ -1031,6 +1081,7 @@ class ElementViewModel: ObservableObject {
         let oldColor = imageElement.tintColor
         let oldIntensity = imageElement.tintIntensity
 
+        prepareEditingProxyIfNeeded(for: imageElement)
         imageElement.startEditing()
         imageElement.tintColor = color
         imageElement.tintIntensity = intensity
@@ -1038,12 +1089,14 @@ class ElementViewModel: ObservableObject {
         editorViewModel?.updateImageTintColor(imageElement, oldColor: oldColor, newColor: color, oldIntensity: oldIntensity, newIntensity: intensity)
 
         if imageElement.originalImageIdentifier != nil {
-            imageElement.recordMetadataEdit(
+            ImageElementMetadataService.recordEdit(
+                for: imageElement,
                 fieldKey: "tintColor",
                 oldValue: oldColor?.description,
                 newValue: color?.description
             )
-            imageElement.recordMetadataEdit(
+            ImageElementMetadataService.recordEdit(
+                for: imageElement,
                 fieldKey: "tintIntensity",
                 oldValue: oldIntensity,
                 newValue: intensity
@@ -1057,13 +1110,15 @@ class ElementViewModel: ObservableObject {
         if imageElement.showFrame == showFrame { return }
 
         let oldValue = imageElement.showFrame
+        prepareEditingProxyIfNeeded(for: imageElement)
         imageElement.startEditing()
         imageElement.showFrame = showFrame
 
         editorViewModel?.updateImageShowFrame(imageElement, newValue: showFrame)
 
         if imageElement.originalImageIdentifier != nil {
-            imageElement.recordMetadataEdit(
+            ImageElementMetadataService.recordEdit(
+                for: imageElement,
                 fieldKey: "showFrame",
                 oldValue: oldValue,
                 newValue: showFrame
@@ -1077,13 +1132,15 @@ class ElementViewModel: ObservableObject {
         if imageElement.frameColor.isEqual(color) { return }
 
         let oldColor = imageElement.frameColor
+        prepareEditingProxyIfNeeded(for: imageElement)
         imageElement.startEditing()
         imageElement.frameColor = color
 
         editorViewModel?.updateImageFrameColor(imageElement, newColor: color)
 
         if imageElement.originalImageIdentifier != nil {
-            imageElement.recordMetadataEdit(
+            ImageElementMetadataService.recordEdit(
+                for: imageElement,
                 fieldKey: "frameColor",
                 oldValue: oldColor.description,
                 newValue: color.description
@@ -1099,6 +1156,7 @@ class ElementViewModel: ObservableObject {
         let wasRounded = imageElement.roundedCorners
         let oldRadius = imageElement.cornerRadius
 
+        prepareEditingProxyIfNeeded(for: imageElement)
         imageElement.startEditing()
         imageElement.roundedCorners = rounded
         imageElement.cornerRadius = radius
@@ -1106,12 +1164,14 @@ class ElementViewModel: ObservableObject {
         editorViewModel?.updateImageRoundedCorners(imageElement, wasRounded: wasRounded, isRounded: rounded, oldRadius: oldRadius, newRadius: radius)
 
         if imageElement.originalImageIdentifier != nil {
-            imageElement.recordMetadataEdit(
+            ImageElementMetadataService.recordEdit(
+                for: imageElement,
                 fieldKey: "roundedCorners",
                 oldValue: wasRounded,
                 newValue: rounded
             )
-            imageElement.recordMetadataEdit(
+            ImageElementMetadataService.recordEdit(
+                for: imageElement,
                 fieldKey: "cornerRadius",
                 oldValue: oldRadius,
                 newValue: radius
@@ -1221,6 +1281,21 @@ class ElementViewModel: ObservableObject {
     func requestAIBackgroundBlur() {
         guard let imageElement = imageElement else { return }
         editorViewModel?.requestAIBackgroundBlur(for: imageElement)
+    }
+
+    /// 高画質化を要求する
+    /// - Parameters: なし
+    /// - Returns: なし
+    func requestImageUpscale() {
+        guard let imageElement = imageElement else { return }
+        editorViewModel?.requestImageUpscale(for: imageElement)
+    }
+
+    /// 高画質化エラー表示をクリアする
+    /// - Parameters: なし
+    /// - Returns: なし
+    func clearUpscaleError() {
+        editorViewModel?.clearUpscaleError()
     }
 
     /// 背景ぼかしマスク編集をリクエスト

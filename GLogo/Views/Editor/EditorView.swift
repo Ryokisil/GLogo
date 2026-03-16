@@ -46,6 +46,8 @@ private struct EditorUIState {
     var editorIntroStepIndex = 0
     /// テキストプロパティパネルの表示フラグ
     var isTextPanelVisible = false
+    /// オープンソースライセンス画面の表示フラグ
+    var isShowingOpenSourceLicense = false
 }
 
 /// アラート・確認ダイアログの状態
@@ -278,6 +280,9 @@ struct EditorView: View {
                         activeSheet = nil
                     }
                 }
+            }
+            .sheet(isPresented: $uiState.isShowingOpenSourceLicense) {
+                OpenSourceLicenseView()
             }
             // 手動背景除去画面への遷移
             .navigationDestination(isPresented: $isNavigatingToManualRemoval) {
@@ -632,6 +637,12 @@ struct EditorView: View {
 
     private var viewControls: some View {
         HStack(spacing: 12) {
+            Button(action: openOpenSourceLicense) {
+                Image(systemName: "doc.text")
+                    .foregroundColor(.primary)
+            }
+            .help("オープンソースライセンス")
+
             // 使い方ガイド
             Button(action: openEditorGuide) {
                 Image(systemName: "questionmark.circle")
@@ -719,10 +730,7 @@ struct EditorView: View {
     
     /// 選択された画像のリバートが可能かどうかを判断
     private func canRevert() -> Bool {
-        if let imageElement = viewModel.selectedElement as? ImageElement {
-            return imageElement.canRevertToInitialState
-        }
-        return false
+        viewModel.canRevertSelectedImageToInitialState()
     }
     
     /// 選択された画像を初期状態に戻す
@@ -736,6 +744,11 @@ struct EditorView: View {
         withAnimation(.easeInOut(duration: 0.3)) {
             uiState.isShowingEditorIntro = true
         }
+    }
+
+    /// オープンソースライセンス画面を表示
+    private func openOpenSourceLicense() {
+        uiState.isShowingOpenSourceLicense = true
     }
 
     /// zIndex降順でヒットテスト
