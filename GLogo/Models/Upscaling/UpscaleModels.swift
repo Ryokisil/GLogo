@@ -4,31 +4,17 @@
 //
 //  概要:
 //  このファイルは高画質化機能で利用するリクエスト・レスポンス・設定値を定義します。
-//  高画質化方式の選択やスケール倍率など、UI と UseCase 間で共有するデータモデルを集約します。
+//  ユーザーには単一の Enhance 機能だけを見せつつ、内部で使う処理方式や倍率などを集約します。
 //
 
 import Foundation
 import UIKit
 
-/// 高画質化方式を表す列挙型
+/// 高画質化処理の内部方式を表す列挙型
 enum ImageUpscaleMethod: String, CaseIterable, Codable {
     case automatic
     case lanczos
     case realESRGAN
-
-    /// UI 表示用の名称を返す
-    /// - Parameters: なし
-    /// - Returns: 方式名
-    var displayName: String {
-        switch self {
-        case .automatic:
-            return "自動"
-        case .lanczos:
-            return "高解像度化"
-        case .realESRGAN:
-            return "AI高画質化"
-        }
-    }
 }
 
 /// 高画質化倍率を表す列挙型
@@ -54,13 +40,13 @@ struct ImageUpscaleRequest {
     /// 高画質化リクエストを生成する
     /// - Parameters:
     ///   - sourceImage: 高画質化対象の元画像
-    ///   - method: 使用する高画質化方式
+    ///   - method: 内部で利用する高画質化方式
     ///   - scaleFactor: 出力倍率
     ///   - appliesSharpening: 拡大後にシャープ化を行うかどうか
     /// - Returns: 生成されたリクエスト
     init(
         sourceImage: UIImage,
-        method: ImageUpscaleMethod = .automatic,
+        method: ImageUpscaleMethod = .realESRGAN,
         scaleFactor: ImageUpscaleScaleFactor = .x2,
         appliesSharpening: Bool = true
     ) {
@@ -117,8 +103,8 @@ enum ImageUpscaleError: LocalizedError {
             return "\(name) フィルターが利用できませんでした。"
         case .imageGenerationFailed:
             return "高画質化画像の生成に失敗しました。"
-        case .pipelineUnavailable(let method):
-            return "\(method.displayName)を利用するためのAIモデルが見つかりませんでした。"
+        case .pipelineUnavailable:
+            return "AI高画質化を利用するためのモデルが見つかりませんでした。"
         case .modelNotFound(let name):
             return "\(name) の Core ML モデルが見つかりませんでした。"
         case .invalidModelInterface:

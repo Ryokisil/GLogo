@@ -3,8 +3,8 @@
 //  GLogo
 //
 //  概要:
-//  このファイルは高画質化方式の選択と実行を司るユースケースを定義します。
-//  現時点では Real-ESRGAN が未接続でも、既定の Lanczos パイプラインへ安全にフォールバックできる入口を提供します。
+//  このファイルは高画質化の内部実装方式を解決して実行するユースケースを定義します。
+//  ユーザーには単一の Enhance 機能だけを見せつつ、内部では Real-ESRGAN とフォールバック処理を切り替えます。
 //
 
 import Foundation
@@ -32,7 +32,7 @@ struct ImageUpscaleUseCase {
         self.realESRGANPipeline = realESRGANPipeline
     }
 
-    /// 適切なパイプラインを選択して高画質化を実行する
+    /// 適切な内部パイプラインを選択して高画質化を実行する
     /// - Parameters:
     ///   - request: 実行対象のリクエスト
     /// - Returns: 高画質化結果
@@ -41,7 +41,7 @@ struct ImageUpscaleUseCase {
         return try await pipeline.upscale(request)
     }
 
-    /// 指定方式に応じた実行パイプラインを解決する
+    /// 指定した内部方式に応じた実行パイプラインを解決する
     /// - Parameters:
     ///   - method: 要求された高画質化方式
     /// - Returns: 実行対象のパイプライン

@@ -113,7 +113,7 @@ class EditorViewModel: ObservableObject {
         for element in project.elements {
             (element as? ImageElement)?.handleMemoryWarning()
         }
-        ImageElementRenderingService.shared.resetCache()
+        ImageElement.previewService.resetCache()
         ToneCurveFilter.clearCache()
     }
 
@@ -421,7 +421,7 @@ class EditorViewModel: ObservableObject {
         guard let imageElement = selectedElement as? ImageElement else {
             return false
         }
-        return ImageElementMetadataService.canRevertToInitialState(imageElement)
+        return imageElement.canRevertToInitialState
     }
 
     /// 手動背景除去の結果を画像要素に反映
@@ -1050,6 +1050,7 @@ class EditorViewModel: ObservableObject {
             scaleFactor: scaleFactor,
             appliesSharpening: appliesSharpening
         )
+        let imageUpscaleUseCase = self.imageUpscaleUseCase
 
         Task {
             defer { isProcessingUpscale = false }
@@ -1314,12 +1315,8 @@ class EditorViewModel: ObservableObject {
     ///   - originalImage: 既に解決済みの元画像
     /// - Returns: なし
     private func prepareEditingProxyIfNeeded(for imageElement: ImageElement, originalImage: UIImage) {
-        guard !imageElement.hasEditingProxyImage else { return }
-        let proxyImage = ImageEditingProxyResolver.resolve(
-            for: imageElement,
-            originalImage: originalImage
-        )
-        imageElement.setEditingProxyImage(proxyImage)
+        // 現行の ImageElement は editingImage を内部で遅延解決するため、
+        // ViewModel 側で明示的なプロキシ注入は行わない。
     }
     
     /// 操作中

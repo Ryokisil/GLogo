@@ -19,8 +19,6 @@ import Combine
 class ElementViewModel: ObservableObject {
     // MARK: - プロパティ
 
-    private let imageRenderingService = ImageElementRenderingService.shared
-
     /// EditorViewModel への参照（非所有）
     /// 循環参照を避けるため weak で保持する。
     private weak var editorViewModel: EditorViewModel?
@@ -95,7 +93,7 @@ class ElementViewModel: ObservableObject {
     /// 選択中画像要素の表示用プレビュー画像
     var renderedPreviewImage: UIImage? {
         guard let imageElement else { return nil }
-        return imageRenderingService.renderedImage(for: imageElement)
+        return imageElement.image
     }
 
     /// ジェスチャー変形用の基準値
@@ -954,9 +952,8 @@ class ElementViewModel: ObservableObject {
     ///   - imageElement: 対象画像要素
     /// - Returns: なし
     private func prepareEditingProxyIfNeeded(for imageElement: ImageElement) {
-        guard !imageElement.hasEditingProxyImage else { return }
-        let proxyImage = ImageEditingProxyResolver.resolve(for: imageElement)
-        imageElement.setEditingProxyImage(proxyImage)
+        // 現行の ImageElement は editingImage を内部で遅延解決するため、
+        // ViewModel 側で明示的なプロキシ注入は行わない。
     }
 
     /// 画像調整スライダーの確定（履歴に1件だけ記録）
@@ -979,8 +976,7 @@ class ElementViewModel: ObservableObject {
         editorViewModel?.applyEvent(event)
 
         if imageElement.originalImageIdentifier != nil {
-            ImageElementMetadataService.recordEdit(
-                for: imageElement,
+            imageElement.recordMetadataEdit(
                 fieldKey: metadataKey,
                 oldValue: startValue,
                 newValue: finalValue
@@ -1089,14 +1085,12 @@ class ElementViewModel: ObservableObject {
         editorViewModel?.updateImageTintColor(imageElement, oldColor: oldColor, newColor: color, oldIntensity: oldIntensity, newIntensity: intensity)
 
         if imageElement.originalImageIdentifier != nil {
-            ImageElementMetadataService.recordEdit(
-                for: imageElement,
+            imageElement.recordMetadataEdit(
                 fieldKey: "tintColor",
                 oldValue: oldColor?.description,
                 newValue: color?.description
             )
-            ImageElementMetadataService.recordEdit(
-                for: imageElement,
+            imageElement.recordMetadataEdit(
                 fieldKey: "tintIntensity",
                 oldValue: oldIntensity,
                 newValue: intensity
@@ -1117,8 +1111,7 @@ class ElementViewModel: ObservableObject {
         editorViewModel?.updateImageShowFrame(imageElement, newValue: showFrame)
 
         if imageElement.originalImageIdentifier != nil {
-            ImageElementMetadataService.recordEdit(
-                for: imageElement,
+            imageElement.recordMetadataEdit(
                 fieldKey: "showFrame",
                 oldValue: oldValue,
                 newValue: showFrame
@@ -1139,8 +1132,7 @@ class ElementViewModel: ObservableObject {
         editorViewModel?.updateImageFrameColor(imageElement, newColor: color)
 
         if imageElement.originalImageIdentifier != nil {
-            ImageElementMetadataService.recordEdit(
-                for: imageElement,
+            imageElement.recordMetadataEdit(
                 fieldKey: "frameColor",
                 oldValue: oldColor.description,
                 newValue: color.description
@@ -1164,14 +1156,12 @@ class ElementViewModel: ObservableObject {
         editorViewModel?.updateImageRoundedCorners(imageElement, wasRounded: wasRounded, isRounded: rounded, oldRadius: oldRadius, newRadius: radius)
 
         if imageElement.originalImageIdentifier != nil {
-            ImageElementMetadataService.recordEdit(
-                for: imageElement,
+            imageElement.recordMetadataEdit(
                 fieldKey: "roundedCorners",
                 oldValue: wasRounded,
                 newValue: rounded
             )
-            ImageElementMetadataService.recordEdit(
-                for: imageElement,
+            imageElement.recordMetadataEdit(
                 fieldKey: "cornerRadius",
                 oldValue: oldRadius,
                 newValue: radius
