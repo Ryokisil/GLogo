@@ -112,7 +112,7 @@ struct BackgroundBlurMaskEditView: View {
                         if viewModel.state.isProcessingAI {
                             Color.black.opacity(0.2)
                                 .ignoresSafeArea()
-                            ProgressView("Processing AI...")
+                            ProgressView("manualRemoval.processing")
                                 .padding(12)
                                 .background(Color.white.opacity(0.9))
                                 .cornerRadius(8)
@@ -123,7 +123,7 @@ struct BackgroundBlurMaskEditView: View {
                                 Image(systemName: "exclamationmark.triangle")
                                     .font(.title2)
                                     .foregroundColor(.orange)
-                                Text(viewModel.state.sourceImageErrorMessage ?? "Failed to load image.")
+                                Text(viewModel.state.sourceImageErrorMessage ?? String(localized: "manualRemoval.imageLoadFailed"))
                                     .font(.subheadline)
                                     .multilineTextAlignment(.center)
                                     .foregroundColor(.primary)
@@ -143,12 +143,12 @@ struct BackgroundBlurMaskEditView: View {
 
                     // モード切り替え
                     HStack(spacing: 12) {
-                        Text("Mode:")
+                        Text("manualRemoval.mode")
                             .font(.headline)
 
-                        Picker("Edit Mode", selection: $viewModel.state.mode) {
+                        Picker("manualRemoval.mode", selection: $viewModel.state.mode) {
                             ForEach(RemovalMode.allCases, id: \.self) { mode in
-                                Text(mode.rawValue).tag(mode)
+                                Text(LocalizedStringKey(mode.localizationKey)).tag(mode)
                             }
                         }
                         .pickerStyle(SegmentedPickerStyle())
@@ -158,7 +158,7 @@ struct BackgroundBlurMaskEditView: View {
 
                     // ブラシサイズ
                     HStack {
-                        Text("Brush Size:")
+                        Text("manualRemoval.brushSize")
                             .font(.subheadline)
 
                         Slider(value: Binding(
@@ -184,7 +184,7 @@ struct BackgroundBlurMaskEditView: View {
                         .disabled(!viewModel.state.canRedo)
 
                         // AIマスク生成
-                        Button("Generate AI Mask") {
+                        Button("manualRemoval.generateAIMask") {
                             Task {
                                 await viewModel.applyAIMask()
                             }
@@ -194,14 +194,14 @@ struct BackgroundBlurMaskEditView: View {
                         Spacer()
 
                         // リセット
-                        Button("Reset") {
+                        Button("common.reset") {
                             viewModel.reset()
                         }
                         .foregroundColor(.red)
                         .disabled(!viewModel.state.isSourceImageAvailable)
 
                         // 完了
-                        Button("Done") {
+                        Button("common.done") {
                             viewModel.complete()
                             presentationMode.wrappedValue.dismiss()
                         }
@@ -228,14 +228,14 @@ struct BackgroundBlurMaskEditView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                Button("Cancel") {
+                Button("common.cancel") {
                     viewModel.cancel()
                     presentationMode.wrappedValue.dismiss()
                 }
             }
 
             ToolbarItem(placement: .principal) {
-                Text("Background Blur Mask Edit")
+                Text("manualRemoval.backgroundBlur.title")
                     .font(.headline)
                     .foregroundStyle(Color(uiColor: .label))
             }
@@ -266,31 +266,23 @@ struct BackgroundBlurMaskEditView: View {
 
     private static let blurGuideSteps: [EditorIntroStep] = [
         EditorIntroStep(
-            titleEN: "Paint Blur Area",
-            titleJP: "ぼかし範囲を塗る",
-            messageEN: "Drag the handle to paint the area you want to blur. The masked area will be blurred.",
-            messageJP: "ハンドルをドラッグしてぼかしたい部分をなぞります。マスク範囲がぼかされます。",
+            titleKey: "guide.blur.paint.title",
+            messageKey: "guide.blur.paint.message",
             systemImageName: "paintbrush.pointed"
         ),
         EditorIntroStep(
-            titleEN: "Switch Modes",
-            titleJP: "モード切り替え",
-            messageEN: "Use Remove mode to add blur areas, or Restore mode to remove blur from areas you masked by mistake.",
-            messageJP: "Removeモードでぼかし範囲を追加、Restoreモードで誤ったマスクを復元できます。",
+            titleKey: "guide.blur.switchModes.title",
+            messageKey: "guide.blur.switchModes.message",
             systemImageName: "arrow.left.arrow.right"
         ),
         EditorIntroStep(
-            titleEN: "Zoom & Pan",
-            titleJP: "ズームとパン",
-            messageEN: "Pinch with two fingers to zoom in/out. While zoomed in, drag with two fingers to pan around. Double-tap to reset the view.",
-            messageJP: "2本指でピンチしてズームイン/アウト。ズーム中は2本指ドラッグで画面を移動。ダブルタップでリセット。",
+            titleKey: "guide.common.zoomPan.title",
+            messageKey: "guide.common.zoomPan.message",
             systemImageName: "hand.pinch"
         ),
         EditorIntroStep(
-            titleEN: "Undo & Reset",
-            titleJP: "アンドゥとリセット",
-            messageEN: "Use Undo/Redo to fix mistakes. Tap Reset to clear the mask and start over.",
-            messageJP: "Undo/Redoでやり直し。Resetでマスクを全消去して最初からやり直せます。",
+            titleKey: "guide.blur.undoReset.title",
+            messageKey: "guide.blur.undoReset.message",
             systemImageName: "arrow.uturn.backward"
         ),
     ]

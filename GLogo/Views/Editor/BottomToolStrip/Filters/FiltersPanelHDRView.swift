@@ -46,7 +46,7 @@ struct FiltersPanelHDRView: View {
                 categorySelector
                 presetCardsSection
             } else {
-                Text("Select an image to apply HDR filters.")
+                Text("filters.selectImageHDR")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
@@ -61,7 +61,7 @@ struct FiltersPanelHDRView: View {
     private var categorySelector: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                categoryPill(title: "All", isSelected: selectedCategory == nil) {
+                categoryPill(title: String(localized: "filters.category.all"), isSelected: selectedCategory == nil) {
                     selectedCategory = nil
                 }
                 ForEach(availableCategories) { category in

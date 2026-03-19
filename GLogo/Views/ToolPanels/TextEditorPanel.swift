@@ -88,7 +88,7 @@ struct TextEditorPanel: View {
     
     private var fontSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("フォント")
+            Text("textEditor.font.title")
                 .font(.headline)
             
             // 現在のフォント表示と選択ボタン
@@ -105,7 +105,7 @@ struct TextEditorPanel: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                     } else {
-                        Text("フォントを選択")
+                        Text("textEditor.font.select")
                     }
                     
                     Spacer()
@@ -120,7 +120,7 @@ struct TextEditorPanel: View {
             
             // フォントサイズ
             HStack {
-                Text("サイズ:")
+                Text("textEditor.size.label")
                 
                 // デクリメントボタン
                 Button(action: {
@@ -135,7 +135,7 @@ struct TextEditorPanel: View {
                 }
                 
                 // フォントサイズ表示
-                TextField("サイズ", value: Binding(
+                TextField("textEditor.size.placeholder", value: Binding(
                     get: { Int(textElement?.fontSize ?? 36) },
                     set: {
                         if let fontName = textElement?.fontName {
@@ -160,7 +160,7 @@ struct TextEditorPanel: View {
                         .cornerRadius(4)
                 }
                 
-                Text("pt")
+                Text(verbatim: "pt")
             }
         }
     }
@@ -175,7 +175,7 @@ struct TextEditorPanel: View {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.gray)
                     
-                    TextField("フォントを検索", text: $fontSearchText)
+                    TextField("textEditor.font.search", text: $fontSearchText)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                 }
                 .padding()
@@ -207,18 +207,18 @@ struct TextEditorPanel: View {
                     }
                 }
             }
-            .navigationTitle("フォントを選択")
+            .navigationTitle("textEditor.font.picker.title")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("完了") {
+                    Button("common.done") {
                         // 選択を確定してシートを閉じる
                         isShowingFontPicker = false
                     }
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("キャンセル") {
+                    Button("common.cancel") {
                         // 元のフォントに復元してシートを閉じる
                         if let fontSize = textElement?.fontSize {
                             viewModel.updateFont(name: originalFontName, size: fontSize)
@@ -247,18 +247,18 @@ struct TextEditorPanel: View {
     
     private var colorAndAlignmentSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("色と整列")
+            Text("textEditor.colorAlignment.title")
                 .font(.headline)
             
             // テキスト要素の色とカラーピッカーを双方向バインディングで接続
-            ColorPicker("テキスト色:", selection: Binding(
+            ColorPicker("textEditor.textColor", selection: Binding(
                 get: { Color(textElement?.textColor ?? .white) }, // UIColorからSwiftUI Colorに変換、nilの場合は白色
                 set: { viewModel.updateTextColor(UIColor($0)) }   // ユーザー選択色をViewModelに通知
             ))
             
             // テキスト整列
             HStack {
-                Text("整列:")
+                Text("textEditor.alignment.label")
                 Spacer()
                 
                 Picker("", selection: Binding(
@@ -279,12 +279,12 @@ struct TextEditorPanel: View {
     
     private var spacingSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("間隔")
+            Text("textEditor.spacing.title")
                 .font(.headline)
             
             // 行間
             HStack {
-                Text("行間:")
+                Text("textEditor.lineSpacing")
                 Slider(value: Binding(
                     get: { textElement?.lineSpacing ?? 1.0 },
                     set: { viewModel.previewTextLineSpacing($0) }
@@ -301,7 +301,7 @@ struct TextEditorPanel: View {
             
             // 文字間隔
             HStack {
-                Text("文字間隔:")
+                Text("textEditor.letterSpacing")
                 Slider(value: Binding(
                     get: { textElement?.letterSpacing ?? 0 },
                     set: { viewModel.previewTextLetterSpacing($0) }
@@ -322,7 +322,7 @@ struct TextEditorPanel: View {
 
     private var effectsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("エフェクト")
+            Text("textEditor.effects.title")
                 .font(.headline)
 
             // シャドウエフェクト
@@ -345,7 +345,7 @@ struct TextEditorPanel: View {
 
                 VStack {
                     HStack {
-                        Toggle("シャドウ", isOn: Binding(
+                        Toggle("textEditor.shadow.label", isOn: Binding(
                             get: { shadowEffect?.isEnabled ?? false },
                             set: { viewModel.updateTextEffect(atIndex: shadowIndex, isEnabled: $0) }
                         ))
@@ -360,7 +360,7 @@ struct TextEditorPanel: View {
 
                     if isEditingShadow, let shadowEffect = shadowEffect, shadowEffect.isEnabled {
                         VStack(alignment: .leading, spacing: 8) {
-                            ColorPicker("色:", selection: Binding(
+                            ColorPicker("common.color", selection: Binding(
                                 get: { Color(shadowEffect.color) },
                                 set: {
                                     viewModel.updateShadowEffect(
@@ -371,7 +371,7 @@ struct TextEditorPanel: View {
                             ))
 
                             HStack {
-                                Text("ぼかし:")
+                                Text("textEditor.shadow.blur")
                                 Slider(value: Binding(
                                     get: { shadowEffect.blurRadius },
                                     set: {
@@ -392,7 +392,7 @@ struct TextEditorPanel: View {
                             }
 
                             HStack {
-                                Text("X オフセット:")
+                                Text("textEditor.shadow.xOffset")
                                 Slider(value: Binding(
                                     get: { shadowEffect.offset.width },
                                     set: {
@@ -414,7 +414,7 @@ struct TextEditorPanel: View {
                             }
 
                             HStack {
-                                Text("Y オフセット:")
+                                Text("textEditor.shadow.yOffset")
                                 Slider(value: Binding(
                                     get: { shadowEffect.offset.height },
                                     set: {
@@ -442,7 +442,7 @@ struct TextEditorPanel: View {
                 Button(action: { viewModel.addTextEffect(ShadowEffect()) }) {
                     HStack {
                         Image(systemName: "plus.circle")
-                        Text("シャドウを追加")
+                        Text("textEditor.shadow.add")
                     }
                 }
             }
@@ -458,7 +458,7 @@ struct TextEditorPanel: View {
 
                 VStack {
                     HStack {
-                        Toggle("ストローク", isOn: Binding(
+                        Toggle("textEditor.stroke.label", isOn: Binding(
                             get: { strokeEffect?.isEnabled ?? false },
                             set: { viewModel.updateTextEffect(atIndex: strokeIndex, isEnabled: $0) }
                         ))
@@ -473,7 +473,7 @@ struct TextEditorPanel: View {
 
                     if isEditingStroke, let strokeEffect = strokeEffect, strokeEffect.isEnabled {
                         VStack(alignment: .leading, spacing: 8) {
-                            ColorPicker("色:", selection: Binding(
+                            ColorPicker("common.color", selection: Binding(
                                 get: { Color(strokeEffect.color) },
                                 set: {
                                     viewModel.updateStrokeEffect(
@@ -483,7 +483,7 @@ struct TextEditorPanel: View {
                             ))
 
                             HStack {
-                                Text("太さ:")
+                                Text("textEditor.stroke.width")
                                 Slider(value: Binding(
                                     get: { strokeEffect.width },
                                     set: {
@@ -506,7 +506,7 @@ struct TextEditorPanel: View {
                                 viewModel.removeTextEffect(atIndex: strokeIndex)
                                 isEditingStroke = false
                             }) {
-                                Label("削除", systemImage: "trash")
+                                Label("common.delete", systemImage: "trash")
                                     .font(.caption)
                             }
                         }
@@ -517,7 +517,7 @@ struct TextEditorPanel: View {
                 Button(action: { viewModel.addTextEffect(StrokeEffect()) }) {
                     HStack {
                         Image(systemName: "plus.circle")
-                        Text("ストロークを追加")
+                        Text("textEditor.stroke.add")
                     }
                 }
             }
@@ -533,7 +533,7 @@ struct TextEditorPanel: View {
 
                 VStack {
                     HStack {
-                        Toggle("グロー", isOn: Binding(
+                        Toggle("textEditor.glow.label", isOn: Binding(
                             get: { glowEffect?.isEnabled ?? false },
                             set: { viewModel.updateTextEffect(atIndex: glowIndex, isEnabled: $0) }
                         ))
@@ -548,7 +548,7 @@ struct TextEditorPanel: View {
 
                     if isEditingGlow, let glowEffect = glowEffect, glowEffect.isEnabled {
                         VStack(alignment: .leading, spacing: 8) {
-                            ColorPicker("色:", selection: Binding(
+                            ColorPicker("common.color", selection: Binding(
                                 get: { Color(glowEffect.color) },
                                 set: {
                                     viewModel.updateGlowEffect(
@@ -558,7 +558,7 @@ struct TextEditorPanel: View {
                             ))
 
                             HStack {
-                                Text("半径:")
+                                Text("textEditor.glow.radius")
                                 Slider(value: Binding(
                                     get: { glowEffect.radius },
                                     set: {
@@ -581,7 +581,7 @@ struct TextEditorPanel: View {
                                 viewModel.removeTextEffect(atIndex: glowIndex)
                                 isEditingGlow = false
                             }) {
-                                Label("削除", systemImage: "trash")
+                                Label("common.delete", systemImage: "trash")
                                     .font(.caption)
                             }
                         }
@@ -592,7 +592,7 @@ struct TextEditorPanel: View {
                 Button(action: { viewModel.addTextEffect(GlowEffect()) }) {
                     HStack {
                         Image(systemName: "plus.circle")
-                        Text("グローを追加")
+                        Text("textEditor.glow.add")
                     }
                 }
             }

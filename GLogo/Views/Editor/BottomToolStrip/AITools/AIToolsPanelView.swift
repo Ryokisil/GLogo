@@ -10,24 +10,23 @@
 import SwiftUI
 
 /// AI Toolsパネルで扱うタブ種別です。
-private enum AIToolsTab: CaseIterable, Identifiable {
+private enum AIToolsTab: String, CaseIterable, Identifiable {
     case backgroundRemoval
     case backgroundBlur
     case upscale
 
-    var id: String { title }
+    /// Identifiable 準拠用の安定 ID（言語に依存しない）
+    var id: String { rawValue }
 
-    /// タブに表示するタイトル文字列を返します。
-    /// - Parameters: なし
-    /// - Returns: タブ表示用のタイトル文字列
-    var title: String {
+    /// タブに表示するローカライズ済みタイトルを返します。
+    var title: LocalizedStringKey {
         switch self {
         case .backgroundRemoval:
-            return "Background Remove"
+            return "aiTools.tab.backgroundRemove"
         case .backgroundBlur:
-            return "Background Blur"
+            return "aiTools.tab.backgroundBlur"
         case .upscale:
-            return "Enhance"
+            return "aiTools.tab.enhance"
         }
     }
 }
@@ -60,7 +59,7 @@ struct AIToolsPanelView: View {
                 tabSelector
                 tabContent
             } else {
-                Text("Select an image to use AI tools.")
+                Text("aiTools.selectImage")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
@@ -78,7 +77,7 @@ struct AIToolsPanelView: View {
 
     private var header: some View {
         HStack {
-            Button("Reset") {
+            Button("aiTools.reset") {
                 resetCurrentTab()
             }
             .font(.subheadline.weight(.semibold))
@@ -86,7 +85,7 @@ struct AIToolsPanelView: View {
 
             Spacer()
 
-            Text("AI Tools")
+            Text("aiTools.title")
                 .font(.headline)
 
             Spacer()
@@ -140,7 +139,7 @@ struct AIToolsPanelView: View {
 
     private var backgroundRemovalContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Remove background with AI or open the editor for manual editing.")
+            Text("aiTools.backgroundRemove.description")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
@@ -154,7 +153,7 @@ struct AIToolsPanelView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 7)
                     } else {
-                        Label("AI Remove", systemImage: "sparkles")
+                        Label("aiTools.aiRemove", systemImage: "sparkles")
                             .font(.footnote.weight(.semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 7)
@@ -168,7 +167,7 @@ struct AIToolsPanelView: View {
                 Button {
                     onOpenManualBackgroundRemoval()
                 } label: {
-                    Label("Manual Edit", systemImage: "paintbrush.pointed")
+                    Label("aiTools.manualEdit", systemImage: "paintbrush.pointed")
                         .font(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 7)
@@ -190,7 +189,7 @@ struct AIToolsPanelView: View {
         )
 
         return VStack(alignment: .leading, spacing: 12) {
-            Text("Blur Radius")
+            Text("aiTools.blurRadius")
                 .font(.subheadline.weight(.medium))
                 .foregroundColor(.secondary)
 
@@ -230,7 +229,7 @@ struct AIToolsPanelView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 7)
                     } else {
-                        Label("Generate AI Mask", systemImage: "sparkles")
+                        Label("aiTools.generateAIMask", systemImage: "sparkles")
                             .font(.footnote.weight(.semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 7)
@@ -244,7 +243,7 @@ struct AIToolsPanelView: View {
                 Button {
                     viewModel.requestBackgroundBlurMaskEdit()
                 } label: {
-                    Label("Edit Mask", systemImage: "pencil")
+                    Label("aiTools.editMask", systemImage: "pencil")
                         .font(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 7)
@@ -258,7 +257,7 @@ struct AIToolsPanelView: View {
             Button {
                 viewModel.removeBackgroundBlurMask()
             } label: {
-                Label("Clear Blur Mask", systemImage: "xmark.circle")
+                Label("aiTools.clearBlurMask", systemImage: "xmark.circle")
                     .font(.footnote.weight(.semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 7)
@@ -272,7 +271,7 @@ struct AIToolsPanelView: View {
 
     private var upscaleContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("AI super-resolution improves the selected image with a bundled Real-ESRGAN model.")
+            Text("aiTools.enhance.description")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
@@ -282,7 +281,7 @@ struct AIToolsPanelView: View {
                     .foregroundColor(.red)
                     .fixedSize(horizontal: false, vertical: true)
             } else if !viewModel.isRealESRGANAvailable {
-                Text("The AI model `realesr-general-x4v3` is not bundled yet. Add it under `GLogo/Resources/MLModels` to enable this feature.")
+                Text("aiTools.enhance.modelNotBundled")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -297,7 +296,7 @@ struct AIToolsPanelView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 7)
                 } else {
-                    Label("Enhance Image", systemImage: "sparkles.tv")
+                    Label("aiTools.enhanceImage", systemImage: "sparkles.tv")
                         .font(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 7)

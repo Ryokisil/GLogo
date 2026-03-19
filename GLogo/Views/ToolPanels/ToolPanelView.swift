@@ -167,15 +167,15 @@ struct ToolPanelView: View {
             // 要素の種類に応じたタイトル
             switch elementType {
             case .text:
-                return "テキスト編集"
+                return String(localized: "toolPanel.title.textEdit")
             case .shape:
-                return "図形編集"
+                return String(localized: "toolPanel.title.shapeEdit")
             case .image:
-                return "画像編集"
+                return String(localized: "toolPanel.title.imageEdit")
             }
         } else {
             // 背景編集
-            return "背景設定"
+            return String(localized: "toolPanel.title.background")
         }
     }
 }
@@ -190,7 +190,7 @@ struct ImageEditorPanel: View {
                 // 画像プレビュー
                 if let imageElement = viewModel.imageElement, let image = imageElement.image {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("プレビュー")
+                        Text("imageEditor.preview")
                             .font(.headline)
                         
                         Image(uiImage: image)
@@ -208,11 +208,11 @@ struct ImageEditorPanel: View {
                 // 色調補正
                 if let imageElement = viewModel.imageElement {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("色調補正")
+                        Text("imageEditor.colorCorrection")
                             .font(.headline)
                         
                         HStack {
-                            Text("彩度:")
+                            Text("imageEditor.saturation")
                             Slider(value: Binding(
                                 get: { imageElement.saturationAdjustment },
                                 set: { viewModel.updateImageAdjustment(.saturation, value: $0) }
@@ -228,7 +228,7 @@ struct ImageEditorPanel: View {
                         }
                         
                         HStack {
-                            Text("明度:")
+                            Text("imageEditor.brightness")
                             Slider(value: Binding(
                                 get: { imageElement.brightnessAdjustment },
                                 set: { viewModel.updateImageAdjustment(.brightness, value: $0) }
@@ -244,7 +244,7 @@ struct ImageEditorPanel: View {
                         }
                         
                         HStack {
-                            Text("コントラスト:")
+                            Text("imageEditor.contrast")
                             Slider(value: Binding(
                                 get: { imageElement.contrastAdjustment },
                                 set: { viewModel.updateImageAdjustment(.contrast, value: $0) }
@@ -260,7 +260,7 @@ struct ImageEditorPanel: View {
                         }
                         
                         HStack {
-                            Text("ハイライト:")
+                            Text("imageEditor.highlights")
                             Slider(value: Binding(
                                 get: { imageElement.highlightsAdjustment },
                                 set: { viewModel.updateImageAdjustment(.highlights, value: $0) }
@@ -276,7 +276,7 @@ struct ImageEditorPanel: View {
                         }
                         
                         HStack {
-                            Text("シャドウ:")
+                            Text("imageEditor.shadows")
                             Slider(value: Binding(
                                 get: { imageElement.shadowsAdjustment },
                                 set: { viewModel.updateImageAdjustment(.shadows, value: $0) }
@@ -292,7 +292,7 @@ struct ImageEditorPanel: View {
                         }
                         
                         HStack {
-                            Text("色相:")
+                            Text("imageEditor.hue")
                             Slider(value: Binding(
                                 get: { imageElement.hueAdjustment },
                                 set: { viewModel.updateImageAdjustment(.hue, value: $0) }
@@ -308,7 +308,7 @@ struct ImageEditorPanel: View {
                         }
                         
                         HStack {
-                            Text("シャープネス:")
+                            Text("imageEditor.sharpness")
                             Slider(value: Binding(
                                 get: { imageElement.sharpnessAdjustment },
                                 set: { viewModel.updateImageAdjustment(.sharpness, value: $0) }
@@ -324,7 +324,7 @@ struct ImageEditorPanel: View {
                         }
                         
                         HStack {
-                            Text("ブラー:")
+                            Text("imageEditor.blur")
                             Slider(value: Binding(
                                 get: { imageElement.gaussianBlurRadius },
                                 set: { viewModel.updateImageAdjustment(.gaussianBlur, value: $0) }
@@ -345,7 +345,7 @@ struct ImageEditorPanel: View {
                     // フレーム設定
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("フレーム")
+                            Text("imageEditor.frame")
                                 .font(.headline)
                             
                             Spacer()
@@ -359,14 +359,14 @@ struct ImageEditorPanel: View {
                         
                         if imageElement.showFrame {
                             // フレームの色
-                            ColorPicker("色:", selection: Binding(
+                            ColorPicker("common.color", selection: Binding(
                                 get: { Color(imageElement.frameColor) },
                                 set: { viewModel.updateFrameColor(UIColor($0)) }
                             ))
                             
                             // フレームの太さ
                             HStack {
-                                Text("太さ:")
+                                Text("imageEditor.frame.width")
                                 Slider(value: Binding(
                                     get: { imageElement.frameWidth },
                                     set: { viewModel.updateImageAdjustment(.frameWidth, value: $0) }
@@ -388,7 +388,7 @@ struct ImageEditorPanel: View {
                     // 角丸設定
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("角丸")
+                            Text("imageEditor.cornerRadius")
                                 .font(.headline)
                             
                             Spacer()
@@ -403,7 +403,7 @@ struct ImageEditorPanel: View {
                         if imageElement.roundedCorners {
                             // 角丸の半径
                             HStack {
-                                Text("半径:")
+                                Text("imageEditor.cornerRadius.radius")
                                 Slider(value: Binding(
                                     get: { imageElement.cornerRadius },
                                     set: { viewModel.updateImageAdjustment(.cornerRadius, value: $0) }
@@ -425,7 +425,7 @@ struct ImageEditorPanel: View {
                     // ティントカラー設定
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("カラーオーバーレイ")
+                            Text("imageEditor.colorOverlay")
                                 .font(.headline)
 
                             Spacer()
@@ -444,14 +444,14 @@ struct ImageEditorPanel: View {
 
                         if imageElement.tintColor != nil {
                             // ティント色
-                            ColorPicker("色:", selection: Binding(
+                            ColorPicker("common.color", selection: Binding(
                                 get: { Color(imageElement.tintColor ?? .blue) },
                                 set: { viewModel.updateTintColor(UIColor($0), intensity: imageElement.tintIntensity) }
                             ))
 
                             // ティント強度
                             HStack {
-                                Text("強度:")
+                                Text("imageEditor.colorOverlay.intensity")
                                 Slider(value: Binding(
                                     get: { imageElement.tintIntensity },
                                     set: { viewModel.updateImageAdjustment(.tintIntensity, value: $0) }
@@ -472,7 +472,7 @@ struct ImageEditorPanel: View {
 
                     // 背景ぼかし設定
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("背景ぼかし")
+                        Text("imageEditor.backgroundBlur")
                             .font(.headline)
 
                         // マスクが設定されているかどうかで表示を切り替え
@@ -481,14 +481,14 @@ struct ImageEditorPanel: View {
                             HStack {
                                 Image(systemName: "checkmark.circle.fill")
                                     .foregroundColor(.green)
-                                Text("マスク設定済み")
+                                Text("imageEditor.backgroundBlur.maskSet")
                                     .foregroundColor(.secondary)
                             }
                             .padding(.vertical, 4)
 
                             // ぼかし強度スライダー
                             HStack {
-                                Text("強度:")
+                                Text("imageEditor.backgroundBlur.intensity")
                                 Slider(value: Binding(
                                     get: { imageElement.backgroundBlurRadius },
                                     set: { viewModel.updateImageAdjustment(.backgroundBlurRadius, value: $0) }
@@ -509,7 +509,7 @@ struct ImageEditorPanel: View {
                             }) {
                                 HStack {
                                     Image(systemName: "paintbrush")
-                                    Text("マスクを編集")
+                                    Text("imageEditor.backgroundBlur.editMask")
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
@@ -523,7 +523,7 @@ struct ImageEditorPanel: View {
                             }) {
                                 HStack {
                                     Image(systemName: "trash")
-                                    Text("マスクを削除")
+                                    Text("imageEditor.backgroundBlur.deleteMask")
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
@@ -531,7 +531,7 @@ struct ImageEditorPanel: View {
                             }
                         } else {
                             // マスクが未設定の場合
-                            Text("AIで被写体を検出し、背景をぼかすことができます")
+                            Text("imageEditor.backgroundBlur.description")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .padding(.vertical, 4)
@@ -542,7 +542,7 @@ struct ImageEditorPanel: View {
                             }) {
                                 HStack {
                                     Image(systemName: "wand.and.stars")
-                                    Text("AI背景ぼかし")
+                                    Text("imageEditor.backgroundBlur.aiButton")
                                         .font(.headline)
                                         .fontWeight(.bold)
                                 }
@@ -568,7 +568,7 @@ struct ImageEditorPanel: View {
                             }) {
                                 HStack {
                                     Image(systemName: "paintbrush")
-                                    Text("手動でマスク作成")
+                                    Text("imageEditor.backgroundBlur.manualMask")
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
@@ -582,7 +582,7 @@ struct ImageEditorPanel: View {
                             HStack {
                                 ProgressView()
                                     .padding(.trailing, 8)
-                                Text("AIマスク生成中...")
+                                Text("imageEditor.backgroundBlur.processing")
                                     .foregroundColor(.secondary)
                             }
                             .padding(.vertical, 8)

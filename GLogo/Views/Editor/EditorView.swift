@@ -46,24 +46,24 @@ private struct EditorUIState {
     var editorIntroStepIndex = 0
     /// テキストプロパティパネルの表示フラグ
     var isTextPanelVisible = false
-    /// オープンソースライセンス画面の表示フラグ
-    var isShowingOpenSourceLicense = false
+    /// アプリ設定画面の表示フラグ
+    var isShowingAppSettings = false
 }
 
 /// アラート・確認ダイアログの状態
 private struct EditorAlertState {
     /// 確認ダイアログの表示フラグ
     var isShowingConfirmation = false
-    /// 確認ダイアログのメッセージ
-    var confirmationMessage = ""
+    /// 確認ダイアログのメッセージ（ローカライズキー）
+    var confirmationMessage: LocalizedStringKey = ""
     /// 確認ダイアログのアクション
     var confirmationAction: () -> Void = {}
     /// アラートの表示フラグ
     var isShowingAlert = false
-    /// アラートのタイトル
-    var alertTitle = ""
-    /// アラートのメッセージ
-    var alertMessage = ""
+    /// アラートのタイトル（ローカライズキー）
+    var alertTitle: LocalizedStringKey = ""
+    /// アラートのメッセージ（ローカライズキー）
+    var alertMessage: LocalizedStringKey = ""
 }
 
 /// エディタビュー - アプリのメインエディタ画面
@@ -102,6 +102,9 @@ struct EditorView: View {
 
     /// 削除エフェクトの状態
     @State private var deleteEffect = DeleteEffectState()
+
+    /// アプリ設定を閉じたあとにガイドを開く要求
+    @State private var shouldOpenEditorGuideAfterSettingsDismiss = false
 
     // MARK: - 永続化
 
@@ -281,8 +284,15 @@ struct EditorView: View {
                     }
                 }
             }
-            .sheet(isPresented: $uiState.isShowingOpenSourceLicense) {
-                OpenSourceLicenseView()
+            .sheet(
+                isPresented: $uiState.isShowingAppSettings,
+                onDismiss: handleAppSettingsDismiss
+            ) {
+                AppSettingsView(
+                    onRequestOpenEditorGuide: {
+                        shouldOpenEditorGuideAfterSettingsDismiss = true
+                    }
+                )
             }
             // 手動背景除去画面への遷移
             .navigationDestination(isPresented: $isNavigatingToManualRemoval) {
@@ -309,7 +319,7 @@ struct EditorView: View {
                 Alert(
                     title: Text(alertState.alertTitle),
                     message: Text(alertState.alertMessage),
-                    dismissButton: .default(Text("OK"))
+                    dismissButton: .default(Text("common.ok"))
                 )
             }
             .confirmationDialog(
@@ -317,10 +327,10 @@ struct EditorView: View {
                 isPresented: $alertState.isShowingConfirmation,
                 titleVisibility: .visible
             ) {
-                Button("OK", role: .destructive) {
+                Button("common.ok", role: .destructive) {
                     alertState.confirmationAction()
                 }
-                Button("Cancel", role: .cancel) {}
+                Button("common.cancel", role: .cancel) {}
             }
             .applySystemOverlayVisibility(isHidden: isSystemOverlayHidden)
             .overlay {
@@ -526,14 +536,14 @@ struct EditorView: View {
                 Image(systemName: "photo")
                     .foregroundColor(viewModel.editorMode == .imageImport ? .blue : .primary)
             }
-            .help("画像追加")
+            .help("editor.help.addImage")
             
             // 削除モード
             Button(action: {
                 if let element = viewModel.selectedElement {
                     // 選択中の要素がある場合は削除の確認
                     showConfirmation(
-                        message: "Delete the selected element?",
+                        message: "editor.deleteConfirmation",
                         action: {
                             // スナップショットを取得してフェードアウト
                             deleteEffect.snapshot = element.renderSnapshot()
@@ -550,7 +560,7 @@ struct EditorView: View {
                 Image(systemName: "trash")
                     .foregroundColor(viewModel.editorMode == .delete ? .red : .primary)
             }
-            .help("削除ツール")
+            .help("editor.help.deleteTool")
             
             // 画像役割切り替え（ベース/オーバーレイ）
             if let selectedElement = viewModel.selectedElement,
@@ -566,7 +576,7 @@ struct EditorView: View {
                         .opacity(imageElement.isBaseImage ? 0.7 : 1.0) // ベース画像時は少し薄く表示
                 }
                 .disabled(imageElement.isBaseImage) // ベース画像時は無効化
-                .help(imageElement.isBaseImage ? "ベース画像（変更不可）" : "ベース画像に設定")
+                .help(imageElement.isBaseImage ? String(localized: "editor.help.baseImageLocked") : String(localized: "editor.help.setBaseImage"))
             }
         }
     }
@@ -577,10 +587,10 @@ struct EditorView: View {
     private var topActionBar: some View {
         HStack(spacing: 12) {
             HStack(spacing: 10) {
-                Button("Save") {
+                Button("editor.save") {
                     saveProjectAuto()
                 }
-                .help("Save")
+                .help("editor.save")
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(
@@ -593,28 +603,28 @@ struct EditorView: View {
                 }
                 .disabled(!viewModel.canUndo)
                 .keyboardShortcut("z", modifiers: .command)
-                .help("元に戻す")
+                .help("editor.help.undo")
 
                 Button(action: { viewModel.redo() }) {
                     Image(systemName: "arrow.uturn.forward")
                 }
                 .disabled(!viewModel.canRedo)
                 .keyboardShortcut("z", modifiers: [.command, .shift])
-                .help("やり直す")
+                .help("editor.help.redo")
             }
 
             Spacer()
 
-            Button("Revert") {
+            Button("editor.revert") {
                 if canRevert() {
                     showConfirmation(
-                        message: "Do you want to revert the selected image to its original state?",
+                        message: "editor.revertConfirmation",
                         action: revertSelectedImageToInitial
                     )
                 } else {
                     showAlert(
-                        title: "Cannot Revert",
-                        message: "No editable history was found, or no image is selected."
+                        title: "editor.cannotRevert.title",
+                        message: "editor.cannotRevert.message"
                     )
                 }
             }
@@ -637,48 +647,33 @@ struct EditorView: View {
 
     private var viewControls: some View {
         HStack(spacing: 12) {
-            Button(action: openOpenSourceLicense) {
-                Image(systemName: "doc.text")
+            Button(action: openAppSettings) {
+                Image(systemName: "gearshape")
                     .foregroundColor(.primary)
             }
-            .help("オープンソースライセンス")
-
-            // 使い方ガイド
-            Button(action: openEditorGuide) {
-                Image(systemName: "questionmark.circle")
-                    .foregroundColor(.primary)
-            }
-            .help("使い方ガイド")
+            .help("editor.help.appSettings")
         }
     }
     
     private static let editorIntroSteps: [EditorIntroStep] = [
         EditorIntroStep(
-            titleEN: "Add an Image",
-            titleJP: "画像を追加",
-            messageEN: "Tap the photo icon to import an image.",
-            messageJP: "写真アイコンをタップして画像を読み込みます。",
+            titleKey: "guide.editor.addImage.title",
+            messageKey: "guide.editor.addImage.message",
             systemImageName: "photo.on.rectangle"
         ),
         EditorIntroStep(
-            titleEN: "Select an Element",
-            titleJP: "要素を選択",
-            messageEN: "Tap an element on the canvas to select it. You can move, resize, and rotate.",
-            messageJP: "キャンバス上の要素をタップして選択し、移動・拡大縮小・回転ができます。",
+            titleKey: "guide.editor.selectElement.title",
+            messageKey: "guide.editor.selectElement.message",
             systemImageName: "hand.tap"
         ),
         EditorIntroStep(
-            titleEN: "Edit with Bottom Tools",
-            titleJP: "下部ツールで編集",
-            messageEN: "Use Text to add text, Adjust for color tuning, and AI Tools for background editing.",
-            messageJP: "Textで文字追加、Adjustで色調整、AI Toolsで背景関連の編集ができます。",
+            titleKey: "guide.editor.bottomTools.title",
+            messageKey: "guide.editor.bottomTools.message",
             systemImageName: "slider.horizontal.3"
         ),
         EditorIntroStep(
-            titleEN: "Save",
-            titleJP: "保存",
-            messageEN: "Tap the save button at the top left to export.",
-            messageJP: "左上の保存ボタンで書き出します。",
+            titleKey: "guide.editor.save.title",
+            messageKey: "guide.editor.save.message",
             systemImageName: "square.and.arrow.down"
         )
     ]
@@ -689,9 +684,9 @@ struct EditorView: View {
     private func saveProjectAuto() {
         viewModel.saveProject { success in
             if success {
-                showAlert(title: "Saved", message: "The image was saved to Photos.")
+                showAlert(title: "editor.saved.title", message: "editor.saved.message")
             } else {
-                showAlert(title: "Save Failed", message: "Unable to save the image. Check Photos permission or selected content.")
+                showAlert(title: "editor.saveFailed.title", message: "editor.saveFailed.message")
             }
         }
     }
@@ -715,14 +710,14 @@ struct EditorView: View {
     }
     
     /// アラートを表示
-    private func showAlert(title: String, message: String) {
+    private func showAlert(title: LocalizedStringKey, message: LocalizedStringKey) {
         alertState.alertTitle = title
         alertState.alertMessage = message
         alertState.isShowingAlert = true
     }
 
     /// 確認ダイアログを表示
-    private func showConfirmation(message: String, action: @escaping () -> Void) {
+    private func showConfirmation(message: LocalizedStringKey, action: @escaping () -> Void) {
         alertState.confirmationMessage = message
         alertState.confirmationAction = action
         alertState.isShowingConfirmation = true
@@ -746,9 +741,16 @@ struct EditorView: View {
         }
     }
 
-    /// オープンソースライセンス画面を表示
-    private func openOpenSourceLicense() {
-        uiState.isShowingOpenSourceLicense = true
+    /// アプリ設定画面を表示
+    private func openAppSettings() {
+        uiState.isShowingAppSettings = true
+    }
+
+    /// アプリ設定シートを閉じたあとに必要な後続処理を実行
+    private func handleAppSettingsDismiss() {
+        guard shouldOpenEditorGuideAfterSettingsDismiss else { return }
+        shouldOpenEditorGuideAfterSettingsDismiss = false
+        openEditorGuide()
     }
 
     /// zIndex降順でヒットテスト
@@ -769,7 +771,7 @@ struct EditorView: View {
 
             VStack(spacing: 10) {
                 ProgressView()
-                Text("保存中...")
+                Text("editor.saving")
                     .font(.callout)
                     .foregroundColor(.primary)
             }

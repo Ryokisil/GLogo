@@ -12,21 +12,21 @@ import SwiftUI
 /// テキスト編集モーダルダイアログ
 struct TextEditDialog: View {
     // MARK: - プロパティ
-    
+
     /// 編集するテキスト
     @State private var editingText: String
-    
+
     /// テキストフィールドのフォーカス状態
     @FocusState private var isTextFieldFocused: Bool
-    
+
     /// 編集完了時のコールバック
     let onEditComplete: (String) -> Void
-    
+
     /// キャンセル時のコールバック
     let onCancel: () -> Void
-    
+
     // MARK: - 初期化
-    
+
     init(
         initialText: String,
         onEditComplete: @escaping (String) -> Void,
@@ -36,9 +36,9 @@ struct TextEditDialog: View {
         self.onEditComplete = onEditComplete
         self.onCancel = onCancel
     }
-    
+
     // MARK: - ビュー
-    
+
     var body: some View {
         ZStack {
             // 背景オーバーレイ
@@ -47,17 +47,17 @@ struct TextEditDialog: View {
                 .onTapGesture {
                     onCancel()
                 }
-            
+
             // ダイアログコンテンツ
             VStack(spacing: 0) {
                 // タイトル部分
                 VStack(spacing: 8) {
-                    Text("Text")
+                    Text("textEdit.title")
                         .font(.system(size: 17, weight: .medium))
                         .foregroundColor(.primary)
-                    
+
                     // テキスト入力フィールド
-                    TextField("テキストを入力", text: $editingText, axis: .vertical)
+                    TextField("textEdit.placeholder", text: $editingText, axis: .vertical)
                         .font(.system(size: 16))
                         .foregroundColor(.primary)
                         .textFieldStyle(PlainTextFieldStyle())
@@ -73,19 +73,19 @@ struct TextEditDialog: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
                 .padding(.bottom, 12)
-                
+
                 // 区切り線
                 Rectangle()
                     .fill(Color(UIColor.separator))
                     .frame(height: 0.5)
-                
+
                 // ボタン部分
                 HStack(spacing: 0) {
                     // キャンセルボタン
                     Button(action: {
                         onCancel()
                     }) {
-                        Text("Cancel")
+                        Text("common.cancel")
                             .font(.system(size: 17))
                             .foregroundColor(.primary)
                             .frame(maxWidth: .infinity, minHeight: 44)
@@ -99,17 +99,17 @@ struct TextEditDialog: View {
                         )
                         .fill(Color(UIColor.systemBackground))
                     )
-                    
+
                     // 区切り線
                     Rectangle()
                         .fill(Color(UIColor.separator))
                         .frame(width: 0.5)
-                    
+
                     // OKボタン
                     Button(action: {
                         onEditComplete(editingText)
                     }) {
-                        Text("OK")
+                        Text("common.ok")
                             .font(.system(size: 17, weight: .medium))
                             .foregroundColor(.blue)
                             .frame(maxWidth: .infinity, minHeight: 44)

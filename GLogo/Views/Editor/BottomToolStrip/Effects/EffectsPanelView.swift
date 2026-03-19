@@ -7,99 +7,71 @@
 
 import SwiftUI
 
-private enum EffectsControl: CaseIterable, Identifiable {
+private enum EffectsControl: String, CaseIterable, Identifiable {
     case vignette
     case bloom
     case grain
     case fade
     case chromaticAberration
 
-    var id: String { title }
+    var id: String { rawValue }
 
-    var title: String {
+    /// ローカライズ済みの表示タイトル
+    var title: LocalizedStringKey {
         switch self {
-        case .vignette:
-            return "Vignette"
-        case .bloom:
-            return "Bloom"
-        case .grain:
-            return "Grain"
-        case .fade:
-            return "Fade"
-        case .chromaticAberration:
-            return "Aberration"
+        case .vignette:            return "effects.control.vignette"
+        case .bloom:               return "effects.control.bloom"
+        case .grain:               return "effects.control.grain"
+        case .fade:                return "effects.control.fade"
+        case .chromaticAberration: return "effects.control.aberration"
         }
     }
 
     var systemImageName: String {
         switch self {
-        case .vignette:
-            return "circle.dashed.inset.filled"
-        case .bloom:
-            return "sparkles"
-        case .grain:
-            return "square.grid.3x3.fill"
-        case .fade:
-            return "camera.aperture"
-        case .chromaticAberration:
-            return "camera.macro"
+        case .vignette:            return "circle.dashed.inset.filled"
+        case .bloom:               return "sparkles"
+        case .grain:               return "square.grid.3x3.fill"
+        case .fade:                return "camera.aperture"
+        case .chromaticAberration: return "camera.macro"
         }
     }
 
     var key: ImageAdjustmentKey {
         switch self {
-        case .vignette:
-            return .vignette
-        case .bloom:
-            return .bloom
-        case .grain:
-            return .grain
-        case .fade:
-            return .fade
-        case .chromaticAberration:
-            return .chromaticAberration
+        case .vignette:            return .vignette
+        case .bloom:               return .bloom
+        case .grain:               return .grain
+        case .fade:                return .fade
+        case .chromaticAberration: return .chromaticAberration
         }
     }
 
-    var range: ClosedRange<CGFloat> {
-        0...1
-    }
-
-    var step: CGFloat {
-        0.01
-    }
-
-    var defaultValue: CGFloat {
-        0
-    }
+    var range: ClosedRange<CGFloat> { 0...1 }
+    var step: CGFloat { 0.01 }
+    var defaultValue: CGFloat { 0 }
 }
 
-private enum EffectsCategory: CaseIterable, Identifiable {
+private enum EffectsCategory: String, CaseIterable, Identifiable {
     case light
     case film
     case lens
 
-    var id: String { title }
+    var id: String { rawValue }
 
-    var title: String {
+    var title: LocalizedStringKey {
         switch self {
-        case .light:
-            return "Light"
-        case .film:
-            return "Film"
-        case .lens:
-            return "Lens"
+        case .light: return "effects.category.light"
+        case .film:  return "effects.category.film"
+        case .lens:  return "effects.category.lens"
         }
     }
 
     var controls: [EffectsControl] {
         switch self {
-        case .light:
-            return [.vignette, .bloom]
-        case .film:
-            return [.grain, .fade]
-        case .lens:
-            return [.chromaticAberration]
+        case .light: return [.vignette, .bloom]
+        case .film:  return [.grain, .fade]
+        case .lens:  return [.chromaticAberration]
         }
     }
 }
@@ -118,7 +90,7 @@ struct EffectsPanelView: View {
                 controlSelector
                 sliderSection
             } else {
-                Text("Select an image to edit FX.")
+                Text("effects.selectImage")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
@@ -136,7 +108,7 @@ struct EffectsPanelView: View {
 
     private var header: some View {
         HStack {
-            Button("Reset") {
+            Button("common.reset") {
                 resetSelectedEffect()
             }
             .font(.subheadline.weight(.semibold))
@@ -144,7 +116,7 @@ struct EffectsPanelView: View {
 
             Spacer()
 
-            Text("FX")
+            Text("effects.title")
                 .font(.headline)
 
             Spacer()

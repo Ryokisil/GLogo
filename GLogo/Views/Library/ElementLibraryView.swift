@@ -60,14 +60,14 @@ struct ElementLibraryView: View {
         .padding()
         .alert(isPresented: $isShowingTemplateConfirmation) {
             Alert(
-                title: Text("テンプレートを適用"),
-                message: Text("現在のプロジェクトは上書きされます。続行しますか？"),
-                primaryButton: .destructive(Text("適用")) {
+                title: Text("library.template.apply.title"),
+                message: Text("library.template.apply.message"),
+                primaryButton: .destructive(Text("common.apply")) {
                     if let template = selectedTemplate {
                         viewModel.onItemSelected(template)
                     }
                 },
-                secondaryButton: .cancel(Text("キャンセル"))
+                secondaryButton: .cancel(Text("common.cancel"))
             )
         }
     }
@@ -77,7 +77,7 @@ struct ElementLibraryView: View {
     private var libraryHeader: some View {
         HStack {
             // ライブラリタイトル
-            Text("要素ライブラリ")
+            Text("library.elements.title")
                 .font(.headline)
             
             Spacer()
@@ -113,7 +113,7 @@ struct ElementLibraryView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.gray)
             
-            TextField("ライブラリを検索", text: $viewModel.searchText)
+            TextField("library.search.placeholder", text: $viewModel.searchText)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .onChange(of: viewModel.searchText) {
                     viewModel.onSearchTextChanged()
@@ -189,10 +189,10 @@ struct ElementLibraryView: View {
                 .font(.largeTitle)
                 .foregroundColor(.gray)
             
-            Text("アイテムが見つかりませんでした")
+            Text("library.empty.title")
                 .font(.headline)
             
-            Text(viewModel.searchText.isEmpty ? "選択したカテゴリにアイテムがありません" : "検索条件に一致するアイテムがありません")
+            Text(verbatim: viewModel.searchText.isEmpty ? String(localized: "library.empty.noCategory") : String(localized: "library.empty.noSearch"))
                 .font(.subheadline)
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)

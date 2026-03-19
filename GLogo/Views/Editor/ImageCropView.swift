@@ -54,12 +54,12 @@ struct ImageCropView: View {
                         .frame(height: 16)
                 }
             }
-            .navigationBarTitle("Adjust Image", displayMode: .inline)
+            .navigationBarTitle(Text("imageCrop.title"), displayMode: .inline)
             .navigationBarItems(
-                leading: Button("Cancel") {
+                leading: Button("common.cancel") {
                     presentationMode.wrappedValue.dismiss()
                 },
-                trailing: Button("Done") {
+                trailing: Button("common.done") {
                     viewModel.onComplete()
                     presentationMode.wrappedValue.dismiss()
                 }

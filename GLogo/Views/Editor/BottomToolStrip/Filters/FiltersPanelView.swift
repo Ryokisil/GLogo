@@ -15,12 +15,10 @@ private enum FilterPanelMode: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
+    var title: LocalizedStringKey {
         switch self {
-        case .standard:
-            return "Standard"
-        case .hdr:
-            return "HDR"
+        case .standard: return "filters.mode.standard"
+        case .hdr:      return "filters.mode.hdr"
         }
     }
 }
@@ -56,7 +54,7 @@ struct FiltersPanelView: View {
 
     private var header: some View {
         HStack {
-            Button("Reset") {
+            Button("common.reset") {
                 viewModel.resetFilterPresets()
             }
             .font(.subheadline.weight(.semibold))
@@ -64,7 +62,7 @@ struct FiltersPanelView: View {
 
             Spacer()
 
-            Text("Filters")
+            Text("filters.title")
                 .font(.headline)
 
             Spacer()
@@ -80,7 +78,7 @@ struct FiltersPanelView: View {
     }
 
     private var modeSelector: some View {
-        Picker("Filter Mode", selection: $selectedMode) {
+        Picker("filters.title", selection: $selectedMode) {
             ForEach(FilterPanelMode.allCases) { mode in
                 Text(mode.title).tag(mode)
             }

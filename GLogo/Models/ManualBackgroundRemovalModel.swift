@@ -14,6 +14,16 @@ import UIKit
 enum RemovalMode: String, CaseIterable {
     case erase = "Remove"    // 背景を透明化
     case restore = "Restore" // 透明部分を元に戻す
+
+    /// 表示用のローカライズキー文字列
+    var localizationKey: String {
+        switch self {
+        case .erase:
+            return "manualRemoval.mode.remove"
+        case .restore:
+            return "manualRemoval.mode.restore"
+        }
+    }
 }
 
 /// 手動背景除去の状態を管理するモデル

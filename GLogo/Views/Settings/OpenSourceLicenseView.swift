@@ -18,15 +18,15 @@ struct OpenSourceLicenseView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Real-ESRGAN")
+                        Text(verbatim: "Real-ESRGAN")
                             .font(.title3)
                             .fontWeight(.semibold)
 
-                        Text("BSD 3-Clause License")
+                        Text(verbatim: "BSD 3-Clause License")
                             .font(.headline)
                             .foregroundStyle(.secondary)
 
-                        Text("Copyright (c) 2021, Xintao Wang")
+                        Text(verbatim: "Copyright (c) 2021, Xintao Wang")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -39,11 +39,11 @@ struct OpenSourceLicenseView: View {
                 }
                 .padding(20)
             }
-            .navigationTitle("Open Source License")
+            .navigationTitle("settings.license.title")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Close") {
+                    Button("common.close") {
                         dismiss()
                     }
                 }

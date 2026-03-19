@@ -13,7 +13,7 @@ import SwiftUI
 // MARK: - タブ定義
 
 /// テキストプロパティパネルのタブ
-private enum TextPropertyTab: CaseIterable, Identifiable {
+private enum TextPropertyTab: String, CaseIterable, Identifiable {
     case content
     case font
     case size
@@ -22,26 +22,34 @@ private enum TextPropertyTab: CaseIterable, Identifiable {
     case spacing
     case effects
 
-    var id: String { title }
+    var id: String { rawValue }
 
-    var title: String {
+    var title: LocalizedStringKey {
         switch self {
-        case .content: return "Content"
-        case .font: return "Font"
-        case .size: return "Size"
-        case .color: return "Color"
-        case .align: return "Align"
-        case .spacing: return "Spacing"
-        case .effects: return "Effects"
+        case .content:  return "textPanel.tab.content"
+        case .font:     return "textPanel.tab.font"
+        case .size:     return "textPanel.tab.size"
+        case .color:    return "textPanel.tab.color"
+        case .align:    return "textPanel.tab.align"
+        case .spacing:  return "textPanel.tab.spacing"
+        case .effects:  return "textPanel.tab.effects"
         }
     }
 }
 
 /// Effects タブ内の編集セクション
 private enum EffectsDetailSection: String, CaseIterable {
-    case shadow = "Shadow"
-    case stroke = "Stroke"
-    case glow = "Glow"
+    case shadow
+    case stroke
+    case glow
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .shadow: return "textPanel.effects.shadow"
+        case .stroke: return "textPanel.effects.stroke"
+        case .glow:   return "textPanel.effects.glow"
+        }
+    }
 }
 
 // MARK: - TextPropertyPanelView
@@ -73,7 +81,7 @@ struct TextPropertyPanelView: View {
                         Image(systemName: "textformat")
                             .font(.system(size: 28))
                             .foregroundColor(.secondary)
-                        Text("テキスト要素を選択してください")
+                        Text("textPanel.selectText")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -100,7 +108,7 @@ struct TextPropertyPanelView: View {
 
     private var header: some View {
         HStack {
-            Button("Reset") {
+            Button("common.reset") {
                 resetCurrentTab()
             }
             .font(.subheadline.weight(.semibold))
@@ -108,7 +116,7 @@ struct TextPropertyPanelView: View {
 
             Spacer()
 
-            Text("Text")
+            Text("textPanel.title")
                 .font(.headline)
 
             Spacer()
@@ -176,7 +184,7 @@ struct TextPropertyPanelView: View {
 
     private var contentTabContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Content")
+            Text("textPanel.content.label")
                 .font(.subheadline.weight(.medium))
                 .foregroundColor(.secondary)
 
@@ -184,7 +192,7 @@ struct TextPropertyPanelView: View {
                 onOpenTextEditor()
             } label: {
                 HStack(spacing: 8) {
-                    Text(viewModel.textElement?.text ?? "テキストを入力")
+                    Text(verbatim: viewModel.textElement?.text ?? String(localized: "textPanel.content.placeholder"))
                         .font(.body)
                         .foregroundColor(.primary)
                         .lineLimit(2)
@@ -236,7 +244,7 @@ struct TextPropertyPanelView: View {
                         pendingSheetFontName = viewModel.textElement?.fontName ?? "HelveticaNeue"
                         isShowingAllFonts = true
                     } label: {
-                        Text("More...")
+                        Text("textPanel.font.more")
                             .font(.subheadline.weight(.medium))
                             .foregroundColor(.blue)
                             .padding(.horizontal, 14)
@@ -261,7 +269,7 @@ struct TextPropertyPanelView: View {
             guard let textElement = viewModel.textElement else { return }
             viewModel.updateFont(name: fontName, size: textElement.fontSize)
         } label: {
-            Text(displayName)
+            Text(verbatim: displayName)
                 .font(.custom(fontName, size: 15))
                 .lineLimit(1)
                 .foregroundColor(isSelected ? .white : .primary)
@@ -280,18 +288,18 @@ struct TextPropertyPanelView: View {
         NavigationStack {
             VStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Preview")
+                    Text("textPanel.font.preview")
                         .font(.caption.weight(.semibold))
                         .foregroundColor(.secondary)
 
-                    Text(fontPreviewText)
+                    Text(verbatim: fontPreviewText)
                         .font(.custom(pendingSheetFontName, size: 30))
                         .lineLimit(2)
                         .minimumScaleFactor(0.5)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 8)
 
-                    Text(pendingSheetFontName)
+                    Text(verbatim: pendingSheetFontName)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -304,13 +312,13 @@ struct TextPropertyPanelView: View {
 
                 List {
                     ForEach(UIFont.familyNames.sorted(), id: \.self) { family in
-                        Section(header: Text(family)) {
+                        Section(header: Text(verbatim: family)) {
                             ForEach(UIFont.fontNames(forFamilyName: family), id: \.self) { fontName in
                                 Button {
                                     pendingSheetFontName = fontName
                                 } label: {
                                     HStack {
-                                        Text(fontName)
+                                        Text(verbatim: fontName)
                                             .font(.custom(fontName, size: 17))
                                         Spacer()
                                         if pendingSheetFontName == fontName {
@@ -325,17 +333,17 @@ struct TextPropertyPanelView: View {
                     }
                 }
             }
-            .navigationTitle("Fonts")
+            .navigationTitle("textPanel.font.title")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
+                    Button("common.cancel") {
                         isShowingAllFonts = false
                     }
                 }
 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
+                    Button("common.done") {
                         applySelectedSheetFont()
                     }
                     .disabled(viewModel.textElement == nil)
@@ -347,7 +355,7 @@ struct TextPropertyPanelView: View {
     /// フォントシート上部に表示するプレビューテキスト
     private var fontPreviewText: String {
         let baseText = viewModel.textElement?.text.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return baseText.isEmpty ? "Sample Text" : baseText
+        return baseText.isEmpty ? String(localized: "textPanel.font.sampleText") : baseText
     }
 
     /// フォントシートで選択したフォントを確定
@@ -381,7 +389,7 @@ struct TextPropertyPanelView: View {
                         guard let textElement = viewModel.textElement else { return }
                         viewModel.updateFont(name: textElement.fontName, size: preset.size)
                     } label: {
-                        Text(preset.label)
+                        Text(verbatim: preset.label)
                             .font(.subheadline.weight(.semibold))
                             .foregroundColor(isSelected ? .white : .primary)
                             .frame(minWidth: 44)
@@ -417,7 +425,7 @@ struct TextPropertyPanelView: View {
                     }
                 )
 
-                Text("\(Int(viewModel.textElement?.fontSize ?? 36))pt")
+                Text(verbatim: "\(Int(viewModel.textElement?.fontSize ?? 36))pt")
                     .font(.subheadline.monospacedDigit())
                     .frame(width: 52, alignment: .trailing)
                     .padding(.vertical, 8)
@@ -432,16 +440,16 @@ struct TextPropertyPanelView: View {
 
     // MARK: - Color タブ
 
-    /// プリセットカラー
+    /// プリセットカラー（id はローカライズ不要の内部識別子）
     private static let presetColors: [(name: String, color: UIColor)] = [
-        ("白", .white),
-        ("黒", .black),
-        ("赤", .systemRed),
-        ("青", .systemBlue),
-        ("緑", .systemGreen),
-        ("黄", .systemYellow),
-        ("橙", .systemOrange),
-        ("紫", .systemPurple)
+        ("white", .white),
+        ("black", .black),
+        ("red", .systemRed),
+        ("blue", .systemBlue),
+        ("green", .systemGreen),
+        ("yellow", .systemYellow),
+        ("orange", .systemOrange),
+        ("purple", .systemPurple)
     ]
     private static let colorTabMaxHeight: CGFloat = 252
     private static let colorTabColumnMinWidth: CGFloat = 172
@@ -475,7 +483,7 @@ struct TextPropertyPanelView: View {
     }
 
     private var baseColorSection: some View {
-        effectSubsection("Base Color") {
+        effectSubsection("textPanel.color.baseColor") {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(Self.presetColors, id: \.name) { preset in
@@ -504,7 +512,7 @@ struct TextPropertyPanelView: View {
             }
 
             compactColorPickerRow(
-                label: "Custom",
+                label: "textPanel.color.custom",
                 selection: Binding(
                     get: { Color(viewModel.textElement?.textColor ?? .white) },
                     set: { newColor in
@@ -569,7 +577,7 @@ struct TextPropertyPanelView: View {
         VStack(alignment: .leading, spacing: 12) {
             // 行間スライダー
             VStack(alignment: .leading, spacing: 4) {
-                Text("Line Spacing")
+                Text("textPanel.spacing.lineSpacing")
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(.secondary)
 
@@ -590,7 +598,7 @@ struct TextPropertyPanelView: View {
                         }
                     )
 
-                    Text(String(format: "%.1f", viewModel.textElement?.lineSpacing ?? 1.0))
+                    Text(verbatim: String(format: "%.1f", viewModel.textElement?.lineSpacing ?? 1.0))
                         .font(.subheadline.monospacedDigit())
                         .frame(width: 52, alignment: .trailing)
                         .padding(.vertical, 8)
@@ -604,7 +612,7 @@ struct TextPropertyPanelView: View {
 
             // 文字間隔スライダー
             VStack(alignment: .leading, spacing: 4) {
-                Text("Letter Spacing")
+                Text("textPanel.spacing.letterSpacing")
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(.secondary)
 
@@ -625,7 +633,7 @@ struct TextPropertyPanelView: View {
                         }
                     )
 
-                    Text(String(format: "%.1f", viewModel.textElement?.letterSpacing ?? 0.0))
+                    Text(verbatim: String(format: "%.1f", viewModel.textElement?.letterSpacing ?? 0.0))
                         .font(.subheadline.monospacedDigit())
                         .frame(width: 52, alignment: .trailing)
                         .padding(.vertical, 8)
@@ -643,9 +651,9 @@ struct TextPropertyPanelView: View {
 
     private var effectsTabContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Picker("Effects", selection: $selectedEffectsSection) {
+            Picker("textPanel.tab.effects", selection: $selectedEffectsSection) {
                 ForEach(EffectsDetailSection.allCases, id: \.self) { section in
-                    Text(section.rawValue).tag(section)
+                    Text(section.title).tag(section)
                 }
             }
             .pickerStyle(.segmented)
@@ -666,12 +674,12 @@ struct TextPropertyPanelView: View {
     private var shadowDetailSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let shadowEffect = findShadowEffect(), let index = findShadowEffectIndex() {
-                Text("Shadow")
+                Text("textPanel.effects.shadow")
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(.secondary)
 
                 ColorPicker(
-                    "Color",
+                    "common.color",
                     selection: Binding(
                         get: { Color(shadowEffect.color) },
                         set: { newColor in
@@ -686,7 +694,7 @@ struct TextPropertyPanelView: View {
                 )
                 .font(.subheadline)
 
-                sliderRow(label: "Blur", value: Binding(
+                sliderRow(label: "textPanel.effects.blur", value: Binding(
                     get: { shadowEffect.blurRadius },
                     set: { newValue in
                         viewModel.updateShadowEffect(
@@ -702,7 +710,7 @@ struct TextPropertyPanelView: View {
                     }
                 })
 
-                sliderRow(label: "X Offset", value: Binding(
+                sliderRow(label: "textPanel.effects.xOffset", value: Binding(
                     get: { shadowEffect.offset.width },
                     set: { newValue in
                         viewModel.updateShadowEffect(
@@ -719,7 +727,7 @@ struct TextPropertyPanelView: View {
                     }
                 })
 
-                sliderRow(label: "Y Offset", value: Binding(
+                sliderRow(label: "textPanel.effects.yOffset", value: Binding(
                     get: { shadowEffect.offset.height },
                     set: { newValue in
                         viewModel.updateShadowEffect(
@@ -742,14 +750,14 @@ struct TextPropertyPanelView: View {
                         viewModel.removeTextEffect(atIndex: index)
                     }
                 } label: {
-                    Label("Remove Shadow", systemImage: "trash")
+                    Label("textPanel.effects.removeShadow", systemImage: "trash")
                         .font(.caption)
                 }
             } else {
                 Button {
                     viewModel.addTextEffect(ShadowEffect())
                 } label: {
-                    Label("Add Shadow", systemImage: "plus.circle")
+                    Label("textPanel.effects.addShadow", systemImage: "plus.circle")
                         .font(.subheadline)
                 }
             }
@@ -761,12 +769,12 @@ struct TextPropertyPanelView: View {
     private var strokeDetailSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let strokeEffect = findStrokeEffect(), let index = findStrokeEffectIndex() {
-                Text("Stroke")
+                Text("textPanel.effects.stroke")
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(.secondary)
 
                 ColorPicker(
-                    "Color",
+                    "common.color",
                     selection: Binding(
                         get: { Color(strokeEffect.color) },
                         set: { newColor in
@@ -778,7 +786,7 @@ struct TextPropertyPanelView: View {
                 )
                 .font(.subheadline)
 
-                sliderRow(label: "Width", value: Binding(
+                sliderRow(label: "textPanel.effects.width", value: Binding(
                     get: { strokeEffect.width },
                     set: { newValue in
                         viewModel.updateStrokeEffect(
@@ -798,14 +806,14 @@ struct TextPropertyPanelView: View {
                         viewModel.removeTextEffect(atIndex: index)
                     }
                 } label: {
-                    Label("Remove Stroke", systemImage: "trash")
+                    Label("textPanel.effects.removeStroke", systemImage: "trash")
                         .font(.caption)
                 }
             } else {
                 Button {
                     viewModel.addTextEffect(StrokeEffect())
                 } label: {
-                    Label("Add Stroke", systemImage: "plus.circle")
+                    Label("textPanel.effects.addStroke", systemImage: "plus.circle")
                         .font(.subheadline)
                 }
             }
@@ -817,12 +825,12 @@ struct TextPropertyPanelView: View {
     private var glowDetailSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let glowEffect = findGlowEffect(), let index = findGlowEffectIndex() {
-                Text("Glow")
+                Text("textPanel.effects.glow")
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(.secondary)
 
                 ColorPicker(
-                    "Color",
+                    "common.color",
                     selection: Binding(
                         get: { Color(glowEffect.color) },
                         set: { newColor in
@@ -834,7 +842,7 @@ struct TextPropertyPanelView: View {
                 )
                 .font(.subheadline)
 
-                sliderRow(label: "Radius", value: Binding(
+                sliderRow(label: "textPanel.effects.radius", value: Binding(
                     get: { glowEffect.radius },
                     set: { newValue in
                         viewModel.updateGlowEffect(
@@ -854,14 +862,14 @@ struct TextPropertyPanelView: View {
                         viewModel.removeTextEffect(atIndex: index)
                     }
                 } label: {
-                    Label("Remove Glow", systemImage: "trash")
+                    Label("textPanel.effects.removeGlow", systemImage: "trash")
                         .font(.caption)
                 }
             } else {
                 Button {
                     viewModel.addTextEffect(GlowEffect())
                 } label: {
-                    Label("Add Glow", systemImage: "plus.circle")
+                    Label("textPanel.effects.addGlow", systemImage: "plus.circle")
                         .font(.subheadline)
                 }
             }
@@ -873,9 +881,9 @@ struct TextPropertyPanelView: View {
     private var gradientDetailSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let gradientEffect = findGradientFillEffect(), let index = findGradientFillEffectIndex() {
-                effectSubsection("Gradient Overlay") {
+                effectSubsection("textPanel.color.gradientOverlay") {
                     compactColorPickerRow(
-                        label: "Start Color",
+                        label: "textPanel.color.startColor",
                         selection: Binding(
                             get: { Color(gradientEffect.startColor) },
                             set: { newColor in
@@ -888,7 +896,7 @@ struct TextPropertyPanelView: View {
                     )
 
                     compactColorPickerRow(
-                        label: "End Color",
+                        label: "textPanel.color.endColor",
                         selection: Binding(
                             get: { Color(gradientEffect.endColor) },
                             set: { newColor in
@@ -900,7 +908,7 @@ struct TextPropertyPanelView: View {
                         )
                     )
 
-                    sliderRow(label: "Angle", value: Binding(
+                    sliderRow(label: "textPanel.effects.angle", value: Binding(
                         get: { gradientEffect.angle },
                         set: { newValue in
                             viewModel.updateGradientFillAngle(atIndex: index, angle: newValue)
@@ -913,7 +921,7 @@ struct TextPropertyPanelView: View {
                         }
                     })
 
-                    sliderRow(label: "Opacity", value: Binding(
+                    sliderRow(label: "textPanel.effects.opacity", value: Binding(
                         get: { gradientEffect.opacity },
                         set: { newValue in
                             viewModel.updateGradientFillOpacity(atIndex: index, opacity: newValue)
@@ -931,7 +939,7 @@ struct TextPropertyPanelView: View {
                             viewModel.removeTextEffect(atIndex: index)
                         }
                     } label: {
-                        Label("Remove Gradient", systemImage: "trash")
+                        Label("textPanel.effects.removeGradient", systemImage: "trash")
                             .font(.caption)
                     }
                 }
@@ -939,7 +947,7 @@ struct TextPropertyPanelView: View {
                 Button {
                     viewModel.addTextEffect(GradientFillEffect())
                 } label: {
-                    Label("Add Gradient", systemImage: "plus.circle")
+                    Label("textPanel.effects.addGradient", systemImage: "plus.circle")
                         .font(.subheadline)
                 }
             }
@@ -947,7 +955,7 @@ struct TextPropertyPanelView: View {
     }
 
     private func compactColorPickerRow(
-        label: String,
+        label: LocalizedStringKey,
         selection: Binding<Color>
     ) -> some View {
         HStack(spacing: 8) {
@@ -964,7 +972,7 @@ struct TextPropertyPanelView: View {
 
     /// スライダー行の共通コンポーネント
     private func sliderRow(
-        label: String,
+        label: LocalizedStringKey,
         value: Binding<CGFloat>,
         range: ClosedRange<CGFloat>,
         step: CGFloat,
@@ -981,7 +989,7 @@ struct TextPropertyPanelView: View {
                     onEditingChanged?(isEditing)
                 })
 
-                Text(String(format: format, value.wrappedValue))
+                Text(verbatim: String(format: format, value.wrappedValue))
                     .font(.subheadline.monospacedDigit())
                     .frame(width: 52, alignment: .trailing)
                     .padding(.vertical, 6)
@@ -996,7 +1004,7 @@ struct TextPropertyPanelView: View {
 
     /// Effects タブ内のサブセクションを描画
     private func effectSubsection<Content: View>(
-        _ title: String,
+        _ title: LocalizedStringKey,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1025,17 +1033,11 @@ struct TextPropertyPanelView: View {
     }
 
     /// Stroke エフェクトを取得
-    ///
-    /// - Parameters: なし
-    /// - Returns: Stroke エフェクト。存在しない場合は nil
     private func findStrokeEffect() -> StrokeEffect? {
         viewModel.textElement?.effects.compactMap { $0 as? StrokeEffect }.first
     }
 
     /// Stroke エフェクトのインデックスを取得
-    ///
-    /// - Parameters: なし
-    /// - Returns: Stroke エフェクトのインデックス。存在しない場合は nil
     private func findStrokeEffectIndex() -> Int? {
         viewModel.textElement?.effects.firstIndex(where: { $0 is StrokeEffect })
     }
@@ -1065,7 +1067,7 @@ struct TextPropertyPanelView: View {
         guard viewModel.textElement != nil else { return }
         switch selectedTab {
         case .content:
-            viewModel.updateText("Text")
+            viewModel.updateText(String(localized: "textPanel.content.defaultText"))
         case .font:
             viewModel.updateFont(name: "HelveticaNeue", size: viewModel.textElement?.fontSize ?? 36)
         case .size:

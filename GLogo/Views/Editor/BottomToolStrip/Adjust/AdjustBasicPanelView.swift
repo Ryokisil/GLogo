@@ -10,7 +10,7 @@
 
 import SwiftUI
 
-private enum AdjustBasicControl: CaseIterable, Identifiable {
+private enum AdjustBasicControl: String, CaseIterable, Identifiable {
     // Color
     case saturation
     case vibrance
@@ -30,36 +30,24 @@ private enum AdjustBasicControl: CaseIterable, Identifiable {
     case blur
     case curve
 
-    var id: String { title }
+    var id: String { rawValue }
 
-    var title: String {
+    /// ローカライズ済みの表示タイトル
+    var title: LocalizedStringKey {
         switch self {
-        case .saturation:
-            return "Saturation"
-        case .brightness:
-            return "Brightness"
-        case .blur:
-            return "Blur"
-        case .contrast:
-            return "Contrast"
-        case .shadows:
-            return "Shadows"
-        case .highlights:
-            return "Highlights"
-        case .blacks:
-            return "Blacks"
-        case .whites:
-            return "Whites"
-        case .temperature:
-            return "Temperature"
-        case .vibrance:
-            return "Vibrance"
-        case .hue:
-            return "Hue"
-        case .sharpness:
-            return "Sharpness"
-        case .curve:
-            return "Curve"
+        case .saturation:   return "adjust.control.saturation"
+        case .brightness:   return "adjust.control.brightness"
+        case .blur:         return "adjust.control.blur"
+        case .contrast:     return "adjust.control.contrast"
+        case .shadows:      return "adjust.control.shadows"
+        case .highlights:   return "adjust.control.highlights"
+        case .blacks:       return "adjust.control.blacks"
+        case .whites:       return "adjust.control.whites"
+        case .temperature:  return "adjust.control.temperature"
+        case .vibrance:     return "adjust.control.vibrance"
+        case .hue:          return "adjust.control.hue"
+        case .sharpness:    return "adjust.control.sharpness"
+        case .curve:        return "adjust.control.curve"
         }
     }
 
@@ -84,139 +72,89 @@ private enum AdjustBasicControl: CaseIterable, Identifiable {
 
     var key: ImageAdjustmentKey? {
         switch self {
-        case .saturation:
-            return .saturation
-        case .brightness:
-            return .brightness
-        case .blur:
-            return .gaussianBlur
-        case .contrast:
-            return .contrast
-        case .shadows:
-            return .shadows
-        case .highlights:
-            return .highlights
-        case .blacks:
-            return .blacks
-        case .whites:
-            return .whites
-        case .temperature:
-            return .temperature
-        case .vibrance:
-            return .vibrance
-        case .hue:
-            return .hue
-        case .sharpness:
-            return .sharpness
-        case .curve:
-            return nil
+        case .saturation:   return .saturation
+        case .brightness:   return .brightness
+        case .blur:         return .gaussianBlur
+        case .contrast:     return .contrast
+        case .shadows:      return .shadows
+        case .highlights:   return .highlights
+        case .blacks:       return .blacks
+        case .whites:       return .whites
+        case .temperature:  return .temperature
+        case .vibrance:     return .vibrance
+        case .hue:          return .hue
+        case .sharpness:    return .sharpness
+        case .curve:        return nil
         }
     }
 
     var range: ClosedRange<CGFloat> {
         switch self {
-        case .saturation:
-            return 0...2
-        case .brightness:
-            return -0.5...0.5
-        case .blur:
-            return 0...10
-        case .contrast:
-            return 0.5...1.5
-        case .shadows:
-            return -1...1
-        case .highlights:
-            return -1...1
-        case .blacks:
-            return -1...1
-        case .whites:
-            return -1...1
-        case .temperature:
-            return -100...100
-        case .vibrance:
-            return -1...1
-        case .hue:
-            return -180...180
-        case .sharpness:
-            return 0...2
-        case .curve:
-            return 0...1
+        case .saturation:   return 0...2
+        case .brightness:   return -0.5...0.5
+        case .blur:         return 0...10
+        case .contrast:     return 0.5...1.5
+        case .shadows:      return -1...1
+        case .highlights:   return -1...1
+        case .blacks:       return -1...1
+        case .whites:       return -1...1
+        case .temperature:  return -100...100
+        case .vibrance:     return -1...1
+        case .hue:          return -180...180
+        case .sharpness:    return 0...2
+        case .curve:        return 0...1
         }
     }
 
     var step: CGFloat {
         switch self {
-        case .blur:
-            return 0.1
-        case .hue:
-            return 1
-        case .temperature:
-            return 1
-        case .curve:
-            return 0.01
-        default:
-            return 0.01
+        case .blur:         return 0.1
+        case .hue:          return 1
+        case .temperature:  return 1
+        case .curve:        return 0.01
+        default:            return 0.01
         }
     }
 
     var defaultValue: CGFloat {
         switch self {
-        case .saturation:
-            return 1
-        case .brightness:
-            return 0
-        case .blur:
-            return 0
-        case .contrast:
-            return 1
-        case .shadows:
-            return 0
-        case .highlights:
-            return 0
-        case .blacks:
-            return 0
-        case .whites:
-            return 0
-        case .temperature:
-            return 0
-        case .vibrance:
-            return 0
-        case .hue:
-            return 0
-        case .sharpness:
-            return 0
-        case .curve:
-            return 0
+        case .saturation:   return 1
+        case .brightness:   return 0
+        case .blur:         return 0
+        case .contrast:     return 1
+        case .shadows:      return 0
+        case .highlights:   return 0
+        case .blacks:       return 0
+        case .whites:       return 0
+        case .temperature:  return 0
+        case .vibrance:     return 0
+        case .hue:          return 0
+        case .sharpness:    return 0
+        case .curve:        return 0
         }
     }
 }
 
-private enum AdjustControlCategory: CaseIterable, Identifiable {
+private enum AdjustControlCategory: String, CaseIterable, Identifiable {
     case color
     case light
     case detail
 
-    var id: String { title }
+    var id: String { rawValue }
 
-    var title: String {
+    var title: LocalizedStringKey {
         switch self {
-        case .color:
-            return "Color"
-        case .light:
-            return "Light"
-        case .detail:
-            return "Detail"
+        case .color:  return "adjust.category.color"
+        case .light:  return "adjust.category.light"
+        case .detail: return "adjust.category.detail"
         }
     }
 
     var controls: [AdjustBasicControl] {
         switch self {
-        case .color:
-            return [.saturation, .vibrance, .temperature, .hue]
-        case .light:
-            return [.brightness, .contrast, .highlights, .shadows, .blacks, .whites]
-        case .detail:
-            return [.sharpness, .blur, .curve]
+        case .color:  return [.saturation, .vibrance, .temperature, .hue]
+        case .light:  return [.brightness, .contrast, .highlights, .shadows, .blacks, .whites]
+        case .detail: return [.sharpness, .blur, .curve]
         }
     }
 }
@@ -235,7 +173,7 @@ struct AdjustBasicPanelView: View {
                 controlSelector
                 editorSection
             } else {
-                Text("Select an image to adjust.")
+                Text("adjust.selectImage")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
@@ -253,7 +191,7 @@ struct AdjustBasicPanelView: View {
 
     private var header: some View {
         HStack {
-            Button("Reset") {
+            Button("common.reset") {
                 resetSelectedAdjustment()
             }
             .font(.subheadline.weight(.semibold))
@@ -261,7 +199,7 @@ struct AdjustBasicPanelView: View {
 
             Spacer()
 
-            Text("Adjust")
+            Text("adjust.title")
                 .font(.headline)
 
             Spacer()

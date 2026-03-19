@@ -110,7 +110,7 @@ struct ManualBackgroundRemovalView: View {
                         if viewModel.state.isProcessingAI {
                             Color.black.opacity(0.2)
                                 .ignoresSafeArea()
-                            ProgressView("Processing AI...")
+                            ProgressView("manualRemoval.processing")
                                 .padding(12)
                                 .background(Color.white.opacity(0.9))
                                 .cornerRadius(8)
@@ -121,7 +121,7 @@ struct ManualBackgroundRemovalView: View {
                                 Image(systemName: "exclamationmark.triangle")
                                     .font(.title2)
                                     .foregroundColor(.orange)
-                                Text(viewModel.state.sourceImageErrorMessage ?? "Failed to load image.")
+                                Text(viewModel.state.sourceImageErrorMessage ?? String(localized: "manualRemoval.imageLoadFailed"))
                                     .font(.subheadline)
                                     .multilineTextAlignment(.center)
                                     .foregroundColor(.primary)
@@ -141,12 +141,12 @@ struct ManualBackgroundRemovalView: View {
                         
                         // モード切り替え
                         HStack(spacing: 12) {
-                            Text("Mode:")
+                            Text("manualRemoval.mode")
                                 .font(.headline)
                             
-                            Picker("Edit Mode", selection: $viewModel.state.mode) {
+                            Picker("manualRemoval.mode", selection: $viewModel.state.mode) {
                                 ForEach(RemovalMode.allCases, id: \.self) { mode in
-                                    Text(mode.rawValue).tag(mode)
+                                    Text(LocalizedStringKey(mode.localizationKey)).tag(mode)
                                 }
                             }
                             .pickerStyle(SegmentedPickerStyle())
@@ -156,7 +156,7 @@ struct ManualBackgroundRemovalView: View {
                         
                         // ブラシサイズ
                         HStack {
-                            Text("Brush Size:")
+                            Text("manualRemoval.brushSize")
                                 .font(.subheadline)
                             
                             Slider(value: Binding(
@@ -182,7 +182,7 @@ struct ManualBackgroundRemovalView: View {
                             .disabled(!viewModel.state.canRedo)
 
                             // AI背景除去
-                            Button("AI Remove") {
+                            Button("manualRemoval.aiRemove") {
                                 Task {
                                     await viewModel.applyAIMask()
                                 }
@@ -192,14 +192,14 @@ struct ManualBackgroundRemovalView: View {
                             Spacer()
                             
                             // リセット
-                            Button("Reset") {
+                            Button("common.reset") {
                                 viewModel.reset()
                             }
                             .foregroundColor(.red)
                             .disabled(!viewModel.state.isSourceImageAvailable)
-                            
+
                             // 完了
-                            Button("Done") {
+                            Button("common.done") {
                                 viewModel.complete()
                                 presentationMode.wrappedValue.dismiss()
                             }
@@ -226,14 +226,14 @@ struct ManualBackgroundRemovalView: View {
             .navigationBarBackButtonHidden(true)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
+                    Button("common.cancel") {
                         viewModel.cancel()
                         presentationMode.wrappedValue.dismiss()
                     }
                 }
 
                 ToolbarItem(placement: .principal) {
-                    Text("Background Removal Edit")
+                    Text("manualRemoval.backgroundRemoval.title")
                         .font(.headline)
                         .foregroundStyle(Color(uiColor: .label))
                 }
@@ -264,31 +264,23 @@ struct ManualBackgroundRemovalView: View {
 
     private static let removalGuideSteps: [EditorIntroStep] = [
         EditorIntroStep(
-            titleEN: "Paint to Remove",
-            titleJP: "塗って除去",
-            messageEN: "Drag the handle to paint over the area you want to remove. The red overlay shows the removal area.",
-            messageJP: "ハンドルをドラッグして除去したい部分をなぞります。赤いオーバーレイが除去範囲を示します。",
+            titleKey: "guide.removal.paint.title",
+            messageKey: "guide.removal.paint.message",
             systemImageName: "paintbrush.pointed"
         ),
         EditorIntroStep(
-            titleEN: "Switch Modes",
-            titleJP: "モード切り替え",
-            messageEN: "Use Remove mode to erase the background, or Restore mode to bring back areas you removed by mistake.",
-            messageJP: "Removeモードで背景を除去、Restoreモードで誤って除去した部分を復元できます。",
+            titleKey: "guide.removal.switchModes.title",
+            messageKey: "guide.removal.switchModes.message",
             systemImageName: "arrow.left.arrow.right"
         ),
         EditorIntroStep(
-            titleEN: "Zoom & Pan",
-            titleJP: "ズームとパン",
-            messageEN: "Pinch with two fingers to zoom in/out. While zoomed in, drag with two fingers to pan around. Double-tap to reset the view.",
-            messageJP: "2本指でピンチしてズームイン/アウト。ズーム中は2本指ドラッグで画面を移動。ダブルタップでリセット。",
+            titleKey: "guide.common.zoomPan.title",
+            messageKey: "guide.common.zoomPan.message",
             systemImageName: "hand.pinch"
         ),
         EditorIntroStep(
-            titleEN: "AI Remove & Undo",
-            titleJP: "AI除去とアンドゥ",
-            messageEN: "Tap AI Remove for automatic background detection. Use Undo/Redo to fix mistakes, or Reset to start over.",
-            messageJP: "AI Removeで自動背景検出。Undo/Redoでやり直し、Resetで全リセットできます。",
+            titleKey: "guide.removal.aiUndo.title",
+            messageKey: "guide.removal.aiUndo.message",
             systemImageName: "wand.and.stars"
         ),
     ]

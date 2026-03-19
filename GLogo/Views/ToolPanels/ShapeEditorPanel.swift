@@ -54,7 +54,7 @@ struct ShapeEditorPanel: View {
                             
                         case .custom:
                             // カスタム図形（サポート外）
-                            Text("カスタム図形の編集はこのパネルではサポートされていません。")
+                            Text("shape.customNotSupported")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -79,20 +79,20 @@ struct ShapeEditorPanel: View {
     
     private var shapeTypeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("図形タイプ")
+            Text("shape.type.title")
                 .font(.headline)
-            
-            Picker("図形タイプ", selection: Binding(
+
+            Picker("shape.type.title", selection: Binding(
                 get: { shapeElement?.shapeType ?? .rectangle },
                 set: { viewModel.updateShapeType($0) }
             )) {
-                Text("四角形").tag(ShapeType.rectangle)
-                Text("角丸四角形").tag(ShapeType.roundedRectangle)
-                Text("円").tag(ShapeType.circle)
-                Text("楕円").tag(ShapeType.ellipse)
-                Text("三角形").tag(ShapeType.triangle)
-                Text("星").tag(ShapeType.star)
-                Text("多角形").tag(ShapeType.polygon)
+                Text("shape.type.rectangle").tag(ShapeType.rectangle)
+                Text("shape.type.roundedRectangle").tag(ShapeType.roundedRectangle)
+                Text("shape.type.circle").tag(ShapeType.circle)
+                Text("shape.type.ellipse").tag(ShapeType.ellipse)
+                Text("shape.type.triangle").tag(ShapeType.triangle)
+                Text("shape.type.star").tag(ShapeType.star)
+                Text("shape.type.polygon").tag(ShapeType.polygon)
             }
             .pickerStyle(MenuPickerStyle())
         }
@@ -102,11 +102,11 @@ struct ShapeEditorPanel: View {
     
     private var cornerRadiusSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("角丸")
+            Text("shape.cornerRadius")
                 .font(.headline)
             
             HStack {
-                Text("半径:")
+                Text("shape.cornerRadius.radius")
                 Slider(value: Binding(
                     get: { shapeElement?.cornerRadius ?? 10 },
                     set: { viewModel.updateShapeCornerRadius($0) }
@@ -121,14 +121,14 @@ struct ShapeEditorPanel: View {
     
     private var sidesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("頂点")
+            Text("shape.vertices")
                 .font(.headline)
             
             Stepper(value: Binding(
                 get: { shapeElement?.sides ?? 5 },
                 set: { viewModel.updateSides($0) }
             ), in: 3...12) {
-                Text("頂点数: \(shapeElement?.sides ?? 5)")
+                Text(verbatim: "\(String(localized: "shape.vertices.count")): \(shapeElement?.sides ?? 5)")
             }
         }
     }
@@ -137,7 +137,7 @@ struct ShapeEditorPanel: View {
     
     private var fillSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("塗りつぶし")
+            Text("shape.fill.title")
                 .font(.headline)
             
             // 塗りつぶしモード
@@ -145,9 +145,9 @@ struct ShapeEditorPanel: View {
                 get: { shapeElement?.fillMode ?? .solid },
                 set: { viewModel.updateFillMode($0) }
             )) {
-                Text("なし").tag(FillMode.none)
-                Text("単色").tag(FillMode.solid)
-                Text("グラデーション").tag(FillMode.gradient)
+                Text("shape.fill.none").tag(FillMode.none)
+                Text("shape.fill.solid").tag(FillMode.solid)
+                Text("shape.fill.gradient").tag(FillMode.gradient)
             }
             .pickerStyle(SegmentedPickerStyle())
             
@@ -155,20 +155,20 @@ struct ShapeEditorPanel: View {
             if let shapeElement = shapeElement {
                 switch shapeElement.fillMode {
                 case .none:
-                    Text("塗りつぶしなし")
+                    Text("shape.fill.noFill")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     
                 case .solid:
                     // 単色設定
-                    ColorPicker("色:", selection: Binding(
+                    ColorPicker("common.color", selection: Binding(
                         get: { Color(shapeElement.fillColor) },
                         set: { viewModel.updateFillColor(UIColor($0)) }
                     ))
                     
                 case .gradient:
                     // グラデーション設定
-                    ColorPicker("開始色:", selection: Binding(
+                    ColorPicker("shape.fill.startColor", selection: Binding(
                         get: { Color(shapeElement.gradientStartColor) },
                         set: {
                             viewModel.updateGradientColors(
@@ -178,7 +178,7 @@ struct ShapeEditorPanel: View {
                         }
                     ))
                     
-                    ColorPicker("終了色:", selection: Binding(
+                    ColorPicker("shape.fill.endColor", selection: Binding(
                         get: { Color(shapeElement.gradientEndColor) },
                         set: {
                             viewModel.updateGradientColors(
@@ -190,7 +190,7 @@ struct ShapeEditorPanel: View {
                     
                     // グラデーション角度
                     HStack {
-                        Text("角度:")
+                        Text("shape.fill.angle")
                         Slider(value: Binding(
                             get: { shapeElement.gradientAngle },
                             set: { viewModel.updateGradientAngle($0) }
@@ -207,7 +207,7 @@ struct ShapeEditorPanel: View {
     
     private var strokeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("枠線")
+            Text("shape.stroke.title")
                 .font(.headline)
             
             // 枠線モード
@@ -215,22 +215,22 @@ struct ShapeEditorPanel: View {
                 get: { shapeElement?.strokeMode ?? .none },
                 set: { viewModel.updateStrokeMode($0) }
             )) {
-                Text("なし").tag(StrokeMode.none)
-                Text("あり").tag(StrokeMode.solid)
+                Text("shape.stroke.none").tag(StrokeMode.none)
+                Text("shape.stroke.solid").tag(StrokeMode.solid)
             }
             .pickerStyle(SegmentedPickerStyle())
             
             // 枠線が有効な場合の設定
             if let shapeElement = shapeElement, shapeElement.strokeMode == .solid {
                 // 枠線色
-                ColorPicker("色:", selection: Binding(
+                ColorPicker("common.color", selection: Binding(
                     get: { Color(shapeElement.strokeColor) },
                     set: { viewModel.updateStrokeColor(UIColor($0)) }
                 ))
                 
                 // 枠線太さ
                 HStack {
-                    Text("太さ:")
+                    Text("shape.stroke.width")
                     Slider(value: Binding(
                         get: { shapeElement.strokeWidth },
                         set: { viewModel.updateStrokeWidth($0) }

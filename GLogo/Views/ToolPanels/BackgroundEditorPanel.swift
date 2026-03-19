@@ -32,16 +32,16 @@ struct BackgroundEditorPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 // セクションタイトル
-                Text("背景設定")
+                Text("background.title")
                     .font(.headline)
                 
                 // 背景タイプ選択
                 VStack(alignment: .leading) {
-                    Text("背景タイプ:")
+                    Text("background.type.label")
                     
                     Picker("", selection: $backgroundSettings.type) {
-                        Text("単色").tag(BackgroundType.solid)
-                        Text("グラデーション").tag(BackgroundType.gradient)
+                        Text("background.type.solid").tag(BackgroundType.solid)
+                        Text("background.type.gradient").tag(BackgroundType.gradient)
                     }
                     .pickerStyle(SegmentedPickerStyle())
                     .onChange(of: backgroundSettings.type) {
@@ -77,7 +77,7 @@ struct BackgroundEditorPanel: View {
     private var solidColorProperties: some View {
         VStack(alignment: .leading, spacing: 12) {
             // 背景色
-            ColorPicker("背景色:", selection: Binding(
+            ColorPicker("background.color", selection: Binding(
                 get: { Color(backgroundSettings.color) },
                 set: {
                     backgroundSettings.color = UIColor($0)
@@ -87,7 +87,7 @@ struct BackgroundEditorPanel: View {
             
             // 不透明度
             HStack {
-                Text("不透明度:")
+                Text("background.opacity")
                 Slider(value: Binding(
                     get: { backgroundSettings.opacity },
                     set: {
@@ -106,7 +106,7 @@ struct BackgroundEditorPanel: View {
     private var gradientProperties: some View {
         VStack(alignment: .leading, spacing: 12) {
             // グラデーション開始色
-            ColorPicker("開始色:", selection: Binding(
+            ColorPicker("background.gradient.startColor", selection: Binding(
                 get: { Color(backgroundSettings.gradientStartColor) },
                 set: {
                     backgroundSettings.gradientStartColor = UIColor($0)
@@ -115,7 +115,7 @@ struct BackgroundEditorPanel: View {
             ))
             
             // グラデーション終了色
-            ColorPicker("終了色:", selection: Binding(
+            ColorPicker("background.gradient.endColor", selection: Binding(
                 get: { Color(backgroundSettings.gradientEndColor) },
                 set: {
                     backgroundSettings.gradientEndColor = UIColor($0)
@@ -124,9 +124,9 @@ struct BackgroundEditorPanel: View {
             ))
             
             // グラデーションタイプ
-            Picker("タイプ:", selection: $backgroundSettings.gradientType) {
-                Text("線形").tag(GradientType.linear)
-                Text("放射状").tag(GradientType.radial)
+            Picker("background.gradient.type", selection: $backgroundSettings.gradientType) {
+                Text("background.gradient.linear").tag(GradientType.linear)
+                Text("background.gradient.radial").tag(GradientType.radial)
             }
             .pickerStyle(SegmentedPickerStyle())
             .onChange(of: backgroundSettings.gradientType) {
@@ -136,13 +136,13 @@ struct BackgroundEditorPanel: View {
             // 線形グラデーションの場合は方向も選択可能
             if backgroundSettings.gradientType == .linear {
                 VStack(alignment: .leading) {
-                    Text("方向:")
+                    Text("background.gradient.direction")
                     
                     Picker("", selection: $backgroundSettings.gradientDirection) {
-                        Text("上から下").tag(GradientDirection.topToBottom)
-                        Text("左から右").tag(GradientDirection.leftToRight)
-                        Text("斜め").tag(GradientDirection.diagonal)
-                        Text("カスタム").tag(GradientDirection.custom)
+                        Text("background.gradient.topToBottom").tag(GradientDirection.topToBottom)
+                        Text("background.gradient.leftToRight").tag(GradientDirection.leftToRight)
+                        Text("background.gradient.diagonal").tag(GradientDirection.diagonal)
+                        Text("background.gradient.custom").tag(GradientDirection.custom)
                     }
                     .pickerStyle(SegmentedPickerStyle())
                     .onChange(of: backgroundSettings.gradientDirection) {
@@ -152,7 +152,7 @@ struct BackgroundEditorPanel: View {
                     // カスタム角度（カスタム方向選択時のみ表示）
                     if backgroundSettings.gradientDirection == .custom {
                         HStack {
-                            Text("角度:")
+                            Text("background.gradient.angle")
                             Slider(value: Binding(
                                 get: { backgroundSettings.gradientAngle },
                                 set: {
@@ -169,7 +169,7 @@ struct BackgroundEditorPanel: View {
             
             // 不透明度
             HStack {
-                Text("不透明度:")
+                Text("background.opacity")
                 Slider(value: Binding(
                     get: { backgroundSettings.opacity },
                     set: {

@@ -16,78 +16,78 @@ import SwiftUI
 struct ProjectSettingsView: View {
     /// エディタビューモデル
     @ObservedObject var viewModel: EditorViewModel
-    
+
     /// 表示制御用の状態
     @Environment(\.presentationMode) var presentationMode
-    
+
     /// プロジェクト名の一時保存用
     @State private var projectName: String
-    
+
     /// キャンバス幅の一時保存用
     @State private var canvasWidth: String
-    
+
     /// キャンバス高さの一時保存用
     @State private var canvasHeight: String
-    
+
     /// 変更が加えられたかのフラグ
     @State private var hasChanges = false
-    
+
     /// 確認ダイアログの表示フラグ
     @State private var showingDiscardChangesAlert = false
-    
+
     /// 設定変更確認ダイアログの表示フラグ
     @State private var showingApplyChangesAlert = false
-    
+
     /// 初期化
     init(viewModel: EditorViewModel) {
         self.viewModel = viewModel
-        
+
         // 現在のプロジェクト設定を初期値としてStateに設定
         _projectName = State(initialValue: viewModel.project.name)
         _canvasWidth = State(initialValue: "\(Int(viewModel.project.canvasSize.width))")
         _canvasHeight = State(initialValue: "\(Int(viewModel.project.canvasSize.height))")
     }
-    
+
     var body: some View {
         NavigationView {
             Form {
                 // 基本情報セクション
-                Section(header: Text("基本情報")) {
+                Section(header: Text("projectSettings.basicInfo")) {
                     // プロジェクト名
-                    TextField("プロジェクト名", text: $projectName)
+                    TextField("projectSettings.projectName", text: $projectName)
                         .onChange(of: projectName) {
                             hasChanges = true
                         }
                 }
-                
+
                 // キャンバスサイズセクション
-                Section(header: Text("キャンバスサイズ")) {
+                Section(header: Text("projectSettings.canvasSize")) {
                     HStack {
-                        Text("幅:")
-                        TextField("幅", text: $canvasWidth)
+                        Text("projectSettings.width")
+                        TextField("projectSettings.width", text: $canvasWidth)
                             .keyboardType(.numberPad)
                             .onChange(of: canvasWidth) {
                                 hasChanges = true
                             }
-                        Text("px")
+                        Text(verbatim: "px")
                     }
-                    
+
                     HStack {
-                        Text("高さ:")
-                        TextField("高さ", text: $canvasHeight)
+                        Text("projectSettings.height")
+                        TextField("projectSettings.height", text: $canvasHeight)
                             .keyboardType(.numberPad)
                             .onChange(of: canvasHeight) {
                                 hasChanges = true
                             }
-                        Text("px")
+                        Text(verbatim: "px")
                     }
-                    
+
                     // プリセットボタン
                     HStack {
-                        Text("プリセット:")
-                        
+                        Text("projectSettings.presets")
+
                         Spacer()
-                        
+
                         // 各種プリセットボタン
                         ForEach(canvasSizePresets, id: \.name) { preset in
                             Button(preset.name) {
@@ -99,18 +99,18 @@ struct ProjectSettingsView: View {
                         }
                     }
                 }
-                
+
                 // 注意メッセージ
-                Section(footer: Text("注意: キャンバスサイズの変更はロゴ要素の位置やサイズに影響する場合があります。").foregroundColor(.secondary)) {
+                Section(footer: Text("projectSettings.canvasSizeWarning").foregroundColor(.secondary)) {
                     EmptyView()
                 }
             }
-            .navigationTitle("プロジェクト設定")
+            .navigationTitle("projectSettings.title")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // キャンセルボタン
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("キャンセル") {
+                    Button("common.cancel") {
                         // 変更があれば確認ダイアログを表示
                         if hasChanges {
                             showingDiscardChangesAlert = true
@@ -119,10 +119,10 @@ struct ProjectSettingsView: View {
                         }
                     }
                 }
-                
+
                 // 保存ボタン
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("保存") {
+                    Button("projectSettings.save") {
                         if hasValidInput() {
                             if isCanvasSizeChanged() {
                                 // キャンバスサイズの変更がある場合は確認を表示
@@ -139,30 +139,30 @@ struct ProjectSettingsView: View {
             }
             .alert(isPresented: $showingDiscardChangesAlert) {
                 Alert(
-                    title: Text("変更を破棄"),
-                    message: Text("変更内容を破棄してよろしいですか？"),
-                    primaryButton: .destructive(Text("破棄")) {
+                    title: Text("projectSettings.discardChanges.title"),
+                    message: Text("projectSettings.discardChanges.message"),
+                    primaryButton: .destructive(Text("projectSettings.discardChanges.discard")) {
                         presentationMode.wrappedValue.dismiss()
                     },
-                    secondaryButton: .cancel(Text("キャンセル"))
+                    secondaryButton: .cancel(Text("common.cancel"))
                 )
             }
             .alert(isPresented: $showingApplyChangesAlert) {
                 Alert(
-                    title: Text("キャンバスサイズの変更"),
-                    message: Text("キャンバスサイズの変更はロゴ要素の位置やサイズに影響する場合があります。変更を適用しますか？"),
-                    primaryButton: .default(Text("適用")) {
+                    title: Text("projectSettings.canvasChange.title"),
+                    message: Text("projectSettings.canvasChange.message"),
+                    primaryButton: .default(Text("projectSettings.canvasChange.apply")) {
                         applyChanges()
                         presentationMode.wrappedValue.dismiss()
                     },
-                    secondaryButton: .cancel(Text("キャンセル"))
+                    secondaryButton: .cancel(Text("common.cancel"))
                 )
             }
         }
     }
-    
+
     // MARK: - キャンバスサイズプリセット
-    
+
     /// キャンバスサイズのプリセット
     private let canvasSizePresets = [
         CanvasSizePreset(name: "HD", size: CGSize(width: 1920, height: 1080)),
@@ -170,15 +170,15 @@ struct ProjectSettingsView: View {
         CanvasSizePreset(name: "4K", size: CGSize(width: 3840, height: 2160)),
         CanvasSizePreset(name: "8K", size: CGSize(width: 7680, height: 4320))
     ]
-    
+
     /// キャンバスサイズプリセット構造体
     private struct CanvasSizePreset {
         let name: String
         let size: CGSize
     }
-    
+
     // MARK: - ヘルパーメソッド
-    
+
     /// 入力が有効かどうかを検証
     private func hasValidInput() -> Bool {
         guard !projectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -186,26 +186,26 @@ struct ProjectSettingsView: View {
               let height = Int(canvasHeight), height >= 100 && height <= 5000 else {
             return false
         }
-        
+
         return true
     }
-    
+
     /// キャンバスサイズが変更されたかどうかを判定
     private func isCanvasSizeChanged() -> Bool {
         guard let width = Int(canvasWidth),
               let height = Int(canvasHeight) else {
             return false
         }
-        
+
         return width != Int(viewModel.project.canvasSize.width) ||
         height != Int(viewModel.project.canvasSize.height)
     }
-    
+
     /// 変更を適用
     private func applyChanges() {
         // プロジェクト名の更新
         viewModel.updateProjectName(projectName)
-        
+
         // キャンバスサイズの更新
         if let width = Int(canvasWidth), let height = Int(canvasHeight) {
             let newSize = CGSize(width: width, height: height)

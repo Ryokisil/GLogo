@@ -61,12 +61,12 @@ struct TemplateView: View {
         }
         .alert(isPresented: $isShowingConfirmation) {
             Alert(
-                title: Text("テンプレートを適用"),
-                message: Text("現在のプロジェクトは上書きされます。続行しますか？"),
-                primaryButton: .destructive(Text("適用")) {
+                title: Text("library.template.apply.title"),
+                message: Text("library.template.apply.message"),
+                primaryButton: .destructive(Text("common.apply")) {
                     applySelectedTemplate()
                 },
-                secondaryButton: .cancel(Text("キャンセル")) {
+                secondaryButton: .cancel(Text("common.cancel")) {
                     selectedTemplate = nil
                 }
             )
@@ -77,7 +77,7 @@ struct TemplateView: View {
     
     private var headerView: some View {
         HStack {
-            Text("テンプレート")
+            Text("library.templates.title")
                 .font(.headline)
             
             Spacer()
@@ -87,7 +87,7 @@ struct TemplateView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.gray)
                 
-                TextField("テンプレートを検索", text: $viewModel.searchText)
+                TextField("library.templates.search", text: $viewModel.searchText)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .onChange(of: viewModel.searchText) { 
                         viewModel.onSearchTextChanged()
@@ -157,7 +157,7 @@ struct TemplateView: View {
                     selectedTemplate = template
                     isShowingPreview = true
                 }) {
-                    Text("プレビュー")
+                    Text("common.preview")
                         .font(.caption)
                 }
                 .buttonStyle(BorderedButtonStyle())
@@ -169,7 +169,7 @@ struct TemplateView: View {
                     selectedTemplate = template
                     isShowingConfirmation = true
                 }) {
-                    Text("適用")
+                    Text("common.apply")
                         .font(.caption)
                 }
                 .buttonStyle(BorderedButtonStyle())
@@ -190,10 +190,10 @@ struct TemplateView: View {
                 .font(.largeTitle)
                 .foregroundColor(.gray)
             
-            Text("テンプレートが見つかりませんでした")
+            Text("library.template.empty.title")
                 .font(.headline)
             
-            Text("検索条件を変更するか、後でまた確認してください")
+            Text("library.template.empty.message")
                 .font(.subheadline)
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
@@ -257,8 +257,8 @@ struct TemplatePreviewView: View {
                     
                     // テンプレートの詳細情報（実際のアプリでは拡張可能）
                     Group {
-                        detailRow(title: "サイズ:", value: "\(Int(template.project.canvasSize.width)) × \(Int(template.project.canvasSize.height)) px")
-                        detailRow(title: "要素数:", value: "\(template.project.elements.count)")
+                        detailRow(title: String(localized: "library.template.preview.size"), value: "\(Int(template.project.canvasSize.width)) × \(Int(template.project.canvasSize.height)) px")
+                        detailRow(title: String(localized: "library.template.preview.elementCount"), value: "\(template.project.elements.count)")
                     }
                     
                     Spacer()
@@ -268,7 +268,7 @@ struct TemplatePreviewView: View {
                         presentationMode.wrappedValue.dismiss()
                         isShowingConfirmation = true
                     }) {
-                        Text("このテンプレートを適用")
+                        Text("library.template.preview.apply")
                             .font(.headline)
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
@@ -279,11 +279,11 @@ struct TemplatePreviewView: View {
                 }
                 .padding()
             }
-            .navigationTitle("テンプレートプレビュー")
+            .navigationTitle("library.template.preview.title")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("閉じる") {
+                    Button("common.close") {
                         presentationMode.wrappedValue.dismiss()
                     }
                 }

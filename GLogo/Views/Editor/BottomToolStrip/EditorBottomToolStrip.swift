@@ -18,18 +18,19 @@ enum EditorBottomTool: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
+    /// ローカライズ済みの表示タイトル
+    var title: LocalizedStringKey {
         switch self {
         case .select:
-            return "Text"
+            return "bottomTool.text"
         case .adjust:
-            return "Adjust"
+            return "bottomTool.adjust"
         case .magicStudio:
-            return "AI Tools"
+            return "bottomTool.aiTools"
         case .filters:
-            return "Filters"
+            return "bottomTool.filters"
         case .effects:
-            return "Effects"
+            return "bottomTool.effects"
         }
     }
 
