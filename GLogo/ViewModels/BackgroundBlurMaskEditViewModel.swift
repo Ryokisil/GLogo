@@ -38,6 +38,8 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
 
     /// 画像処理ユースケース
     private let useCase: ManualBackgroundRemovalUseCase
+    /// 手動背景ぼかし編集ユースケース
+    private let manualBackgroundBlurUseCase: ManualBackgroundBlurUseCase
 
     /// AI背景除去ユースケース
     private let backgroundRemovalUseCase: BackgroundRemovalUseCase
@@ -56,6 +58,7 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
     ///   - blurRadius: 背景ぼかし半径（プレビュー用）
     ///   - completion: 編集完了時の処理（マスクデータを返す）
     ///   - useCase: 画像処理ユースケース
+    ///   - manualBackgroundBlurUseCase: 手動背景ぼかし編集ユースケース
     ///   - backgroundRemovalUseCase: AI背景除去ユースケース
     /// - Returns: なし
     init(
@@ -64,12 +67,14 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
         blurRadius: CGFloat,
         completion: @escaping (Data?) -> Void,
         useCase: ManualBackgroundRemovalUseCase = ManualBackgroundRemovalUseCase(),
+        manualBackgroundBlurUseCase: ManualBackgroundBlurUseCase = ManualBackgroundBlurUseCase(),
         backgroundRemovalUseCase: BackgroundRemovalUseCase = BackgroundRemovalUseCase()
     ) {
         self.originalMaskData = initialMaskData
         self.blurRadius = blurRadius
         self.completion = completion
         self.useCase = useCase
+        self.manualBackgroundBlurUseCase = manualBackgroundBlurUseCase
         self.backgroundRemovalUseCase = backgroundRemovalUseCase
 
         // フル解像度画像を基準として保持し、編集時は必要に応じて軽量画像を使用する
@@ -282,11 +287,10 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
             return cachedBlurPreviewImage
         }
 
-        guard let maskData = maskImage.pngData() else { return originalImage }
-        let rendered = ImageFilterUtility.applyBackgroundBlur(
-            to: originalImage,
-            maskData: maskData,
-            radius: blurRadius
+        let rendered = manualBackgroundBlurUseCase.makePreviewImage(
+            originalImage: originalImage,
+            maskImage: maskImage,
+            blurRadius: blurRadius
         )
         cachedBlurPreviewImage = rendered
         cachedBlurPreviewMaskUpdateId = state.maskUpdateId
@@ -340,8 +344,11 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
     /// - Returns: フル解像度画像に対応したマスク
     private func outputMaskImage() -> UIImage? {
         guard let maskImage = state.maskImage else { return nil }
-        guard isUsingProxyForEditing else { return maskImage }
-        return Self.resizeMask(maskImage, toMatch: fullResolutionImage)
+        return manualBackgroundBlurUseCase.makeOutputMaskImage(
+            from: maskImage,
+            isUsingProxyForEditing: isUsingProxyForEditing,
+            fullResolutionImage: fullResolutionImage
+        )
     }
 
     /// 画像の実ピクセルサイズを返す
@@ -354,20 +361,4 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
         return CGSize(width: image.size.width * image.scale, height: image.size.height * image.scale)
     }
 
-    /// マスク画像をターゲット画像サイズへリサイズする
-    /// - Parameters:
-    ///   - mask: 元マスク
-    ///   - targetImage: 目標サイズ基準画像
-    /// - Returns: リサイズ後マスク
-    private static func resizeMask(_ mask: UIImage, toMatch targetImage: UIImage) -> UIImage {
-        let targetSize = targetImage.size
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = targetImage.scale
-        format.opaque = false
-        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
-        return renderer.image { context in
-            context.cgContext.interpolationQuality = .none
-            mask.draw(in: CGRect(origin: .zero, size: targetSize))
-        }
-    }
 }

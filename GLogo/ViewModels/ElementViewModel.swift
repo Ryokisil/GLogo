@@ -43,8 +43,11 @@ class ElementViewModel: ObservableObject {
     /// 購読の保持
     private var cancellables = Set<AnyCancellable>()
 
-    /// 最新のみ実行するレンダリングスケジューラ
-    private let renderScheduler = RenderScheduler()
+    private let imageEditingSessionUseCase = ImageEditingSessionUseCase()
+    private let imageAdjustmentUseCase = ImageAdjustmentUseCase()
+    private let imageRenderRefreshUseCase = ImageRenderRefreshUseCase()
+    private let filterPresetUseCase = FilterPresetUseCase()
+    private let metadataEditUseCase = ImageMetadataEditUseCase()
 
     /// AI処理中フラグ（EditorViewModelの状態を反映）
     @Published var isProcessingAI: Bool = false
@@ -57,9 +60,6 @@ class ElementViewModel: ObservableObject {
 
     /// Real-ESRGAN モデルが利用可能かどうか
     @Published private(set) var isRealESRGANAvailable: Bool = false
-
-    /// 画像調整スライダーの開始値（ドラッグ開始時）
-    private var imageAdjustmentStartValues: [ImageAdjustmentKey: CGFloat] = [:]
 
     /// テキストサイズ編集の開始値（ドラッグ開始時）
     private var textFontStartState: (name: String, size: CGFloat)?
@@ -147,7 +147,8 @@ class ElementViewModel: ObservableObject {
     private func updateElement(_ element: LogoElement?) {
         // 要素切り替え時にキャッシュをクリアして、別要素への状態持ち越しを防ぐ
         if self.element?.id != element?.id {
-            imageAdjustmentStartValues.removeAll()
+            imageAdjustmentUseCase.reset()
+            imageRenderRefreshUseCase.cancelScheduledRefresh()
             textFontStartState = nil
             textLineSpacingStartValue = nil
             textLetterSpacingStartValue = nil
@@ -240,17 +241,10 @@ class ElementViewModel: ObservableObject {
 
         // 画像要素はジェスチャー中にプレビュー品質へ切り替えて操作遅延を抑える
         if let imageElement = element as? ImageElement {
-            if ended {
-                imageElement.endEditing()
-            } else {
-                // 調整変更ありの画像はfull経路を維持し、ドラッグ中の色揺れを防止
-                if imageElement.shouldUseInstantPreviewForManipulation {
-                    prepareEditingProxyIfNeeded(for: imageElement)
-                    imageElement.startEditing()
-                } else {
-                    imageElement.endEditing()
-                }
-            }
+            imageEditingSessionUseCase.applyManipulationState(
+                to: imageElement,
+                ended: ended
+            )
         }
 
         // 基準値を保持（ジェスチャー開始時のみ）
@@ -923,65 +917,40 @@ class ElementViewModel: ObservableObject {
         currentValue: CGFloat,
         descriptor: ImageAdjustmentDescriptor
     ) {
-        if imageAdjustmentStartValues[key] == nil {
-            imageAdjustmentStartValues[key] = currentValue
-        }
+        imageAdjustmentUseCase.beginAdjustment(key, currentValue: currentValue)
         guard let imageElement = imageElement else { return }
-        applyEditingModeForImageAdjustment(imageElement, descriptor: descriptor)
-    }
-
-    /// 調整キーに応じて編集中の描画経路を切り替える
-    /// - Parameters:
-    ///   - imageElement: 対象画像要素
-    ///   - descriptor: 調整ディスクリプタ
-    /// - Returns: なし
-    private func applyEditingModeForImageAdjustment(
-        _ imageElement: ImageElement,
-        descriptor: ImageAdjustmentDescriptor
-    ) {
-        if descriptor.usesInstantPreviewWhileEditing {
-            prepareEditingProxyIfNeeded(for: imageElement)
-            imageElement.startEditing()
-        } else {
-            imageElement.endEditing()
-        }
-    }
-
-    /// 編集用プロキシ画像を必要時にだけ解決する
-    /// - Parameters:
-    ///   - imageElement: 対象画像要素
-    /// - Returns: なし
-    private func prepareEditingProxyIfNeeded(for imageElement: ImageElement) {
-        // 現行の ImageElement は editingImage を内部で遅延解決するため、
-        // ViewModel 側で明示的なプロキシ注入は行わない。
+        imageEditingSessionUseCase.applyAdjustmentState(
+            to: imageElement,
+            descriptor: descriptor
+        )
     }
 
     /// 画像調整スライダーの確定（履歴に1件だけ記録）
     private func commitImageAdjustment(
         _ key: ImageAdjustmentKey,
         finalValue: CGFloat,
-        eventFactory: (_ oldValue: CGFloat, _ newValue: CGFloat) -> EditorEvent,
-        metadataKey: String
+        descriptor: ImageAdjustmentDescriptor
     ) {
         guard let imageElement = imageElement else { return }
 
-        let startValue = imageAdjustmentStartValues[key] ?? finalValue
-        imageAdjustmentStartValues[key] = nil
+        imageEditingSessionUseCase.endEditing(imageElement)
+        let plan = imageAdjustmentUseCase.makeCommitPlan(
+            for: key,
+            finalValue: finalValue,
+            imageElement: imageElement,
+            descriptor: descriptor
+        )
 
-        imageElement.endEditing()
-
-        guard startValue != finalValue else { return }
-
-        let event = eventFactory(startValue, finalValue)
-        editorViewModel?.applyEvent(event)
-
-        if imageElement.originalImageIdentifier != nil {
-            imageElement.recordMetadataEdit(
-                fieldKey: metadataKey,
-                oldValue: startValue,
-                newValue: finalValue
-            )
+        if let event = plan.event {
+            editorViewModel?.applyEvent(event)
         }
+
+        metadataEditUseCase.recordEditIfNeeded(
+            for: imageElement,
+            fieldKey: plan.metadataKey,
+            oldValue: plan.oldValue,
+            newValue: plan.newValue
+        )
     }
 
     // MARK: - 画像要素の更新（データ駆動型）
@@ -991,24 +960,28 @@ class ElementViewModel: ObservableObject {
         guard let imageElement = imageElement,
               let descriptor = ImageAdjustmentDescriptor.all[key] else { return }
 
-        // 現在と同じ値なら何もしない
-        if imageElement[keyPath: descriptor.keyPath] == value { return }
-
-        applyEditingModeForImageAdjustment(imageElement, descriptor: descriptor)
-        imageElement[keyPath: descriptor.keyPath] = value
+        imageEditingSessionUseCase.applyAdjustmentState(
+            to: imageElement,
+            descriptor: descriptor
+        )
+        guard imageRenderRefreshUseCase.applyAdjustmentPreview(
+            value: value,
+            to: imageElement,
+            descriptor: descriptor
+        ) else { return }
 
         editorViewModel?.updateImageElement(imageElement)
 
         // gaussianBlurはRenderScheduler経由で最終品質の再描画を行う
         if descriptor.needsRenderScheduler {
-            renderScheduler.schedule { [weak self] in
-                guard let self = self, let imageElement = self.imageElement else { return }
-                imageElement.endEditing()
-                imageElement.cachedImage = nil
-                Task { @MainActor in
+            imageRenderRefreshUseCase.scheduleFinalRefresh(
+                update: { [weak self] in
+                    guard let self else { return }
+                    imageEditingSessionUseCase.endEditing(imageElement)
+                    imageElement.cachedImage = nil
                     self.editorViewModel?.updateImageElement(imageElement)
                 }
-            }
+            )
         }
     }
 
@@ -1030,10 +1003,7 @@ class ElementViewModel: ObservableObject {
         commitImageAdjustment(
             key,
             finalValue: imageElement[keyPath: descriptor.keyPath],
-            eventFactory: { oldValue, newValue in
-                descriptor.eventFactory(imageElement, oldValue, newValue)
-            },
-            metadataKey: descriptor.metadataKey
+            descriptor: descriptor
         )
 
         // 非gaussianBlurはここで確定状態（非編集）を即時反映する
@@ -1046,21 +1016,23 @@ class ElementViewModel: ObservableObject {
     func updateToneCurveData(_ newData: ToneCurveData) {
         guard let imageElement = imageElement else { return }
 
-        imageElement.toneCurveData = newData
-        prepareEditingProxyIfNeeded(for: imageElement)
-        imageElement.startEditing()
+        guard imageRenderRefreshUseCase.applyToneCurvePreview(
+            newData,
+            to: imageElement
+        ) else { return }
 
-        imageElement.cachedImage = nil
+        imageEditingSessionUseCase.beginEditing(imageElement)
+
         editorViewModel?.updateImageElement(imageElement)
 
-        renderScheduler.schedule { [weak self] in
-            guard let self = self, let imageElement = self.imageElement else { return }
-            imageElement.endEditing()
-            imageElement.cachedImage = nil
-            Task { @MainActor in
+        imageRenderRefreshUseCase.scheduleFinalRefresh(
+            update: { [weak self] in
+                guard let self else { return }
+                imageEditingSessionUseCase.endEditing(imageElement)
+                imageElement.cachedImage = nil
                 self.editorViewModel?.updateImageElement(imageElement)
             }
-        }
+        )
     }
 
     /// ティントカラーの更新
@@ -1077,25 +1049,24 @@ class ElementViewModel: ObservableObject {
         let oldColor = imageElement.tintColor
         let oldIntensity = imageElement.tintIntensity
 
-        prepareEditingProxyIfNeeded(for: imageElement)
-        imageElement.startEditing()
+        imageEditingSessionUseCase.beginEditing(imageElement)
         imageElement.tintColor = color
         imageElement.tintIntensity = intensity
 
         editorViewModel?.updateImageTintColor(imageElement, oldColor: oldColor, newColor: color, oldIntensity: oldIntensity, newIntensity: intensity)
 
-        if imageElement.originalImageIdentifier != nil {
-            imageElement.recordMetadataEdit(
-                fieldKey: "tintColor",
-                oldValue: oldColor?.description,
-                newValue: color?.description
-            )
-            imageElement.recordMetadataEdit(
-                fieldKey: "tintIntensity",
-                oldValue: oldIntensity,
-                newValue: intensity
-            )
-        }
+        metadataEditUseCase.recordEditIfNeeded(
+            for: imageElement,
+            fieldKey: "tintColor",
+            oldValue: oldColor?.description,
+            newValue: color?.description
+        )
+        metadataEditUseCase.recordEditIfNeeded(
+            for: imageElement,
+            fieldKey: "tintIntensity",
+            oldValue: oldIntensity,
+            newValue: intensity
+        )
     }
 
     /// フレーム表示の更新
@@ -1104,19 +1075,17 @@ class ElementViewModel: ObservableObject {
         if imageElement.showFrame == showFrame { return }
 
         let oldValue = imageElement.showFrame
-        prepareEditingProxyIfNeeded(for: imageElement)
-        imageElement.startEditing()
+        imageEditingSessionUseCase.beginEditing(imageElement)
         imageElement.showFrame = showFrame
 
         editorViewModel?.updateImageShowFrame(imageElement, newValue: showFrame)
 
-        if imageElement.originalImageIdentifier != nil {
-            imageElement.recordMetadataEdit(
-                fieldKey: "showFrame",
-                oldValue: oldValue,
-                newValue: showFrame
-            )
-        }
+        metadataEditUseCase.recordEditIfNeeded(
+            for: imageElement,
+            fieldKey: "showFrame",
+            oldValue: oldValue,
+            newValue: showFrame
+        )
     }
 
     /// フレームの色の更新
@@ -1125,19 +1094,17 @@ class ElementViewModel: ObservableObject {
         if imageElement.frameColor.isEqual(color) { return }
 
         let oldColor = imageElement.frameColor
-        prepareEditingProxyIfNeeded(for: imageElement)
-        imageElement.startEditing()
+        imageEditingSessionUseCase.beginEditing(imageElement)
         imageElement.frameColor = color
 
         editorViewModel?.updateImageFrameColor(imageElement, newColor: color)
 
-        if imageElement.originalImageIdentifier != nil {
-            imageElement.recordMetadataEdit(
-                fieldKey: "frameColor",
-                oldValue: oldColor.description,
-                newValue: color.description
-            )
-        }
+        metadataEditUseCase.recordEditIfNeeded(
+            for: imageElement,
+            fieldKey: "frameColor",
+            oldValue: oldColor.description,
+            newValue: color.description
+        )
     }
 
     /// 角丸の設定の更新
@@ -1148,25 +1115,24 @@ class ElementViewModel: ObservableObject {
         let wasRounded = imageElement.roundedCorners
         let oldRadius = imageElement.cornerRadius
 
-        prepareEditingProxyIfNeeded(for: imageElement)
-        imageElement.startEditing()
+        imageEditingSessionUseCase.beginEditing(imageElement)
         imageElement.roundedCorners = rounded
         imageElement.cornerRadius = radius
 
         editorViewModel?.updateImageRoundedCorners(imageElement, wasRounded: wasRounded, isRounded: rounded, oldRadius: oldRadius, newRadius: radius)
 
-        if imageElement.originalImageIdentifier != nil {
-            imageElement.recordMetadataEdit(
-                fieldKey: "roundedCorners",
-                oldValue: wasRounded,
-                newValue: rounded
-            )
-            imageElement.recordMetadataEdit(
-                fieldKey: "cornerRadius",
-                oldValue: oldRadius,
-                newValue: radius
-            )
-        }
+        metadataEditUseCase.recordEditIfNeeded(
+            for: imageElement,
+            fieldKey: "roundedCorners",
+            oldValue: wasRounded,
+            newValue: rounded
+        )
+        metadataEditUseCase.recordEditIfNeeded(
+            for: imageElement,
+            fieldKey: "cornerRadius",
+            oldValue: oldRadius,
+            newValue: radius
+        )
     }
 
     // MARK: - フィルタープリセット適用
@@ -1175,27 +1141,12 @@ class ElementViewModel: ObservableObject {
     /// - Parameter preset: 適用するフィルタープリセット
     func applyFilterPreset(_ preset: FilterPreset) {
         guard let imageElement = imageElement else { return }
+        guard let plan = filterPresetUseCase.makeApplyPlan(
+            preset: preset,
+            for: imageElement
+        ) else { return }
 
-        let oldRecipe = imageElement.appliedFilterRecipe
-        let oldPresetId = imageElement.appliedFilterPresetId
-
-        // 同一プリセットが既に適用済みなら何もしない
-        guard oldPresetId != preset.id || oldRecipe != preset.recipe else { return }
-
-        // ImageElement に直接設定
-        imageElement.appliedFilterRecipe = preset.recipe
-        imageElement.appliedFilterPresetId = preset.id
-        imageElement.invalidateRenderedImageCache()
-
-        // イベント記録
-        let event = FilterPresetChangedEvent(
-            elementId: imageElement.id,
-            oldRecipe: oldRecipe,
-            newRecipe: preset.recipe,
-            oldPresetId: oldPresetId,
-            newPresetId: preset.id
-        )
-        editorViewModel?.applyEvent(event)
+        editorViewModel?.applyEvent(plan.event)
         editorViewModel?.updateImageElement(imageElement)
         objectWillChange.send()
     }
@@ -1203,23 +1154,9 @@ class ElementViewModel: ObservableObject {
     /// フィルタープリセットを解除（manual 調整値は維持）
     func resetFilterPresets() {
         guard let imageElement = imageElement else { return }
+        guard let plan = filterPresetUseCase.makeResetPlan(for: imageElement) else { return }
 
-        let oldRecipe = imageElement.appliedFilterRecipe
-        let oldPresetId = imageElement.appliedFilterPresetId
-        guard oldRecipe != nil || oldPresetId != nil else { return }
-
-        imageElement.appliedFilterRecipe = nil
-        imageElement.appliedFilterPresetId = nil
-        imageElement.invalidateRenderedImageCache()
-
-        let event = FilterPresetChangedEvent(
-            elementId: imageElement.id,
-            oldRecipe: oldRecipe,
-            newRecipe: nil,
-            oldPresetId: oldPresetId,
-            newPresetId: nil
-        )
-        editorViewModel?.applyEvent(event)
+        editorViewModel?.applyEvent(plan.event)
         editorViewModel?.updateImageElement(imageElement)
         objectWillChange.send()
     }

@@ -84,6 +84,8 @@ class EditorViewModel: ObservableObject {
     private let saveCoordinator = SaveImageCoordinator()
     private let imageImportCoordinator = ImageImportCoordinator()
     private let imageUpscaleUseCase = ImageUpscaleUseCase()
+    private let imageRoleUseCase = ImageRoleUseCase()
+    private let manipulationRenderingUseCase = ManipulationRenderingUseCase()
     
     /// 要素操作の開始位置
     private var manipulationStartPoint: CGPoint = .zero
@@ -103,20 +105,6 @@ class EditorViewModel: ObservableObject {
     /// メモリ警告監視
     private var memoryWarningObserver: MemoryWarningObserver?
 
-    /// 外部からプロジェクト変更フラグを立てる
-    func markProjectModified() {
-        isProjectModified = true
-    }
-
-    /// メモリ警告を受けた際にキャッシュを解放する
-    private func handleMemoryWarning() {
-        for element in project.elements {
-            (element as? ImageElement)?.handleMemoryWarning()
-        }
-        ImageElement.previewService.resetCache()
-        ToneCurveFilter.clearCache()
-    }
-
     // MARK: - イニシャライザ
     
     /// 新しいプロジェクトでエディタを初期化
@@ -130,8 +118,24 @@ class EditorViewModel: ObservableObject {
             self?.handleMemoryWarning()
         }
     }
+
+    // MARK: - ライフサイクル補助
+
+    /// メモリ警告を受けた際にキャッシュを解放する
+    private func handleMemoryWarning() {
+        for element in project.elements {
+            (element as? ImageElement)?.handleMemoryWarning()
+        }
+        ImageElement.previewService.resetCache()
+        ToneCurveFilter.clearCache()
+    }
     
     // MARK: - プロジェクト操作
+
+    /// 外部からプロジェクト変更フラグを立てる
+    func markProjectModified() {
+        isProjectModified = true
+    }
     
     /// プロジェクト名を更新
     func updateProjectName(_ name: String) {
@@ -984,6 +988,9 @@ class EditorViewModel: ObservableObject {
 
     /// AI背景ぼかし用のユースケース
     private let backgroundRemovalUseCase = BackgroundRemovalUseCase()
+    
+    /// 背景ぼかし適用ルールのユースケース
+    private let backgroundBlurUseCase = BackgroundBlurUseCase()
 
     /// 背景ぼかしマスク編集画面への遷移フラグ
     @Published var isNavigatingToBackgroundBlurMaskEdit: Bool = false
@@ -1086,38 +1093,13 @@ class EditorViewModel: ObservableObject {
 
             do {
                 let maskImage = try await backgroundRemovalUseCase.generateMask(from: originalImage)
-                guard let maskData = maskImage.pngData() else {
+                guard let plan = backgroundBlurUseCase.makeAIMaskUpdatePlan(
+                    maskImage: maskImage,
+                    for: imageElement
+                ) else {
                     return
                 }
-
-                let oldMaskData = imageElement.backgroundBlurMaskData
-                let oldRadius = imageElement.backgroundBlurRadius
-                let defaultBlurRadius: CGFloat = 12.0
-
-                // マスクとデフォルト半径を設定
-                imageElement.backgroundBlurMaskData = maskData
-                imageElement.backgroundBlurRadius = defaultBlurRadius
-                imageElement.invalidateRenderedImageCache()
-
-                // 履歴に記録
-                let maskEvent = ImageBackgroundBlurMaskChangedEvent(
-                    elementId: imageElement.id,
-                    oldMaskData: oldMaskData,
-                    newMaskData: maskData
-                )
-                history.recordAndApply(maskEvent)
-
-                if oldRadius != defaultBlurRadius {
-                    let radiusEvent = ImageBackgroundBlurRadiusChangedEvent(
-                        elementId: imageElement.id,
-                        oldRadius: oldRadius,
-                        newRadius: defaultBlurRadius
-                    )
-                    history.recordAndApply(radiusEvent)
-                }
-
-                refreshSelectionAndNotifyAfterBackgroundBlur(elementId: imageElement.id)
-
+                applyBackgroundBlurPlan(plan, elementId: imageElement.id)
             } catch {
             }
         }
@@ -1135,112 +1117,26 @@ class EditorViewModel: ObservableObject {
     ///   - maskData: 編集後のマスクデータ（nilの場合は変更なし）
     ///   - imageElement: 対象の画像要素
     func applyBackgroundBlurMaskResult(_ maskData: Data?, to imageElement: ImageElement) {
-        let oldMaskData = imageElement.backgroundBlurMaskData
+        guard let plan = backgroundBlurUseCase.makeMaskUpdatePlan(
+            maskData: maskData,
+            for: imageElement
+        ) else { return }
 
-        // nilの場合は変更なし
-        guard maskData != oldMaskData else { return }
-
-        // マスクを設定
-        imageElement.backgroundBlurMaskData = maskData
-        imageElement.invalidateRenderedImageCache()
-
-        // 半径が未設定（0）の場合はデフォルト値を適用
-        let oldRadius = imageElement.backgroundBlurRadius
-        let defaultBlurRadius: CGFloat = 12.0
-        if maskData != nil && oldRadius == 0 {
-            imageElement.backgroundBlurRadius = defaultBlurRadius
-        }
-
-        // 履歴に記録
-        let event = ImageBackgroundBlurMaskChangedEvent(
-            elementId: imageElement.id,
-            oldMaskData: oldMaskData,
-            newMaskData: maskData
-        )
-        history.recordAndApply(event)
-
-        // 半径変更も履歴に記録
-        if maskData != nil && oldRadius == 0 {
-            let radiusEvent = ImageBackgroundBlurRadiusChangedEvent(
-                elementId: imageElement.id,
-                oldRadius: oldRadius,
-                newRadius: defaultBlurRadius
-            )
-            history.recordAndApply(radiusEvent)
-        }
-
-        refreshSelectionAndNotifyAfterBackgroundBlur(elementId: imageElement.id)
-
+        applyBackgroundBlurPlan(plan, elementId: imageElement.id)
     }
 
     /// 背景ぼかしマスクを削除
     /// - Parameter imageElement: 対象の画像要素
     func removeBackgroundBlurMask(from imageElement: ImageElement) {
-        let oldMaskData = imageElement.backgroundBlurMaskData
-        let oldRadius = imageElement.backgroundBlurRadius
-
-        // マスクと半径をクリア
-        imageElement.backgroundBlurMaskData = nil
-        imageElement.backgroundBlurRadius = 0
-        imageElement.invalidateRenderedImageCache()
-
-        // 履歴に記録
-        let maskEvent = ImageBackgroundBlurMaskChangedEvent(
-            elementId: imageElement.id,
-            oldMaskData: oldMaskData,
-            newMaskData: nil
-        )
-        history.recordAndApply(maskEvent)
-
-        if oldRadius != 0 {
-            let radiusEvent = ImageBackgroundBlurRadiusChangedEvent(
-                elementId: imageElement.id,
-                oldRadius: oldRadius,
-                newRadius: 0
-            )
-            history.recordAndApply(radiusEvent)
-        }
-
-        refreshSelectionAndNotifyAfterBackgroundBlur(elementId: imageElement.id)
+        guard let plan = backgroundBlurUseCase.makeRemoveMaskPlan(for: imageElement) else { return }
+        applyBackgroundBlurPlan(plan, elementId: imageElement.id)
     }
 
     /// 画像の役割を変更（ベース/オーバーレイの切り替え）
     func toggleImageRole(_ imageElement: ImageElement) {
-        let oldRole = imageElement.imageRole
-        let newRole: ImageRole = (oldRole == .base) ? .overlay : .base
-        
-        // 新しい役割がベースの場合、他の画像要素のベース役割を解除
-        if newRole == .base {
-            for element in project.elements {
-                if let otherImageElement = element as? ImageElement, 
-                   otherImageElement.id != imageElement.id,
-                   otherImageElement.imageRole == .base {
-                    otherImageElement.imageRole = .overlay
-                    // 元ベース画像を前面に移動
-                    otherImageElement.zIndex = ElementPriority.image.rawValue + 10
-                }
-            }
-        }
-        
-        // 役割を変更
-        imageElement.imageRole = newRole
-        
-        // zIndexを役割に応じて調整
-        if newRole == .base {
-            // ベース画像は最背面に配置
-            imageElement.zIndex = ElementPriority.image.rawValue - 10
-        } else {
-            // オーバーレイ画像は通常の画像レイヤーに配置
-            imageElement.zIndex = ElementPriority.image.rawValue + 10
-        }
-        
-        // プロジェクト内の要素を現在のzIndex順に並び替え
-        project.elements.sort { $0.zIndex < $1.zIndex }
-        
-        // 変更を通知
+        guard imageRoleUseCase.toggleRole(for: imageElement, in: &project) else { return }
         objectWillChange.send()
         isProjectModified = true
-        
     }
     
     // MARK: - 要素の操作(移動)
@@ -1269,31 +1165,10 @@ class EditorViewModel: ObservableObject {
         in project: LogoProject?,
         highResolutionThreshold: CGFloat
     ) -> Bool {
-        guard let project else { return false }
-
-        var shouldReduceQuality = false
-
-        for element in project.elements {
-            guard let imageElement = element as? ImageElement,
-                  let originalImage = imageElement.originalImage else {
-                continue
-            }
-
-            let pixelCount = originalImage.size.width * originalImage.size.height * originalImage.scale * originalImage.scale
-            if pixelCount > highResolutionThreshold {
-                shouldReduceQuality = true
-            }
-
-            guard pixelCount > highResolutionThreshold,
-                  imageElement.shouldUseInstantPreviewForManipulation else {
-                continue
-            }
-
-            prepareEditingProxyIfNeeded(for: imageElement, originalImage: originalImage)
-            imageElement.startEditing()
-        }
-
-        return shouldReduceQuality
+        manipulationRenderingUseCase.prepare(
+            in: project,
+            highResolutionThreshold: highResolutionThreshold
+        )
     }
 
     /// ジェスチャー操作終了時に画像要素の描画状態を戻す
@@ -1301,22 +1176,22 @@ class EditorViewModel: ObservableObject {
     ///   - project: 対象プロジェクト
     /// - Returns: なし
     func finishImageRenderingAfterManipulation(in project: LogoProject?) {
-        guard let project else { return }
-
-        for element in project.elements {
-            guard let imageElement = element as? ImageElement else { continue }
-            imageElement.endEditing()
-        }
+        manipulationRenderingUseCase.finish(in: project)
     }
 
-    /// 編集用プロキシ画像を必要なときだけ解決する
+    /// 背景ぼかし更新計画を履歴に適用して UI 状態を同期する
     /// - Parameters:
-    ///   - imageElement: 対象画像要素
-    ///   - originalImage: 既に解決済みの元画像
+    ///   - plan: 適用する背景ぼかし更新計画
+    ///   - elementId: 同期対象の要素ID
     /// - Returns: なし
-    private func prepareEditingProxyIfNeeded(for imageElement: ImageElement, originalImage: UIImage) {
-        // 現行の ImageElement は editingImage を内部で遅延解決するため、
-        // ViewModel 側で明示的なプロキシ注入は行わない。
+    private func applyBackgroundBlurPlan(_ plan: BackgroundBlurUpdatePlan, elementId: UUID) {
+        history.recordAndApply(plan.maskEvent)
+
+        if let radiusEvent = plan.radiusEvent {
+            history.recordAndApply(radiusEvent)
+        }
+
+        refreshSelectionAndNotifyAfterBackgroundBlur(elementId: elementId)
     }
     
     /// 操作中
@@ -1618,7 +1493,6 @@ class EditorViewModel: ObservableObject {
             x: element.position.x + element.size.width / 2,
             y: element.position.y + element.size.height / 2
         )
-        
         
         // 通知を送信して、ビューコントローラーにカメラ移動を要求
         NotificationCenter.default.post(
