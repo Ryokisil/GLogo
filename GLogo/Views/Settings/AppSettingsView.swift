@@ -29,20 +29,8 @@ struct AppSettingsView: View {
         )
     }
 
-    /// 設定行右側に表示する言語名
-    private var languageStatusText: String {
-        switch selectedAppLanguage {
-        case .system:
-            return AppLanguage.currentAppLanguageLabel
-        case .english, .japanese:
-            return selectedAppLanguage.displayName
-        }
-    }
-
     private var appVersionText: String {
-        let shortVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
-        let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "-"
-        return "\(shortVersion) (\(buildNumber))"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
     }
 
     var body: some View {
@@ -65,12 +53,6 @@ struct AppSettingsView: View {
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }
-
-                            Spacer()
-
-                            Text(verbatim: languageStatusText)
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.secondary)
                         }
                         .padding(.vertical, 4)
                     }
