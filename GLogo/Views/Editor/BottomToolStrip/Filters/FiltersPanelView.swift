@@ -78,7 +78,7 @@ struct FiltersPanelView: View {
     }
 
     private var modeSelector: some View {
-        Picker("filters.title", selection: $selectedMode) {
+        Picker("filters.title", selection: $selectedMode.animation(.easeInOut(duration: 0.4))) {
             ForEach(FilterPanelMode.allCases) { mode in
                 Text(mode.title).tag(mode)
             }

@@ -44,7 +44,9 @@ struct FiltersPanelHDRView: View {
         Group {
             if viewModel.imageElement != nil {
                 categorySelector
+                    .transaction { $0.animation = nil }
                 presetCardsSection
+                    .transition(.scale.combined(with: .opacity))
             } else {
                 Text("filters.selectImageHDR")
                     .font(.subheadline)
