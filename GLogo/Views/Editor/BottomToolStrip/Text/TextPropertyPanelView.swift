@@ -20,7 +20,10 @@ private enum TextPropertyTab: String, CaseIterable, Identifiable {
     case color
     case align
     case spacing
-    case effects
+    case shadow
+    case stroke
+    case glow
+    case gradient
 
     var id: String { rawValue }
 
@@ -32,22 +35,10 @@ private enum TextPropertyTab: String, CaseIterable, Identifiable {
         case .color:    return "textPanel.tab.color"
         case .align:    return "textPanel.tab.align"
         case .spacing:  return "textPanel.tab.spacing"
-        case .effects:  return "textPanel.tab.effects"
-        }
-    }
-}
-
-/// Effects タブ内の編集セクション
-private enum EffectsDetailSection: String, CaseIterable {
-    case shadow
-    case stroke
-    case glow
-
-    var title: LocalizedStringKey {
-        switch self {
-        case .shadow: return "textPanel.effects.shadow"
-        case .stroke: return "textPanel.effects.stroke"
-        case .glow:   return "textPanel.effects.glow"
+        case .shadow:   return "textPanel.tab.shadow"
+        case .stroke:   return "textPanel.tab.stroke"
+        case .glow:     return "textPanel.tab.glow"
+        case .gradient: return "textPanel.tab.gradient"
         }
     }
 }
@@ -58,39 +49,46 @@ struct TextPropertyPanelView: View {
     @ObservedObject var viewModel: ElementViewModel
     let onClose: () -> Void
     let onOpenTextEditor: () -> Void
+    private let maxPanelHeight: CGFloat = 240
 
     @State private var selectedTab: TextPropertyTab = .content
     @State private var isShowingAllFonts = false
     @State private var pendingSheetFontName: String = ""
-    @State private var selectedEffectsSection: EffectsDetailSection = .shadow
-
+    
     // MARK: - Body
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             header
 
-            if viewModel.textElement != nil {
-                tabSelector
-                tabContent
-            } else {
-                // テキスト未選択時のプロンプト
-                HStack {
-                    Spacer()
-                    VStack(spacing: 8) {
-                        Image(systemName: "textformat")
-                            .font(.system(size: 28))
-                            .foregroundColor(.secondary)
-                        Text("textPanel.selectText")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 14) {
+                    if viewModel.textElement != nil {
+                        tabSelector
+                        tabContent
+                    } else {
+                        // テキスト未選択時のプロンプト
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 8) {
+                                Image(systemName: "textformat")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(.secondary)
+                                Text("textPanel.selectText")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.vertical, 12)
+                            Spacer()
+                        }
                     }
-                    .padding(.vertical, 12)
-                    Spacer()
                 }
+                .padding(.trailing, 4)
             }
         }
-        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxHeight: maxPanelHeight, alignment: .top)
+        .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(UIColor.systemBackground))
@@ -175,8 +173,14 @@ struct TextPropertyPanelView: View {
             alignTabContent
         case .spacing:
             spacingTabContent
-        case .effects:
-            effectsTabContent
+        case .shadow:
+            shadowDetailSection
+        case .stroke:
+            strokeDetailSection
+        case .glow:
+            glowDetailSection
+        case .gradient:
+            gradientDetailSection
         }
     }
 
@@ -451,35 +455,8 @@ struct TextPropertyPanelView: View {
         ("orange", .systemOrange),
         ("purple", .systemPurple)
     ]
-    private static let colorTabMaxHeight: CGFloat = 252
-    private static let colorTabColumnMinWidth: CGFloat = 172
-
     private var colorTabContent: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 8) {
-                    baseColorSection
-                        .frame(
-                            minWidth: Self.colorTabColumnMinWidth,
-                            maxWidth: .infinity,
-                            alignment: .topLeading
-                        )
-                    gradientDetailSection
-                        .frame(
-                            minWidth: Self.colorTabColumnMinWidth,
-                            maxWidth: .infinity,
-                            alignment: .topLeading
-                        )
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    baseColorSection
-                    gradientDetailSection
-                }
-            }
-            .padding(.vertical, 1)
-        }
-        .frame(maxHeight: Self.colorTabMaxHeight)
+        baseColorSection
     }
 
     private var baseColorSection: some View {
@@ -643,28 +620,6 @@ struct TextPropertyPanelView: View {
                                 .fill(Color.gray.opacity(0.12))
                         )
                 }
-            }
-        }
-    }
-
-    // MARK: - Effects タブ
-
-    private var effectsTabContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Picker("textPanel.tab.effects", selection: $selectedEffectsSection) {
-                ForEach(EffectsDetailSection.allCases, id: \.self) { section in
-                    Text(section.title).tag(section)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            switch selectedEffectsSection {
-            case .shadow:
-                shadowDetailSection
-            case .stroke:
-                strokeDetailSection
-            case .glow:
-                glowDetailSection
             }
         }
     }
@@ -1074,46 +1029,43 @@ struct TextPropertyPanelView: View {
             viewModel.updateFont(name: viewModel.textElement?.fontName ?? "HelveticaNeue", size: 36.0)
         case .color:
             viewModel.updateTextColor(.white)
-            if let index = findGradientFillEffectIndex(), let effect = findGradientFillEffect() {
-                viewModel.updateGradientFillColor(atIndex: index, startColor: .red, endColor: .blue)
-                viewModel.commitGradientFillAngle(atIndex: index, angle: 0.0)
-                viewModel.commitGradientFillOpacity(atIndex: index, opacity: 1.0)
-                if !effect.isEnabled {
-                    viewModel.updateTextEffect(atIndex: index, isEnabled: true)
-                }
-            }
         case .align:
             viewModel.updateTextAlignment(.center)
         case .spacing:
             viewModel.updateLineSpacing(1.0)
             viewModel.updateLetterSpacing(0.0)
-        case .effects:
-            switch selectedEffectsSection {
-            case .shadow:
-                if let index = findShadowEffectIndex(), let effect = findShadowEffect() {
-                    viewModel.updateShadowEffect(
-                        atIndex: index,
-                        color: .black,
-                        offset: CGSize(width: 2, height: 2),
-                        blurRadius: 3.0
-                    )
-                    if !effect.isEnabled {
-                        viewModel.updateTextEffect(atIndex: index, isEnabled: true)
-                    }
+        case .shadow:
+            if let index = findShadowEffectIndex(), let effect = findShadowEffect() {
+                viewModel.updateShadowEffect(
+                    atIndex: index,
+                    color: .black,
+                    offset: CGSize(width: 2, height: 2),
+                    blurRadius: 3.0
+                )
+                if !effect.isEnabled {
+                    viewModel.updateTextEffect(atIndex: index, isEnabled: true)
                 }
-            case .stroke:
-                if let index = findStrokeEffectIndex(), let effect = findStrokeEffect() {
-                    viewModel.updateStrokeEffect(atIndex: index, color: .black, width: 2.0)
-                    if !effect.isEnabled {
-                        viewModel.updateTextEffect(atIndex: index, isEnabled: true)
-                    }
+            }
+        case .stroke:
+            if let index = findStrokeEffectIndex(), let effect = findStrokeEffect() {
+                viewModel.updateStrokeEffect(atIndex: index, color: .black, width: 2.0)
+                if !effect.isEnabled {
+                    viewModel.updateTextEffect(atIndex: index, isEnabled: true)
                 }
-            case .glow:
-                if let index = findGlowEffectIndex(), let effect = findGlowEffect() {
-                    viewModel.updateGlowEffect(atIndex: index, color: .white, radius: 5.0)
-                    if !effect.isEnabled {
-                        viewModel.updateTextEffect(atIndex: index, isEnabled: true)
-                    }
+            }
+        case .glow:
+            if let index = findGlowEffectIndex(), let effect = findGlowEffect() {
+                viewModel.updateGlowEffect(atIndex: index, color: .white, radius: 5.0)
+                if !effect.isEnabled {
+                    viewModel.updateTextEffect(atIndex: index, isEnabled: true)
+                }
+            }
+        case .gradient:
+            if let index = findGradientFillEffectIndex(), let effect = findGradientFillEffect() {
+                viewModel.commitGradientFillAngle(atIndex: index, angle: 0.0)
+                viewModel.commitGradientFillOpacity(atIndex: index, opacity: 1.0)
+                if !effect.isEnabled {
+                    viewModel.updateTextEffect(atIndex: index, isEnabled: true)
                 }
             }
         }
