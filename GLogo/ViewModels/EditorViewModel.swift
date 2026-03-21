@@ -932,11 +932,11 @@ class EditorViewModel: ObservableObject {
     }
     
     /// 画像のフレーム表示を更新
-    func updateImageShowFrame(_ imageElement: ImageElement, newValue: Bool) {
+    func updateImageShowFrame(_ imageElement: ImageElement, oldValue: Bool, newValue: Bool) {
         
         let event = ImageShowFrameChangedEvent(
             elementId: imageElement.id,
-            oldValue: imageElement.showFrame,
+            oldValue: oldValue,
             newValue: newValue
         )
         
@@ -944,14 +944,50 @@ class EditorViewModel: ObservableObject {
     }
     
     /// 画像のフレーム色を更新
-    func updateImageFrameColor(_ imageElement: ImageElement, newColor: UIColor) {
+    func updateImageFrameColor(_ imageElement: ImageElement, oldColor: UIColor, newColor: UIColor) {
         
         let event = ImageFrameColorChangedEvent(
             elementId: imageElement.id,
-            oldColor: imageElement.frameColor,
+            oldColor: oldColor,
             newColor: newColor
         )
         
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
+    }
+
+    /// 画像のフレーム見た目をまとめて更新
+    func updateImageFrameAppearance(
+        _ imageElement: ImageElement,
+        oldShowFrame: Bool,
+        newShowFrame: Bool,
+        oldStyle: ImageFrameStyle,
+        newStyle: ImageFrameStyle,
+        oldColor: UIColor,
+        newColor: UIColor
+    ) {
+
+        let event = ImageFrameAppearanceChangedEvent(
+            elementId: imageElement.id,
+            oldShowFrame: oldShowFrame,
+            newShowFrame: newShowFrame,
+            oldFrameStyle: oldStyle,
+            newFrameStyle: newStyle,
+            oldFrameColor: oldColor,
+            newFrameColor: newColor
+        )
+
+        applyEventAndRefreshSelection(event, elementId: imageElement.id)
+    }
+
+    /// 画像のフレームスタイルを更新
+    func updateImageFrameStyle(_ imageElement: ImageElement, oldStyle: ImageFrameStyle, newStyle: ImageFrameStyle) {
+
+        let event = ImageFrameStyleChangedEvent(
+            elementId: imageElement.id,
+            oldStyle: oldStyle,
+            newStyle: newStyle
+        )
+
         applyEventAndRefreshSelection(event, elementId: imageElement.id)
     }
     
@@ -1072,8 +1108,6 @@ class EditorViewModel: ObservableObject {
     }
 
     /// 高画質化エラーメッセージをクリア
-    /// - Parameters: なし
-    /// - Returns: なし
     func clearUpscaleError() {
         lastUpscaleErrorMessage = nil
     }

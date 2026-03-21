@@ -112,9 +112,17 @@ struct SaveImageCoordinator: Sendable {
                     return
                 }
 
+                guard let finalImage = processingService.makeCompositeImage(
+                    baseImage: processedImage,
+                    project: project
+                ) else {
+                    await completion(false)
+                    return
+                }
+
                 do {
-                    let format = SaveImageCoordinator.resolveFormat(for: processedImage, mode: mode)
-                    try await writer.performSave(of: processedImage, format: format)
+                    let format = SaveImageCoordinator.resolveFormat(for: finalImage, mode: mode)
+                    try await writer.performSave(of: finalImage, format: format)
                     await completion(true)
                 } catch {
                     await completion(false)

@@ -12,6 +12,7 @@ import SwiftUI
 enum EditorBottomTool: String, CaseIterable, Identifiable {
     case select
     case adjust
+    case frame
     case magicStudio
     case filters
     case effects
@@ -25,6 +26,8 @@ enum EditorBottomTool: String, CaseIterable, Identifiable {
             return "bottomTool.text"
         case .adjust:
             return "bottomTool.adjust"
+        case .frame:
+            return "bottomTool.frame"
         case .magicStudio:
             return "bottomTool.aiTools"
         case .filters:
@@ -40,6 +43,8 @@ enum EditorBottomTool: String, CaseIterable, Identifiable {
             return "textformat"
         case .adjust:
             return "slider.horizontal.3"
+        case .frame:
+            return "photo.artframe"
         case .magicStudio:
             return "sparkles"
         case .filters:

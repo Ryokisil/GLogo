@@ -1710,6 +1710,7 @@ private struct ImageRevertStateSnapshot: Codable {
     let showFrame: Bool
     let frameColor: RGBAColorSnapshot
     let frameWidth: CGFloat
+    let frameStyle: ImageFrameStyle
     let roundedCorners: Bool
     let cornerRadius: CGFloat
 
@@ -1741,6 +1742,7 @@ private struct ImageRevertStateSnapshot: Codable {
         showFrame = element.showFrame
         frameColor = RGBAColorSnapshot(element.frameColor)
         frameWidth = element.frameWidth
+        frameStyle = element.frameStyle
         roundedCorners = element.roundedCorners
         cornerRadius = element.cornerRadius
     }
@@ -1777,6 +1779,7 @@ private struct ImageRevertStateSnapshot: Codable {
         element.showFrame = showFrame
         element.frameColor = frameColor.uiColor
         element.frameWidth = frameWidth
+        element.frameStyle = frameStyle
         element.roundedCorners = roundedCorners
         element.cornerRadius = cornerRadius
         element.invalidateRenderedImageCache()
@@ -1784,7 +1787,7 @@ private struct ImageRevertStateSnapshot: Codable {
 }
 
 /// UIColorを保存可能なRGBAへ変換するスナップショット
-private struct RGBAColorSnapshot: Codable {
+struct RGBAColorSnapshot: Codable {
     let red: CGFloat
     let green: CGFloat
     let blue: CGFloat
@@ -2288,6 +2291,86 @@ struct ImageFrameWidthChangedEvent: EditorEvent {
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameWidth = oldWidth
+            element.invalidateRenderedImageCache()
+        }
+    }
+}
+
+/// 画像フレームスタイル変更イベント
+struct ImageFrameStyleChangedEvent: EditorEvent {
+    var eventName = "ImageFrameStyleChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldStyle: ImageFrameStyle
+    let newStyle: ImageFrameStyle
+
+    var description: String {
+        return "画像のフレームスタイルを変更しました"
+    }
+
+    func apply(to project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.frameStyle = newStyle
+            element.invalidateRenderedImageCache()
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.frameStyle = oldStyle
+            element.invalidateRenderedImageCache()
+        }
+    }
+}
+
+/// 画像フレームの表示・スタイル・色をまとめて変更するイベント
+struct ImageFrameAppearanceChangedEvent: EditorEvent {
+    var eventName = "ImageFrameAppearanceChanged"
+    var timestamp = Date()
+    let elementId: UUID
+    let oldShowFrame: Bool
+    let newShowFrame: Bool
+    let oldFrameStyle: ImageFrameStyle
+    let newFrameStyle: ImageFrameStyle
+    let oldFrameColor: RGBAColorSnapshot
+    let newFrameColor: RGBAColorSnapshot
+
+    var description: String {
+        return "画像のフレーム見た目を変更しました"
+    }
+
+    init(
+        elementId: UUID,
+        oldShowFrame: Bool,
+        newShowFrame: Bool,
+        oldFrameStyle: ImageFrameStyle,
+        newFrameStyle: ImageFrameStyle,
+        oldFrameColor: UIColor,
+        newFrameColor: UIColor
+    ) {
+        self.elementId = elementId
+        self.oldShowFrame = oldShowFrame
+        self.newShowFrame = newShowFrame
+        self.oldFrameStyle = oldFrameStyle
+        self.newFrameStyle = newFrameStyle
+        self.oldFrameColor = RGBAColorSnapshot(oldFrameColor)
+        self.newFrameColor = RGBAColorSnapshot(newFrameColor)
+    }
+
+    func apply(to project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.showFrame = newShowFrame
+            element.frameStyle = newFrameStyle
+            element.frameColor = newFrameColor.uiColor
+            element.invalidateRenderedImageCache()
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        if let element = project.element(for: elementId, as: ImageElement.self) {
+            element.showFrame = oldShowFrame
+            element.frameStyle = oldFrameStyle
+            element.frameColor = oldFrameColor.uiColor
             element.invalidateRenderedImageCache()
         }
     }

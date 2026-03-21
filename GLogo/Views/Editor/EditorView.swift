@@ -171,6 +171,19 @@ struct EditorView: View {
                 }
             }
             .overlay(alignment: .bottom) {
+                if uiState.selectedBottomTool == .frame {
+                    FramePanelView(
+                        viewModel: elementViewModel,
+                        onClose: {
+                            uiState.selectedBottomTool = .select
+                        }
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .overlay(alignment: .bottom) {
                 if uiState.selectedBottomTool == .magicStudio {
                     AIToolsPanelView(
                         viewModel: elementViewModel,
@@ -257,6 +270,9 @@ struct EditorView: View {
             .onChange(of: viewModel.selectedElement?.id) {
                 // テキスト要素選択時にパネルを自動表示、それ以外で非表示
                 uiState.isTextPanelVisible = viewModel.selectedElement is TextElement
+                if shouldCollapseBottomTool(for: viewModel.selectedElement, selectedTool: uiState.selectedBottomTool) {
+                    uiState.selectedBottomTool = .select
+                }
             }
             // 画像ピッカー内でクロップ画面への遷移を追加
             .sheet(item: $activeSheet) { item in
@@ -344,6 +360,7 @@ struct EditorView: View {
 
     private var isBottomToolStripHidden: Bool {
         uiState.selectedBottomTool == .adjust ||
+        uiState.selectedBottomTool == .frame ||
         uiState.selectedBottomTool == .magicStudio ||
         uiState.selectedBottomTool == .filters ||
         uiState.selectedBottomTool == .effects ||
@@ -353,10 +370,24 @@ struct EditorView: View {
 
     private var isSystemOverlayHidden: Bool {
         uiState.selectedBottomTool == .adjust ||
+        uiState.selectedBottomTool == .frame ||
         uiState.selectedBottomTool == .magicStudio ||
         uiState.selectedBottomTool == .filters ||
         uiState.selectedBottomTool == .effects ||
         uiState.isTextPanelVisible
+    }
+
+    private func isImagePropertyTool(_ tool: EditorBottomTool) -> Bool {
+        tool == .adjust ||
+        tool == .frame ||
+        tool == .magicStudio ||
+        tool == .filters ||
+        tool == .effects
+    }
+
+    private func shouldCollapseBottomTool(for selectedElement: LogoElement?, selectedTool: EditorBottomTool) -> Bool {
+        guard isImagePropertyTool(selectedTool) else { return false }
+        return (selectedElement as? ImageElement) == nil
     }
 
     private func handleBottomToolSelection(_ tool: EditorBottomTool) {
@@ -368,8 +399,11 @@ struct EditorView: View {
             // addElementが自動選択 → onChange連動でパネル表示
         } else {
             uiState.isTextPanelVisible = false
-            if tool == .adjust || tool == .magicStudio || tool == .filters || tool == .effects {
+            if tool == .adjust || tool == .frame || tool == .magicStudio || tool == .filters || tool == .effects {
                 viewModel.editorMode = .select
+                if shouldCollapseBottomTool(for: viewModel.selectedElement, selectedTool: tool) {
+                    uiState.selectedBottomTool = .select
+                }
             }
         }
     }

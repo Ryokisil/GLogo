@@ -27,6 +27,53 @@ enum ImageRole: String, Codable, CaseIterable {
     }
 }
 
+/// 画像フレームのプリセット種別
+enum ImageFrameStyle: String, Codable, CaseIterable {
+    case simple
+    case double
+    case cornerAccent
+    case polaroid
+    case film
+    case neon
+    case badge
+    case stamp
+    case softWhite
+    case glassWhite
+    case editorialWhite
+
+    /// 永続化データからフレーム種別を復元する
+    /// - Parameters:
+    ///   - decoder: デコーダー
+    /// - Returns: なし
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+
+        if rawValue == "softOverlay" {
+            self = .simple
+            return
+        }
+
+        guard let style = ImageFrameStyle(rawValue: rawValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown ImageFrameStyle rawValue: \(rawValue)"
+            )
+        }
+
+        self = style
+    }
+
+    /// フレーム種別を永続化向けにエンコードする
+    /// - Parameters:
+    ///   - encoder: エンコーダー
+    /// - Returns: なし
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
 /// 画像要素クラス
 class ImageElement: LogoElement {
     /// RGBA成分を保持する簡易カラー表現
@@ -367,6 +414,9 @@ class ImageElement: LogoElement {
     
     /// フレームの太さ
     var frameWidth: CGFloat = 4.0
+
+    /// フレームのスタイル
+    var frameStyle: ImageFrameStyle = .simple
     
     /// 画像の境界を丸くするか
     var roundedCorners: Bool = false
@@ -512,7 +562,7 @@ class ImageElement: LogoElement {
         case backgroundBlurRadius, backgroundBlurMaskData
         // 効果・フレーム
         case tintColorData, tintIntensity
-        case showFrame, frameColorData, frameWidth
+        case showFrame, frameColorData, frameWidth, frameStyle
         case roundedCorners, cornerRadius
         // 履歴・メタデータ
         case editHistory, metadata
@@ -557,6 +607,7 @@ class ImageElement: LogoElement {
         try container.encode(tintIntensity, forKey: .tintIntensity)
         try container.encode(showFrame, forKey: .showFrame)
         try container.encode(frameWidth, forKey: .frameWidth)
+        try container.encode(frameStyle, forKey: .frameStyle)
         try container.encode(roundedCorners, forKey: .roundedCorners)
         try container.encode(cornerRadius, forKey: .cornerRadius)
         try container.encode(editHistory, forKey: .editHistory)
@@ -618,6 +669,7 @@ class ImageElement: LogoElement {
         tintIntensity = try container.decode(CGFloat.self, forKey: .tintIntensity)
         showFrame = try container.decode(Bool.self, forKey: .showFrame)
         frameWidth = try container.decode(CGFloat.self, forKey: .frameWidth)
+        frameStyle = try container.decodeIfPresent(ImageFrameStyle.self, forKey: .frameStyle) ?? .simple
         roundedCorners = try container.decode(Bool.self, forKey: .roundedCorners)
         cornerRadius = try container.decode(CGFloat.self, forKey: .cornerRadius)
         editHistory = try container.decodeIfPresent([ImageEditOperation].self, forKey: .editHistory) ?? []
@@ -1122,6 +1174,7 @@ class ImageElement: LogoElement {
         copy.showFrame = showFrame
         copy.frameColor = frameColor
         copy.frameWidth = frameWidth
+        copy.frameStyle = frameStyle
         copy.roundedCorners = roundedCorners
         copy.cornerRadius = cornerRadius
         copy.initialAdjustmentSnapshot = initialAdjustmentSnapshot
@@ -1160,6 +1213,11 @@ class ImageElement: LogoElement {
            let frameWidthValue = Double(frameWidthString) {
             self.frameWidth = CGFloat(frameWidthValue)
         }
+
+        if let frameStyleString = metadata.additionalMetadata["frameStyle"],
+           let decodedFrameStyle = ImageFrameStyle(rawValue: frameStyleString) {
+            self.frameStyle = decodedFrameStyle
+        }
         
         // 角丸の復元
         if let roundedCornersString = metadata.additionalMetadata["roundedCorners"] {
@@ -1179,8 +1237,7 @@ class ImageElement: LogoElement {
         
         // フレーム色の復元
         if let frameColorString = metadata.additionalMetadata["frameColor"],
-           let frameColorData = frameColorString.data(using: .utf8),
-           let frameColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: frameColorData) {
+           let frameColor = UIColor(rgbaHex: frameColorString) ?? UIColor(hex: frameColorString) {
             self.frameColor = frameColor
         }
     }

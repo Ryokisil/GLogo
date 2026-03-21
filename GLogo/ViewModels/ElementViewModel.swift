@@ -85,6 +85,9 @@ class ElementViewModel: ObservableObject {
     /// グラデーション不透明度編集の開始値（ドラッグ開始時）
     private var textGradientFillOpacityStartState: (index: Int, opacity: CGFloat)?
 
+    /// フレーム色編集の開始値（ドラッグ開始時）
+    private var frameColorStartState: UIColor?
+
     /// 現在適用中のフィルタープリセットID（ImageElement から読み出す）
     var appliedFilterPresetId: String? {
         imageElement?.appliedFilterPresetId
@@ -157,6 +160,7 @@ class ElementViewModel: ObservableObject {
             textGlowStartState = nil
             textGradientFillStartState = nil
             textGradientFillOpacityStartState = nil
+            frameColorStartState = nil
             lastUpscaleErrorMessage = nil
         }
 
@@ -1078,7 +1082,7 @@ class ElementViewModel: ObservableObject {
         imageEditingSessionUseCase.beginEditing(imageElement)
         imageElement.showFrame = showFrame
 
-        editorViewModel?.updateImageShowFrame(imageElement, newValue: showFrame)
+        editorViewModel?.updateImageShowFrame(imageElement, oldValue: oldValue, newValue: showFrame)
 
         metadataEditUseCase.recordEditIfNeeded(
             for: imageElement,
@@ -1097,13 +1101,51 @@ class ElementViewModel: ObservableObject {
         imageEditingSessionUseCase.beginEditing(imageElement)
         imageElement.frameColor = color
 
-        editorViewModel?.updateImageFrameColor(imageElement, newColor: color)
+        editorViewModel?.updateImageFrameColor(imageElement, oldColor: oldColor, newColor: color)
 
         metadataEditUseCase.recordEditIfNeeded(
             for: imageElement,
             fieldKey: "frameColor",
-            oldValue: oldColor.description,
-            newValue: color.description
+            oldValue: oldColor.rgbaHexString,
+            newValue: color.rgbaHexString
+        )
+    }
+
+    /// フレーム色編集の開始
+    func beginFrameColorEditing() {
+        guard let imageElement = imageElement else { return }
+        frameColorStartState = imageElement.frameColor
+    }
+
+    /// フレーム色編集のプレビュー
+    func previewFrameColor(_ color: UIColor) {
+        guard let imageElement = imageElement else { return }
+        if imageElement.frameColor.isEqual(color) { return }
+
+        imageElement.frameColor = color
+        editorViewModel?.updateImageElement(imageElement)
+    }
+
+    /// フレーム色編集の確定
+    func commitFrameColorEditing() {
+        guard let imageElement = imageElement,
+              let startColor = frameColorStartState else { return }
+        defer { frameColorStartState = nil }
+
+        if startColor.isEqual(imageElement.frameColor) {
+            return
+        }
+
+        editorViewModel?.updateImageFrameColor(
+            imageElement,
+            oldColor: startColor,
+            newColor: imageElement.frameColor
+        )
+        metadataEditUseCase.recordEditIfNeeded(
+            for: imageElement,
+            fieldKey: "frameColor",
+            oldValue: startColor.rgbaHexString,
+            newValue: imageElement.frameColor.rgbaHexString
         )
     }
 
@@ -1133,6 +1175,55 @@ class ElementViewModel: ObservableObject {
             oldValue: oldRadius,
             newValue: radius
         )
+    }
+
+    /// フレームスタイルの更新
+    func updateFrameStyle(_ style: ImageFrameStyle) {
+        guard let imageElement = imageElement else { return }
+        if imageElement.frameStyle == style && imageElement.showFrame { return }
+
+        let oldStyle = imageElement.frameStyle
+        let oldShowFrame = imageElement.showFrame
+        let oldColor = imageElement.frameColor
+
+        imageEditingSessionUseCase.beginEditing(imageElement)
+        imageElement.frameStyle = style
+        imageElement.showFrame = true
+
+        editorViewModel?.updateImageFrameAppearance(
+            imageElement,
+            oldShowFrame: oldShowFrame,
+            newShowFrame: imageElement.showFrame,
+            oldStyle: oldStyle,
+            newStyle: style,
+            oldColor: oldColor,
+            newColor: imageElement.frameColor
+        )
+
+        if oldStyle != style {
+            metadataEditUseCase.recordEditIfNeeded(
+                for: imageElement,
+                fieldKey: "frameStyle",
+                oldValue: oldStyle.rawValue,
+                newValue: style.rawValue
+            )
+        }
+        if oldShowFrame != imageElement.showFrame {
+            metadataEditUseCase.recordEditIfNeeded(
+                for: imageElement,
+                fieldKey: "showFrame",
+                oldValue: oldShowFrame,
+                newValue: imageElement.showFrame
+            )
+        }
+        if oldColor.isEqual(imageElement.frameColor) == false {
+            metadataEditUseCase.recordEditIfNeeded(
+                for: imageElement,
+                fieldKey: "frameColor",
+                oldValue: oldColor.rgbaHexString,
+                newValue: imageElement.frameColor.rgbaHexString
+            )
+        }
     }
 
     // MARK: - フィルタープリセット適用

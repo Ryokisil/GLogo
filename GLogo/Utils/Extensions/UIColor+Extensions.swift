@@ -102,6 +102,35 @@ extension UIColor {
         
         return String(format: "#%02X%02X%02X", r, g, b)
     }
+
+    /// アルファ値を含む16進数の文字列表現を取得（例: "#FF5500CC"）
+    var rgbaHexString: String {
+        let components = rgbComponents
+        let red = Int(components.red * 255.0)
+        let green = Int(components.green * 255.0)
+        let blue = Int(components.blue * 255.0)
+        let alpha = Int(components.alpha * 255.0)
+
+        return String(format: "#%02X%02X%02X%02X", red, green, blue, alpha)
+    }
+
+    /// RGBA 16進数文字列から色を作成（例: "#FF5500CC"）
+    convenience init?(rgbaHex: String) {
+        var sanitized = rgbaHex.trimmingCharacters(in: .whitespacesAndNewlines)
+        sanitized = sanitized.replacingOccurrences(of: "#", with: "")
+
+        guard sanitized.count == 8,
+              let hexValue = UInt64(sanitized, radix: 16) else {
+            return nil
+        }
+
+        let red = CGFloat((hexValue & 0xFF00_0000) >> 24) / 255.0
+        let green = CGFloat((hexValue & 0x00FF_0000) >> 16) / 255.0
+        let blue = CGFloat((hexValue & 0x0000_FF00) >> 8) / 255.0
+        let alpha = CGFloat(hexValue & 0x0000_00FF) / 255.0
+
+        self.init(red: red, green: green, blue: blue, alpha: alpha)
+    }
     
     /// 色の明度を計算（0.0〜1.0）
     var brightness: CGFloat {

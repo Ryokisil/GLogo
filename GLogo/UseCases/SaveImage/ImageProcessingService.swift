@@ -18,6 +18,17 @@ struct ImageProcessingService: ImageProcessing {
         print("[SaveDebug] makeCompositeImage input baseImage.size: \(baseImage.size), scale: \(baseImage.scale)")
         logImageElements(project.elements)
 
+        let imageElements = project.elements.compactMap { $0 as? ImageElement }
+        guard let targetImageElement = imageElements.first(where: { element in
+            if let original = element.originalImage {
+                return original.size == baseImage.size || element.image?.size == baseImage.size
+            }
+            return false
+        }) else {
+            print("[SaveDebug] ❌ ベースに一致する画像要素が見つからないためベースのみで返す")
+            return baseImage
+        }
+
         // 最終出力サイズはベース画像そのまま（解像度保持）
         let imageSize = baseImage.size
 
@@ -29,20 +40,20 @@ struct ImageProcessingService: ImageProcessing {
         return renderer.image { context in
             let cgContext = context.cgContext
 
-            // ベース画像を全体に描画
-            let baseRect = CGRect(origin: .zero, size: imageSize)
-            baseImage.draw(in: baseRect)
-
-            // 対応するベース画像要素（サイズが一致するもの）を特定
-            let imageElements = project.elements.compactMap { $0 as? ImageElement }
-            guard let targetImageElement = imageElements.first(where: { element in
-                if let original = element.originalImage {
-                    return original.size == baseImage.size || element.image?.size == baseImage.size
-                }
-                return false
-            }) else {
-                print("[SaveDebug] ❌ ベースに一致する画像要素が見つからないためベースのみで返す")
-                return
+            if let adjustedBaseElement = targetImageElement.copy() as? ImageElement {
+                adjustedBaseElement.position = .zero
+                adjustedBaseElement.size = imageSize
+                adjustedBaseElement.rotation = 0
+                adjustedBaseElement.opacity = 1.0
+                scaleImageFrameRenderingAttributes(
+                    adjustedBaseElement,
+                    originalSize: targetImageElement.size,
+                    renderedSize: imageSize
+                )
+                ImageElementRenderer.draw(adjustedBaseElement, in: cgContext, image: baseImage)
+            } else {
+                let baseRect = CGRect(origin: .zero, size: imageSize)
+                baseImage.draw(in: baseRect)
             }
 
             // キャンバス座標系での画像要素矩形
@@ -86,6 +97,14 @@ struct ImageProcessingService: ImageProcessing {
                 adjustedElement.position = CGPoint(x: drawRect.minX, y: drawRect.minY)
                 adjustedElement.size = CGSize(width: drawRect.width, height: drawRect.height)
 
+                if let adjustedImageElement = adjustedElement as? ImageElement {
+                    scaleImageFrameRenderingAttributes(
+                        adjustedImageElement,
+                        originalSize: element.size,
+                        renderedSize: drawRect.size
+                    )
+                }
+
                 if let imageElement = adjustedElement as? ImageElement,
                    let highResImage = imageElement.getFilteredImageForce() {
                     drawHighResolutionImageElement(
@@ -116,41 +135,29 @@ struct ImageProcessingService: ImageProcessing {
         adjustedElement: LogoElement,
         in context: CGContext
     ) {
-        guard element.isVisible else { return }
+        _ = element
+        guard let adjustedImageElement = adjustedElement as? ImageElement else { return }
 
-        context.saveGState()
-        context.setAlpha(element.opacity)
+        ImageElementRenderer.draw(adjustedImageElement, in: context, image: image)
+    }
 
-        let centerX = adjustedElement.position.x + adjustedElement.size.width / 2
-        let centerY = adjustedElement.position.y + adjustedElement.size.height / 2
-        context.translateBy(x: centerX, y: centerY)
-        context.rotate(by: element.rotation)
-        context.translateBy(x: -adjustedElement.size.width / 2, y: -adjustedElement.size.height / 2)
+    /// 保存時の拡縮に合わせて画像フレーム属性を調整する
+    /// - Parameters:
+    ///   - imageElement: 調整対象の画像要素
+    ///   - originalSize: 編集時の要素サイズ
+    ///   - renderedSize: 保存時に描画するサイズ
+    /// - Returns: なし
+    private func scaleImageFrameRenderingAttributes(
+        _ imageElement: ImageElement,
+        originalSize: CGSize,
+        renderedSize: CGSize
+    ) {
+        guard originalSize.width > 0, originalSize.height > 0 else { return }
+        let scale = min(renderedSize.width / originalSize.width, renderedSize.height / originalSize.height)
+        guard scale.isFinite, scale > 0 else { return }
 
-        let rect = CGRect(origin: .zero, size: adjustedElement.size)
-
-        if element.roundedCorners && element.cornerRadius > 0 {
-            let path = UIBezierPath(roundedRect: rect, cornerRadius: element.cornerRadius)
-            context.addPath(path.cgPath)
-            context.clip()
-        }
-
-        image.draw(in: rect)
-
-        if element.showFrame && element.frameWidth > 0 {
-            context.setStrokeColor(element.frameColor.cgColor)
-            context.setLineWidth(element.frameWidth)
-            let frameRect = rect.insetBy(dx: element.frameWidth / 2, dy: element.frameWidth / 2)
-            if element.roundedCorners && element.cornerRadius > 0 {
-                let path = UIBezierPath(roundedRect: frameRect, cornerRadius: element.cornerRadius)
-                context.addPath(path.cgPath)
-                context.strokePath()
-            } else {
-                context.stroke(frameRect)
-            }
-        }
-
-        context.restoreGState()
+        imageElement.frameWidth *= scale
+        imageElement.cornerRadius *= scale
     }
 
     /// 保存時の拡縮に合わせてテキスト描画属性（フォント・影・縁取り・グロー）を調整する
