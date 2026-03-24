@@ -39,6 +39,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // シーンが破棄されたときに呼ばれる（例：ユーザーがマルチタスキングによってアプリを閉じた場合）
         // 必要に応じて、破棄されたシーンに関連するリソースをクリーンアップする
     }
+
+    /// アプリ全体でサポートする画面向きを返す
+    /// - Parameters:
+    ///   - application: 現在のアプリケーション
+    ///   - window: 対象ウィンドウ
+    /// - Returns: 縦向き固定の向きマスク
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        .portrait
+    }
     
     // MARK: - 初期化メソッド
     

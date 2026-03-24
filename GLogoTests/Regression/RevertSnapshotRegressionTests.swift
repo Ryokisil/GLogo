@@ -44,6 +44,12 @@ final class RevertSnapshotRegressionTests: XCTestCase {
         imageElement.backgroundBlurMaskData = Data([0x1, 0x2, 0x3])
         imageElement.tintColor = .red
         imageElement.tintIntensity = 0.8
+        imageElement.showFrame = true
+        imageElement.frameColor = .cyan
+        imageElement.frameWidth = 12.0
+        imageElement.frameStyle = .badge
+        imageElement.roundedCorners = true
+        imageElement.cornerRadius = 24.0
         imageElement.appliedFilterRecipe = FilterCatalog.allPresets.first?.recipe
         imageElement.appliedFilterPresetId = FilterCatalog.allPresets.first?.id
         var nonDefaultCurve = ToneCurveData()
@@ -66,6 +72,12 @@ final class RevertSnapshotRegressionTests: XCTestCase {
         XCTAssertNil(imageElement.appliedFilterRecipe)
         XCTAssertNil(imageElement.appliedFilterPresetId)
         XCTAssertEqual(imageElement.toneCurveData, ToneCurveData())
+        XCTAssertFalse(imageElement.showFrame)
+        XCTAssertEqual(imageElement.frameColor.rgbaHexString, UIColor.white.rgbaHexString)
+        XCTAssertEqual(imageElement.frameWidth, 4.0, accuracy: 0.0001)
+        XCTAssertEqual(imageElement.frameStyle, .simple)
+        XCTAssertFalse(imageElement.roundedCorners)
+        XCTAssertEqual(imageElement.cornerRadius, 10.0, accuracy: 0.0001)
         XCTAssertFalse(imageElement.canRevertToInitialState)
     }
 

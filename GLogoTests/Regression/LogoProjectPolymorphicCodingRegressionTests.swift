@@ -52,6 +52,12 @@ final class LogoProjectPolymorphicCodingRegressionTests: XCTestCase {
         image.name = "Image"
         image.position = CGPoint(x: 20, y: 20)
         image.zIndex = 100
+        image.showFrame = true
+        image.frameColor = UIColor(red: 0.2, green: 0.4, blue: 0.6, alpha: 0.8)
+        image.frameWidth = 8.5
+        image.frameStyle = .film
+        image.roundedCorners = true
+        image.cornerRadius = 16.0
 
         let text = TextElement(text: "Hello", fontName: "HelveticaNeue", fontSize: 24, textColor: .white)
         text.name = "Text"
@@ -86,6 +92,14 @@ final class LogoProjectPolymorphicCodingRegressionTests: XCTestCase {
         XCTAssertEqual(text?.text, "Hello")
         XCTAssertEqual(shape?.shapeType, .triangle)
         XCTAssertEqual(image?.name, "Image")
+        XCTAssertEqual(image?.showFrame, true)
+        XCTAssertEqual(image?.frameWidth ?? 0, 8.5, accuracy: 0.001)
+        XCTAssertEqual(image?.frameStyle, .film)
+        XCTAssertEqual(image?.roundedCorners, true)
+        XCTAssertEqual(image?.cornerRadius ?? 0, 16.0, accuracy: 0.001)
+        // frameColor は Codable 往復で NSKeyedArchiver 経由のため rgbaHex で比較
+        let expectedHex = UIColor(red: 0.2, green: 0.4, blue: 0.6, alpha: 0.8).rgbaHexString
+        XCTAssertEqual(image?.frameColor.rgbaHexString, expectedHex)
     }
 
     /// 単色画像を生成

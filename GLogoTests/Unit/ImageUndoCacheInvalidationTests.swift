@@ -282,6 +282,48 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
             XCTAssertEqual(element.frameWidth, 1.0, accuracy: 0.0001)
         }
 
+        XCTContext.runActivity(named: "フレームスタイル") { _ in
+            let event = ImageFrameStyleChangedEvent(
+                elementId: element.id,
+                oldStyle: .simple,
+                newStyle: .film
+            )
+            element.cachedImage = cachedImage
+            event.apply(to: project)
+            XCTAssertNil(element.cachedImage)
+            XCTAssertEqual(element.frameStyle, .film)
+
+            element.cachedImage = cachedImage
+            event.revert(from: project)
+            XCTAssertNil(element.cachedImage)
+            XCTAssertEqual(element.frameStyle, .simple)
+        }
+
+        XCTContext.runActivity(named: "フレーム見た目複合変更") { _ in
+            let event = ImageFrameAppearanceChangedEvent(
+                elementId: element.id,
+                oldShowFrame: false,
+                newShowFrame: true,
+                oldFrameStyle: .simple,
+                newFrameStyle: .badge,
+                oldFrameColor: .black,
+                newFrameColor: .cyan
+            )
+            element.cachedImage = cachedImage
+            event.apply(to: project)
+            XCTAssertNil(element.cachedImage)
+            XCTAssertTrue(element.showFrame)
+            XCTAssertEqual(element.frameStyle, .badge)
+            XCTAssertEqual(element.frameColor.rgbaHexString, UIColor.cyan.rgbaHexString)
+
+            element.cachedImage = cachedImage
+            event.revert(from: project)
+            XCTAssertNil(element.cachedImage)
+            XCTAssertFalse(element.showFrame)
+            XCTAssertEqual(element.frameStyle, .simple)
+            XCTAssertEqual(element.frameColor.rgbaHexString, UIColor.black.rgbaHexString)
+        }
+
         XCTContext.runActivity(named: "角丸") { _ in
             let event = ImageRoundedCornersChangedEvent(
                 elementId: element.id,

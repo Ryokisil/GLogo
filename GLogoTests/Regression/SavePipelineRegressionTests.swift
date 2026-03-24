@@ -82,6 +82,45 @@ final class SavePipelineRegressionTests: XCTestCase {
         XCTAssertEqual(resultingStroke.width, originalStrokeWidth, accuracy: 0.001)
     }
 
+    /// 保存合成時に元のImageElementのframeWidth/cornerRadiusが破壊されないことを担保する
+    func testMakeCompositeImage_DoesNotMutateOriginalFrameAttributes() throws {
+        let baseImage = makeSolidImage(size: CGSize(width: 240, height: 120), color: .lightGray)
+        let baseData = try XCTUnwrap(baseImage.pngData())
+        let project = LogoProject(name: "FrameRegression", canvasSize: baseImage.size)
+
+        let imageElement = ImageElement(imageData: baseData, importOrder: 0)
+        imageElement.position = CGPoint(x: 40, y: 20)
+        imageElement.size = CGSize(width: 120, height: 60)
+        imageElement.zIndex = ElementPriority.image.rawValue
+        imageElement.showFrame = true
+        imageElement.frameWidth = 6.5
+        imageElement.cornerRadius = 18.0
+        imageElement.roundedCorners = true
+        imageElement.frameStyle = .polaroid
+        imageElement.frameColor = .cyan
+        project.addElement(imageElement)
+
+        let textElement = makeOverlayTextElement()
+        project.addElement(textElement)
+
+        let originalFrameWidth = imageElement.frameWidth
+        let originalCornerRadius = imageElement.cornerRadius
+        let originalFrameStyle = imageElement.frameStyle
+        let originalShowFrame = imageElement.showFrame
+        let originalRoundedCorners = imageElement.roundedCorners
+        let originalFrameColorHex = imageElement.frameColor.rgbaHexString
+
+        let service = ImageProcessingService()
+        _ = service.makeCompositeImage(baseImage: baseImage, project: project)
+
+        XCTAssertEqual(imageElement.frameWidth, originalFrameWidth, accuracy: 0.001, "保存後にframeWidthが変化してはいけない")
+        XCTAssertEqual(imageElement.cornerRadius, originalCornerRadius, accuracy: 0.001, "保存後にcornerRadiusが変化してはいけない")
+        XCTAssertEqual(imageElement.frameStyle, originalFrameStyle, "保存後にframeStyleが変化してはいけない")
+        XCTAssertEqual(imageElement.showFrame, originalShowFrame, "保存後にshowFrameが変化してはいけない")
+        XCTAssertEqual(imageElement.roundedCorners, originalRoundedCorners, "保存後にroundedCornersが変化してはいけない")
+        XCTAssertEqual(imageElement.frameColor.rgbaHexString, originalFrameColorHex, "保存後にframeColorが変化してはいけない")
+    }
+
     // MARK: - Helpers
 
     /// ベース画像とオーバーレイ文字を含む最小プロジェクトを作成する

@@ -110,6 +110,12 @@ class ImageElement: LogoElement {
         let tintIntensity: CGFloat
         let appliedFilterRecipe: FilterRecipe?
         let appliedFilterPresetId: String?
+        let showFrame: Bool
+        let frameColorRGBA: RGBAColor
+        let frameWidth: CGFloat
+        let frameStyle: ImageFrameStyle
+        let roundedCorners: Bool
+        let cornerRadius: CGFloat
 
         static let `default` = RevertAdjustmentSnapshot(
             saturationAdjustment: 1.0,
@@ -135,7 +141,13 @@ class ImageElement: LogoElement {
             tintColorRGBA: nil,
             tintIntensity: 0.0,
             appliedFilterRecipe: nil,
-            appliedFilterPresetId: nil
+            appliedFilterPresetId: nil,
+            showFrame: false,
+            frameColorRGBA: RGBAColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0),
+            frameWidth: 4.0,
+            frameStyle: .simple,
+            roundedCorners: false,
+            cornerRadius: 10.0
         )
     }
 
@@ -1303,7 +1315,18 @@ class ImageElement: LogoElement {
             tintColorRGBA: makeRGBAColor(from: tintColor),
             tintIntensity: tintIntensity,
             appliedFilterRecipe: appliedFilterRecipe,
-            appliedFilterPresetId: appliedFilterPresetId
+            appliedFilterPresetId: appliedFilterPresetId,
+            showFrame: showFrame,
+            frameColorRGBA: RGBAColor(
+                red: frameColor.rgbComponents.red,
+                green: frameColor.rgbComponents.green,
+                blue: frameColor.rgbComponents.blue,
+                alpha: frameColor.rgbComponents.alpha
+            ),
+            frameWidth: frameWidth,
+            frameStyle: frameStyle,
+            roundedCorners: roundedCorners,
+            cornerRadius: cornerRadius
         )
     }
 
@@ -1336,6 +1359,17 @@ class ImageElement: LogoElement {
         tintIntensity = snapshot.tintIntensity
         appliedFilterRecipe = snapshot.appliedFilterRecipe
         appliedFilterPresetId = snapshot.appliedFilterPresetId
+        showFrame = snapshot.showFrame
+        frameColor = UIColor(
+            red: snapshot.frameColorRGBA.red,
+            green: snapshot.frameColorRGBA.green,
+            blue: snapshot.frameColorRGBA.blue,
+            alpha: snapshot.frameColorRGBA.alpha
+        )
+        frameWidth = snapshot.frameWidth
+        frameStyle = snapshot.frameStyle
+        roundedCorners = snapshot.roundedCorners
+        cornerRadius = snapshot.cornerRadius
     }
 
     /// 現在値を初期スナップショットとして再定義
