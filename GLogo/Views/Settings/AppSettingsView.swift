@@ -59,7 +59,7 @@ struct AppSettingsView: View {
                     .pickerStyle(.navigationLink)
                 }
 
-                Section("settings.section.support") {
+                Section("settings.section.resources") {
                     Button {
                         onRequestOpenEditorGuide()
                         dismiss()

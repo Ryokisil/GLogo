@@ -3786,7 +3786,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Preferences"
+            "value" : "Settings"
           }
         },
         "ja" : {
@@ -3797,19 +3797,19 @@
         }
       }
     },
-    "settings.section.support" : {
+    "settings.section.resources" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Support"
+            "value" : "Resources"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "サポート"
+            "value" : "その他"
           }
         }
       }

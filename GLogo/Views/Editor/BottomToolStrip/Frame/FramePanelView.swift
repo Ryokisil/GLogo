@@ -408,14 +408,9 @@ private struct FrameStylePreview: View {
             }
 
         case .cornerAccent:
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(color.opacity(0.24), lineWidth: 1)
-                    .padding(7)
-                CornerAccentShape()
-                    .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                    .padding(9)
-            }
+            CornerAccentShape()
+                .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                .padding(9)
 
         case .polaroid:
             ZStack {

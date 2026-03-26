@@ -194,7 +194,6 @@ struct ImageElementRenderer {
 
         case .cornerAccent:
             let baseRect = rect.insetBy(dx: frameWidth / 2, dy: frameWidth / 2)
-            stroke(baseRect, cornerRadius: adjustedCornerRadius(layout.outerCornerRadius, inset: frameWidth / 2), color: element.frameColor.withAlphaComponent(0.30), width: max(1, frameWidth * 0.42), in: context)
             drawCornerAccents(in: baseRect, color: element.frameColor, width: max(2, frameWidth * 0.95), context: context)
 
         case .polaroid:
