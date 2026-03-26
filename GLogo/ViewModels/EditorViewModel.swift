@@ -102,6 +102,9 @@ class EditorViewModel: ObservableObject {
     /// 画像保存処理の実行中フラグ（保存中は編集入力をロック）
     @Published private(set) var isSavingImage = false
 
+    /// 直近の写真ライブラリ保存失敗理由
+    @Published private(set) var lastPhotoLibrarySaveFailure: PhotoLibrarySaveFailure?
+
     /// メモリ警告監視
     private var memoryWarningObserver: MemoryWarningObserver?
 
@@ -1386,17 +1389,19 @@ class EditorViewModel: ObservableObject {
         return history.getHistoryDescriptions()
     }
     
-    // MARK: - 保存（通常/合成）
+    // MARK: - 写真ライブラリ保存
     //
     // フロー概要:
-    //  - UI からは saveProject を呼ぶだけで、要素構成に応じて通常 or 合成を自動判定。
-    //  - saveAsCompositeImage は互換用に合成保存を強制するエントリーポイント。
-    //  - 保存本体のロジックは SaveImage 配下に分離済み。
+    //  - UI からは saveToPhotoLibrary を呼ぶだけで、要素構成に応じて通常 or 合成を自動判定。
+    //  - saveCompositeToPhotoLibrary は互換用に合成保存を強制するエントリーポイント。
+    //  - 写真ライブラリ保存本体のロジックは SaveImage 配下に分離済み。
     
     /// 写真アプリに画像を保存（通常の1枚保存）
     /// プロジェクトの編集内容をフィルター適用済み画像として写真ライブラリに保存する
-    func saveProject(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
-        performImageSave(
+    func saveToPhotoLibrary(
+        completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
+    ) {
+        performPhotoLibrarySave(
             operation: { [project] done in
                 saveCoordinator.save(project: project, completion: done)
             },
@@ -1406,8 +1411,10 @@ class EditorViewModel: ObservableObject {
     
     /// - 役割：ユーザーが「保存」ボタンを押した時の最初の受け口（エントリーポイント）
     /// - 処理：写真ライブラリの権限確認と合成保存フローの呼び出し
-    func saveAsCompositeImage(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
-        performImageSave(
+    func saveCompositeToPhotoLibrary(
+        completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
+    ) {
+        performPhotoLibrarySave(
             operation: { [project] done in
                 saveCoordinator.saveComposite(project: project, completion: done)
             },
@@ -1420,19 +1427,23 @@ class EditorViewModel: ObservableObject {
     ///   - operation: 実行する保存処理
     ///   - completion: 保存完了コールバック
     /// - Returns: なし
-    private func performImageSave(
-        operation: (@escaping @MainActor @Sendable (Bool) -> Void) -> Void,
-        completion: @escaping @MainActor @Sendable (Bool) -> Void
+    private func performPhotoLibrarySave(
+        operation: (@escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void) -> Void,
+        completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     ) {
         guard !isSavingImage else { return }
 
         prepareForImageSave()
         isSavingImage = true
+        lastPhotoLibrarySaveFailure = nil
 
-        operation { [weak self] success in
+        operation { [weak self] result in
             guard let self else { return }
             self.isSavingImage = false
-            completion(success)
+            if case .failure(let failure) = result {
+                self.lastPhotoLibrarySaveFailure = failure
+            }
+            completion(result)
         }
     }
 

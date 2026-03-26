@@ -622,7 +622,7 @@ struct EditorView: View {
         HStack(spacing: 12) {
             HStack(spacing: 10) {
                 Button("editor.save") {
-                    saveProjectAuto()
+                    saveToPhotoLibraryAuto()
                 }
                 .help("editor.save")
                 .padding(.horizontal, 14)
@@ -714,10 +714,10 @@ struct EditorView: View {
     
     // MARK: - アクション処理
     
-    /// 編集内容を自動判定で保存
-    private func saveProjectAuto() {
-        viewModel.saveProject { success in
-            if success {
+    /// 編集内容を自動判定で写真ライブラリへ保存
+    private func saveToPhotoLibraryAuto() {
+        viewModel.saveToPhotoLibrary { result in
+            if case .success = result {
                 showAlert(title: "editor.saved.title", message: "editor.saved.message")
             } else {
                 showAlert(title: "editor.saveFailed.title", message: "editor.saveFailed.message")

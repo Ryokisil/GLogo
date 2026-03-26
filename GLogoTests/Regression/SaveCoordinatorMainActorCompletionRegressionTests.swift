@@ -93,17 +93,20 @@ final class SaveCoordinatorMainActorCompletionRegressionTests: XCTestCase {
         let project = makeProjectWithSingleImageElement()
         let expectation = expectation(description: "completion called")
 
-        var result: Bool?
+        var result: PhotoLibrarySaveResult?
         var completionOnMainThread = false
 
-        coordinator.save(project: project) { success in
+        coordinator.save(project: project) { saveResult in
             completionOnMainThread = Thread.isMainThread
-            result = success
+            result = saveResult
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 2.0)
-        XCTAssertFalse(result ?? true)
+        guard case .failure(let failure)? = result else {
+            return XCTFail("権限拒否時は failure であるべき")
+        }
+        XCTAssertEqual(failure, .permissionDenied)
         XCTAssertTrue(completionOnMainThread)
     }
 
@@ -124,17 +127,19 @@ final class SaveCoordinatorMainActorCompletionRegressionTests: XCTestCase {
         let project = makeProjectWithSingleImageElement()
         let expectation = expectation(description: "completion called")
 
-        var result: Bool?
+        var result: PhotoLibrarySaveResult?
         var completionOnMainThread = false
 
-        coordinator.save(project: project) { success in
+        coordinator.save(project: project) { saveResult in
             completionOnMainThread = Thread.isMainThread
-            result = success
+            result = saveResult
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 5.0)
-        XCTAssertTrue(result ?? false)
+        guard case .success? = result else {
+            return XCTFail("許可時は success であるべき")
+        }
         XCTAssertTrue(completionOnMainThread)
     }
 

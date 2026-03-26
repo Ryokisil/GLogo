@@ -5,7 +5,7 @@
 //  概要:
 //  SaveImageCoordinator の異常系回帰テスト。
 //  合成保存時に makeCompositeImage が nil を返した場合に
-//  completion(false) となることを検証し、以前の `?? baseImage` フォールバック復活を防止する。
+//  `compositeGenerationFailed` で失敗することを検証し、以前の `?? baseImage` フォールバック復活を防止する。
 //
 
 import XCTest
@@ -59,10 +59,10 @@ private struct StubPhotoLibraryWriter: PhotoLibraryWriting {
 /// 合成保存異常系の回帰テスト
 final class SaveCoordinatorRegressionTests: XCTestCase {
 
-    /// makeCompositeImage が nil を返した場合に completion(false) になること
-    /// - 以前は `?? baseImage` で無言成功していたが、修正後はエラー扱いとなる
+    /// makeCompositeImage が nil を返した場合に `compositeGenerationFailed` になること
+    /// - 以前は `?? baseImage` で無言成功していたが、修正後は明示的エラー扱いとなる
     @MainActor
-    func testSaveComposite_CompositeFails_CompletionIsFalse() {
+    func testSaveComposite_CompositeFails_ReturnsCompositeGenerationFailure() {
         let coordinator = SaveImageCoordinator(
             selectionService: StubImageSelecting(),
             processingService: StubImageProcessing_CompositeNil(),
@@ -71,15 +71,18 @@ final class SaveCoordinatorRegressionTests: XCTestCase {
 
         let project = makeProjectWithImageElement()
         let expectation = expectation(description: "completion が呼ばれること")
-        var result: Bool?
+        var result: PhotoLibrarySaveResult?
 
-        coordinator.saveComposite(project: project) { success in
-            result = success
+        coordinator.saveComposite(project: project) { saveResult in
+            result = saveResult
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 5)
-        XCTAssertEqual(result, false, "合成失敗時は completion(false) であるべき（フォールバック保存は不可）")
+        guard case .failure(let failure)? = result else {
+            return XCTFail("合成失敗時は failure であるべき")
+        }
+        XCTAssertEqual(failure, .compositeGenerationFailed, "合成失敗時は compositeGenerationFailed であるべき")
     }
 
     // MARK: - Helpers

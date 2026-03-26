@@ -5,6 +5,7 @@
 
 import Foundation
 import OSLog
+import CryptoKit
 
 final class MetadataFileStore {
     private let logger = Logger(subsystem: "com.silvia.GLogo", category: "MetadataStore")
@@ -20,12 +21,11 @@ final class MetadataFileStore {
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(metadata)
 
-            guard let baseURL = metadataDirectoryURL() else {
+            guard let baseURL = metadataDirectoryURL(),
+                  let fileURL = currentMetadataFileURL(for: identifier) else {
                 return false
             }
             try createDirectoryIfNeeded(at: baseURL)
-
-            let fileURL = baseURL.appendingPathComponent("metadata_\(identifier).json")
             try data.write(to: fileURL)
             return true
         } catch {
@@ -40,11 +40,7 @@ final class MetadataFileStore {
     /// - Returns: 読み込み成功時は `ImageMetadata`、存在しない/失敗時は `nil`。
     func loadMetadata(for identifier: String) -> ImageMetadata? {
         do {
-            guard let baseURL = metadataDirectoryURL() else {
-                return nil
-            }
-            let fileURL = baseURL.appendingPathComponent("metadata_\(identifier).json")
-            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            guard let fileURL = resolvedMetadataFileURL(for: identifier) else {
                 return nil
             }
 
@@ -69,12 +65,11 @@ final class MetadataFileStore {
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(history)
 
-            guard let baseURL = historyDirectoryURL() else {
+            guard let baseURL = historyDirectoryURL(),
+                  let fileURL = currentHistoryFileURL(for: identifier) else {
                 return false
             }
             try createDirectoryIfNeeded(at: baseURL)
-
-            let fileURL = baseURL.appendingPathComponent("history_\(identifier).json")
             try data.write(to: fileURL)
             return true
         } catch {
@@ -89,11 +84,7 @@ final class MetadataFileStore {
     /// - Returns: 読み込み成功時は履歴配列、存在しない/失敗時は `nil`。
     func loadEditHistory(for identifier: String) -> [MetadataEditOperation]? {
         do {
-            guard let baseURL = historyDirectoryURL() else {
-                return nil
-            }
-            let fileURL = baseURL.appendingPathComponent("history_\(identifier).json")
-            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            guard let fileURL = resolvedHistoryFileURL(for: identifier) else {
                 return nil
             }
 
@@ -125,6 +116,77 @@ final class MetadataFileStore {
             return nil
         }
         return documentsDirectory.appendingPathComponent("GLogo/History")
+    }
+
+    /// 現行形式のメタデータ保存先URLを返す。
+    /// - Parameters:
+    ///   - identifier: 画像識別子。
+    /// - Returns: 保存先URL。基底ディレクトリを解決できない場合は `nil`。
+    private func currentMetadataFileURL(for identifier: String) -> URL? {
+        metadataDirectoryURL()?.appendingPathComponent("metadata_\(storageKey(for: identifier)).json")
+    }
+
+    /// 現行形式の履歴保存先URLを返す。
+    /// - Parameters:
+    ///   - identifier: 画像識別子。
+    /// - Returns: 保存先URL。基底ディレクトリを解決できない場合は `nil`。
+    private func currentHistoryFileURL(for identifier: String) -> URL? {
+        historyDirectoryURL()?.appendingPathComponent("history_\(storageKey(for: identifier)).json")
+    }
+
+    /// 読み込み時に現行形式・旧形式のどちらを使うか解決する。
+    /// - Parameters:
+    ///   - identifier: 画像識別子。
+    /// - Returns: 既存ファイルのURL。見つからない場合は `nil`。
+    private func resolvedMetadataFileURL(for identifier: String) -> URL? {
+        let candidates = [
+            currentMetadataFileURL(for: identifier),
+            legacyMetadataFileURL(for: identifier)
+        ]
+
+        return candidates
+            .compactMap { $0 }
+            .first(where: { FileManager.default.fileExists(atPath: $0.path) })
+    }
+
+    /// 読み込み時に現行形式・旧形式のどちらを使うか解決する。
+    /// - Parameters:
+    ///   - identifier: 画像識別子。
+    /// - Returns: 既存ファイルのURL。見つからない場合は `nil`。
+    private func resolvedHistoryFileURL(for identifier: String) -> URL? {
+        let candidates = [
+            currentHistoryFileURL(for: identifier),
+            legacyHistoryFileURL(for: identifier)
+        ]
+
+        return candidates
+            .compactMap { $0 }
+            .first(where: { FileManager.default.fileExists(atPath: $0.path) })
+    }
+
+    /// 旧形式のメタデータ保存先URLを返す。
+    /// - Parameters:
+    ///   - identifier: 画像識別子。
+    /// - Returns: 旧形式URL。基底ディレクトリを解決できない場合は `nil`。
+    private func legacyMetadataFileURL(for identifier: String) -> URL? {
+        metadataDirectoryURL()?.appendingPathComponent("metadata_\(identifier).json")
+    }
+
+    /// 旧形式の履歴保存先URLを返す。
+    /// - Parameters:
+    ///   - identifier: 画像識別子。
+    /// - Returns: 旧形式URL。基底ディレクトリを解決できない場合は `nil`。
+    private func legacyHistoryFileURL(for identifier: String) -> URL? {
+        historyDirectoryURL()?.appendingPathComponent("history_\(identifier).json")
+    }
+
+    /// 外部由来の識別子をファイル名安全な保存キーへ変換する。
+    /// - Parameters:
+    ///   - identifier: 元の画像識別子。
+    /// - Returns: ファイル名に安全な固定長キー。
+    private func storageKey(for identifier: String) -> String {
+        let digest = SHA256.hash(data: Data(identifier.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     /// 対象ディレクトリが存在しない場合に作成する。

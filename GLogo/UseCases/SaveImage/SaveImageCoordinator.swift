@@ -5,6 +5,19 @@
 import UIKit
 import OSLog
 
+/// 写真ライブラリ保存の失敗理由
+enum PhotoLibrarySaveFailure: Error, Sendable, Equatable {
+    case permissionDenied
+    case noImageElements
+    case imageSelectionFailed
+    case filterApplicationFailed
+    case compositeGenerationFailed
+    case writeFailed
+}
+
+/// 写真ライブラリ保存結果
+typealias PhotoLibrarySaveResult = Result<Void, PhotoLibrarySaveFailure>
+
 struct SaveImageCoordinator: Sendable {
     private static let logger = Logger(subsystem: "com.silvia.GLogo", category: "Save")
     private let policy: SaveImagePolicy
@@ -35,53 +48,65 @@ struct SaveImageCoordinator: Sendable {
 
     /// 保存モードを自動判定して通常/合成どちらかを保存する入口
     @MainActor
-    func save(project: LogoProject, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+    func save(
+        project: LogoProject,
+        completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
+    ) {
         let mode = policy.resolveMode(elements: project.elements)
         let projectBox = DetachedProjectBox(project: project)
 
-        authorizeIfNeeded { authorized in
-            guard authorized else {
-                completion(false)
-                return
+        authorizeIfNeeded { authorizationResult in
+            switch authorizationResult {
+            case .success:
+                performSave(projectBox: projectBox, mode: mode, completion: completion)
+            case .failure(let failure):
+                completion(.failure(failure))
             }
-
-            performSave(projectBox: projectBox, mode: mode, completion: completion)
         }
     }
 
     /// 合成保存を強制実行する入口（互換用）
     @MainActor
-    func saveComposite(project: LogoProject, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+    func saveComposite(
+        project: LogoProject,
+        completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
+    ) {
         let projectBox = DetachedProjectBox(project: project)
 
-        authorizeIfNeeded { authorized in
-            guard authorized else {
-                completion(false)
-                return
+        authorizeIfNeeded { authorizationResult in
+            switch authorizationResult {
+            case .success:
+                performSave(projectBox: projectBox, mode: .composite, completion: completion)
+            case .failure(let failure):
+                completion(.failure(failure))
             }
-
-            performSave(projectBox: projectBox, mode: .composite, completion: completion)
         }
     }
 
     /// 写真ライブラリ権限を確認（未決定ならリクエスト）
-    private func authorizeIfNeeded(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+    private func authorizeIfNeeded(
+        completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
+    ) {
         let authStatus = writer.authorizationStatus(for: .addOnly)
 
         switch authStatus {
         case .authorized, .limited:
             Task { @MainActor in
-                completion(true)
+                completion(.success(()))
             }
         case .notDetermined:
             writer.requestAuthorization(for: .addOnly) { status in
                 Task { @MainActor in
-                    completion(status == .authorized || status == .limited)
+                    if status == .authorized || status == .limited {
+                        completion(.success(()))
+                    } else {
+                        completion(.failure(.permissionDenied))
+                    }
                 }
             }
         default:
             Task { @MainActor in
-                completion(false)
+                completion(.failure(.permissionDenied))
             }
         }
     }
@@ -91,24 +116,27 @@ struct SaveImageCoordinator: Sendable {
     private func performSave(
         projectBox: DetachedProjectBox,
         mode: SaveImageMode,
-        completion: @escaping @MainActor @Sendable (Bool) -> Void
+        completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     ) {
         Task.detached(priority: .userInitiated) {
             let project = projectBox.project
             let imageElements = project.elements.compactMap { $0 as? ImageElement }
             if imageElements.isEmpty {
-                await completion(false)
+                await completion(.failure(.noImageElements))
                 return
             }
 
             switch mode {
             case .failure:
-                await completion(false)
+                await completion(.failure(.noImageElements))
             case .individual:
                 let targetImageElement = selectionService.selectHighestResolutionImageElement(from: imageElements)
-                guard let imageElement = targetImageElement,
-                      let processedImage = processingService.applyFilters(to: imageElement) else {
-                    await completion(false)
+                guard let imageElement = targetImageElement else {
+                    await completion(.failure(.imageSelectionFailed))
+                    return
+                }
+                guard let processedImage = processingService.applyFilters(to: imageElement) else {
+                    await completion(.failure(.filterApplicationFailed))
                     return
                 }
 
@@ -116,22 +144,26 @@ struct SaveImageCoordinator: Sendable {
                     baseImage: processedImage,
                     project: project
                 ) else {
-                    await completion(false)
+                    await completion(.failure(.compositeGenerationFailed))
                     return
                 }
 
                 do {
                     let format = SaveImageCoordinator.resolveFormat(for: finalImage, mode: mode)
                     try await writer.performSave(of: finalImage, format: format)
-                    await completion(true)
+                    await completion(.success(()))
                 } catch {
-                    await completion(false)
+                    Self.logger.error("写真ライブラリ保存に失敗: \(error.localizedDescription, privacy: .public)")
+                    await completion(.failure(.writeFailed))
                 }
             case .composite:
                 let baseImageElement = selectionService.selectBaseImageElement(from: imageElements)
-                guard let selectedBaseImageElement = baseImageElement,
-                      let baseImage = processingService.applyFilters(to: selectedBaseImageElement) else {
-                    await completion(false)
+                guard let selectedBaseImageElement = baseImageElement else {
+                    await completion(.failure(.imageSelectionFailed))
+                    return
+                }
+                guard let baseImage = processingService.applyFilters(to: selectedBaseImageElement) else {
+                    await completion(.failure(.filterApplicationFailed))
                     return
                 }
 
@@ -140,16 +172,17 @@ struct SaveImageCoordinator: Sendable {
                     project: project
                 ) else {
                     Self.logger.warning("合成保存に失敗: makeCompositeImage が nil を返却")
-                    await completion(false)
+                    await completion(.failure(.compositeGenerationFailed))
                     return
                 }
 
                 do {
                     let format = SaveImageCoordinator.resolveFormat(for: finalImage, mode: mode)
                     try await writer.performSave(of: finalImage, format: format)
-                    await completion(true)
+                    await completion(.success(()))
                 } catch {
-                    await completion(false)
+                    Self.logger.error("写真ライブラリ保存に失敗: \(error.localizedDescription, privacy: .public)")
+                    await completion(.failure(.writeFailed))
                 }
             }
         }

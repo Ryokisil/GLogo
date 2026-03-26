@@ -31,8 +31,13 @@ final class PhotoLibrarySaveTests: XCTestCase {
 
         // 保存処理を実行
         await withCheckedContinuation { continuation in
-            viewModel.saveProject { success in
-                XCTAssertFalse(success, "画像要素がない場合は保存が失敗すべき")
+            viewModel.saveToPhotoLibrary { result in
+                guard case .failure(let failure) = result else {
+                    XCTFail("画像要素がない場合は保存が失敗すべき")
+                    continuation.resume()
+                    return
+                }
+                XCTAssertEqual(failure, .noImageElements, "画像要素がない場合は noImageElements で失敗すべき")
                 continuation.resume()
             }
         }
