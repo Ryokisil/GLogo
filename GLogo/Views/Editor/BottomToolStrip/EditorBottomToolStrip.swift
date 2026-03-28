@@ -109,5 +109,6 @@ struct EditorBottomToolStrip: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("editor.bottomTool.\(tool.rawValue)")
     }
 }

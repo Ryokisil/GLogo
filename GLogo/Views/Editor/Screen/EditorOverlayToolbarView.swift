@@ -58,6 +58,7 @@ struct EditorOverlayToolbarView: View {
                 Image(systemName: "photo")
                     .foregroundColor(viewModel.editorMode == .imageImport ? .blue : .primary)
             }
+            .accessibilityIdentifier("editor.overlay.addImageButton")
             .help("editor.help.addImage")
 
             // 削除モード
@@ -103,6 +104,7 @@ struct EditorOverlayToolbarView: View {
                 Image(systemName: "gearshape")
                     .foregroundColor(.primary)
             }
+            .accessibilityIdentifier("editor.overlay.settingsButton")
             .help("editor.help.appSettings")
         }
     }

@@ -126,6 +126,7 @@ struct TextPropertyPanelView: View {
                     .font(.system(size: 18, weight: .regular))
                     .foregroundColor(.secondary)
             }
+            .accessibilityIdentifier("editor.textPropertyPanel.closeButton")
         }
     }
 

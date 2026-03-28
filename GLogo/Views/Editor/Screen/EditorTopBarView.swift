@@ -31,6 +31,7 @@ struct EditorTopBarView: View {
                 Button("editor.save") {
                     onSave()
                 }
+                .accessibilityIdentifier("editor.topBar.saveButton")
                 .help("editor.save")
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)

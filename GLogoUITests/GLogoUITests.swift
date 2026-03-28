@@ -2,8 +2,6 @@
 //  GLogoUITests.swift
 //  GLogoUITests
 //
-//  Created by silvia on 2025/02/28.
-//
 
 import XCTest
 
