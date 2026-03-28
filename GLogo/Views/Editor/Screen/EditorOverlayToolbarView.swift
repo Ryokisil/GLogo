@@ -77,6 +77,7 @@ struct EditorOverlayToolbarView: View {
                 Image(systemName: "trash")
                     .foregroundColor(viewModel.editorMode == .delete ? .red : .primary)
             }
+            .accessibilityIdentifier("editor.overlay.deleteButton")
             .help("editor.help.deleteTool")
 
             // 画像役割切り替え（ベース/オーバーレイ）

@@ -97,6 +97,7 @@ struct AIToolsPanelView: View {
                     .font(.system(size: 18, weight: .regular))
                     .foregroundColor(.secondary)
             }
+            .accessibilityIdentifier("editor.aiToolsPanel.closeButton")
         }
     }
 
@@ -119,6 +120,7 @@ struct AIToolsPanelView: View {
                             )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("editor.aiToolsTab.\(tab.rawValue)")
                 }
             }
             .padding(.horizontal, 1)
@@ -310,6 +312,7 @@ struct AIToolsPanelView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
             .buttonBorderShape(.roundedRectangle(radius: 10))
+            .accessibilityIdentifier("editor.aiTools.enhanceButton")
             .disabled(!hasSelectedImage || isProcessingAnyAITask || !viewModel.isRealESRGANAvailable || !viewModel.canRequestUpscale)
         }
     }

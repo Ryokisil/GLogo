@@ -113,6 +113,7 @@ struct EffectsPanelView: View {
             }
             .font(.subheadline.weight(.semibold))
             .disabled(!canResetSelectedEffect())
+            .accessibilityIdentifier("editor.effectsPanel.resetButton")
 
             Spacer()
 
@@ -128,6 +129,7 @@ struct EffectsPanelView: View {
                     .font(.system(size: 18, weight: .regular))
                     .foregroundColor(.secondary)
             }
+            .accessibilityIdentifier("editor.effectsPanel.closeButton")
         }
     }
 
@@ -203,6 +205,7 @@ struct EffectsPanelView: View {
             .scaleEffect(isSelected ? 1.04 : 1.0)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("editor.effectControl.\(control.rawValue)")
     }
 
     private var sliderSection: some View {
@@ -239,6 +242,7 @@ struct EffectsPanelView: View {
                     }
                 )
                 .tint(.blue)
+                .accessibilityIdentifier("editor.effectsPanel.slider")
 
                 Text(valueText())
                     .font(.system(size: 14, weight: .semibold).monospacedDigit())
@@ -250,6 +254,7 @@ struct EffectsPanelView: View {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(isEdited ? Color.blue.opacity(0.10) : Color.gray.opacity(0.10))
                     )
+                    .accessibilityIdentifier("editor.effectsPanel.valueLabel")
             }
         }
     }

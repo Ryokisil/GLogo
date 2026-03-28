@@ -24,6 +24,9 @@ struct GameLogoMakerApp: App {
         WindowGroup {
             EditorView(viewModel: editorViewModel)
                 .environment(\.locale, AppLanguage.from(rawValue: appLanguageRawValue).resolvedLocale)
+                #if DEBUG
+                .onAppear { editorViewModel.applyUITestFixtureIfNeeded() }
+                #endif
         }
     }
 

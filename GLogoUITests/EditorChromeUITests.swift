@@ -1,35 +1,40 @@
 //
-//  EditorViewUITests.swift
+//  EditorChromeUITests.swift
 //  GLogoUITests
 //
 //  概要:
-//  EditorView 分割後の回帰を守るための最小 UI テスト。
-//  chrome 表示・設定シート・テキストツール・画像追加導線をカバーする。
+//  エディタ画面の基本 chrome（TopBar / OverlayToolbar / BottomToolStrip）の
+//  表示・シート開閉・基本導線を守る UI テスト。
 //
 
 import XCTest
 
-final class EditorViewUITests: XCTestCase {
+final class EditorChromeUITests: XCTestCase {
 
     private var app: XCUIApplication!
 
     override func setUpWithError() throws {
         continueAfterFailure = false
-        app = XCUIApplication()
-        // 初回ガイドをスキップしてエディタ画面を直接テスト可能にする
-        app.launchArguments += ["-hasSeenEditorIntro", "YES"]
-        app.launch()
     }
 
     override func tearDownWithError() throws {
         app = nil
     }
 
-    // MARK: - テスト
+    /// fixture なしで起動する
+    @MainActor
+    private func launchApp() {
+        app = XCUIApplication()
+        app.launchArguments += ["-hasSeenEditorIntro", "YES"]
+        app.launch()
+    }
+
+    // MARK: - 基本 chrome テスト
 
     /// エディタ画面の基本 chrome（TopBar, OverlayToolbar, BottomToolStrip）が表示される
     @MainActor
     func testEditorScreen_LaunchesAndShowsCoreChrome() throws {
+        launchApp()
         let saveButton = app.buttons["editor.topBar.saveButton"]
         XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "保存ボタンが表示されるべき")
 
@@ -44,6 +49,7 @@ final class EditorViewUITests: XCTestCase {
     /// 設定ボタンから AppSettingsView シートが開閉できる
     @MainActor
     func testEditor_AppSettingsSheet_OpenAndDismiss() throws {
+        launchApp()
         let settingsButton = app.buttons["editor.overlay.settingsButton"]
         XCTAssertTrue(settingsButton.waitForExistence(timeout: 5))
 
@@ -63,6 +69,7 @@ final class EditorViewUITests: XCTestCase {
     /// Text ツールタップで TextPropertyPanel が表示される
     @MainActor
     func testEditor_TextTool_ShowsTextPropertyPanel() throws {
+        launchApp()
         let textToolButton = app.buttons["editor.bottomTool.select"]
         XCTAssertTrue(textToolButton.waitForExistence(timeout: 5), "テキストツールボタンが表示されるべき")
 
@@ -76,6 +83,7 @@ final class EditorViewUITests: XCTestCase {
     /// 画像追加ボタンで picker シートが開始される
     @MainActor
     func testEditor_ImageAddFlow_PresentsPicker() throws {
+        launchApp()
         let addImageButton = app.buttons["editor.overlay.addImageButton"]
         XCTAssertTrue(addImageButton.waitForExistence(timeout: 5), "画像追加ボタンが表示されるべき")
 

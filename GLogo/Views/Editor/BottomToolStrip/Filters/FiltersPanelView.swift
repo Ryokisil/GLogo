@@ -59,6 +59,7 @@ struct FiltersPanelView: View {
             }
             .font(.subheadline.weight(.semibold))
             .disabled(viewModel.appliedFilterPresetId == nil)
+            .accessibilityIdentifier("editor.filtersPanel.resetButton")
 
             Spacer()
 
@@ -74,6 +75,7 @@ struct FiltersPanelView: View {
                     .font(.system(size: 18, weight: .regular))
                     .foregroundColor(.secondary)
             }
+            .accessibilityIdentifier("editor.filtersPanel.closeButton")
         }
     }
 

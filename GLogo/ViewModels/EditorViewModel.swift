@@ -1583,5 +1583,58 @@ class EditorViewModel: ObservableObject {
         
         print("テスト要素を追加しました")
     }
+
+    // MARK: - UIテスト用 fixture
+
+    /// UIテスト用の fixture 名を表す列挙型
+    enum UITestFixture: String {
+        /// 画像要素を追加・選択した状態
+        case selectedImage
+        /// 高画質化済み画像要素を追加・選択した状態
+        case enhancedImage
+    }
+
+    /// fixture 適用済みフラグ（重複投入防止）
+    private var hasAppliedUITestFixture = false
+
+    /// launch argument で指定された fixture を適用する（一度だけ）
+    func applyUITestFixtureIfNeeded() {
+        guard !hasAppliedUITestFixture else { return }
+        let args = ProcessInfo.processInfo.arguments
+        guard let index = args.firstIndex(of: "-uiTestFixture"),
+              index + 1 < args.count,
+              let fixture = UITestFixture(rawValue: args[index + 1]) else {
+            return
+        }
+        hasAppliedUITestFixture = true
+        switch fixture {
+        case .selectedImage:
+            applySelectedImageFixture(enhanced: false)
+        case .enhancedImage:
+            applySelectedImageFixture(enhanced: true)
+        }
+    }
+
+    /// ダミー画像要素を追加・選択する fixture
+    private func applySelectedImageFixture(enhanced: Bool) {
+        // 1x1 赤ピクセルの最小 PNG を生成（アセット不要）
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64))
+        let image = renderer.image { ctx in
+            UIColor.red.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        }
+        guard let data = image.pngData() else { return }
+
+        let imageElement = ImageElement(imageData: data, canvasSize: project.canvasSize)
+        imageElement.position = CGPoint(
+            x: project.canvasSize.width / 2,
+            y: project.canvasSize.height / 2
+        )
+        if enhanced {
+            imageElement.hasAppliedUpscale = true
+        }
+        addElement(imageElement)
+        selectElement(imageElement)
+    }
 #endif
 }

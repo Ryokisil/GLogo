@@ -151,6 +151,7 @@ struct TextPropertyPanelView: View {
                             )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("editor.textTab.\(tab.rawValue)")
                 }
             }
             .padding(.horizontal, 1)

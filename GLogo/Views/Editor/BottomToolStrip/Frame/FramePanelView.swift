@@ -120,6 +120,7 @@ struct FramePanelView: View {
             }
             .font(.subheadline.weight(.semibold))
             .disabled(viewModel.imageElement?.showFrame != true)
+            .accessibilityIdentifier("editor.framePanel.removeButton")
 
             Spacer()
 
@@ -135,6 +136,7 @@ struct FramePanelView: View {
                     .font(.system(size: 18, weight: .regular))
                     .foregroundColor(.secondary)
             }
+            .accessibilityIdentifier("editor.framePanel.closeButton")
         }
     }
 
@@ -198,6 +200,7 @@ struct FramePanelView: View {
             .scaleEffect(isSelected ? 1.02 : 1.0)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("editor.frameStyle.\(style)")
     }
 
     private func frameControlSection(_ imageElement: ImageElement) -> some View {

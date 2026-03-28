@@ -196,6 +196,7 @@ struct AdjustBasicPanelView: View {
             }
             .font(.subheadline.weight(.semibold))
             .disabled(!canResetSelectedAdjustment())
+            .accessibilityIdentifier("editor.adjustPanel.resetButton")
 
             Spacer()
 
@@ -211,6 +212,7 @@ struct AdjustBasicPanelView: View {
                     .font(.system(size: 18, weight: .regular))
                     .foregroundColor(.secondary)
             }
+            .accessibilityIdentifier("editor.adjustPanel.closeButton")
         }
     }
 
@@ -296,6 +298,7 @@ struct AdjustBasicPanelView: View {
             .scaleEffect(isSelected ? 1.04 : 1.0)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("editor.adjustControl.\(control.rawValue)")
     }
 
     private var sliderSection: some View {
@@ -334,6 +337,7 @@ struct AdjustBasicPanelView: View {
                     }
                 )
                 .tint(.blue)
+                .accessibilityIdentifier("editor.adjustPanel.slider")
 
                 Text(valueText())
                     .font(.system(size: 14, weight: .semibold).monospacedDigit())
@@ -345,6 +349,7 @@ struct AdjustBasicPanelView: View {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(isEdited ? Color.blue.opacity(0.10) : Color.gray.opacity(0.10))
                     )
+                    .accessibilityIdentifier("editor.adjustPanel.valueLabel")
             }
         }
     }

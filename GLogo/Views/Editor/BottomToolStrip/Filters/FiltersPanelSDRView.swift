@@ -168,6 +168,7 @@ struct FiltersPanelSDRView: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("editor.filterPreset.\(preset.id)")
     }
 
     /// 選択中画像に対するプリセットプレビューを生成

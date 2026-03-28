@@ -279,6 +279,7 @@ struct EditorView: View {
                 Button("common.ok", role: .destructive) {
                     alertState.confirmationAction()
                 }
+                .accessibilityIdentifier("editor.confirmation.okButton")
                 Button("common.cancel", role: .cancel) {}
             }
             .applySystemOverlayVisibility(isHidden: isSystemOverlayHidden)

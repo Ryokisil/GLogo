@@ -101,7 +101,7 @@ final class RevertSnapshotRegressionTests: XCTestCase {
         XCTAssertFalse(imageElement.canRevertToInitialState)
 
         let encoded = try JSONEncoder().encode(imageElement)
-        var decoded = try JSONDecoder().decode(ImageElement.self, from: encoded)
+        let decoded = try JSONDecoder().decode(ImageElement.self, from: encoded)
 
         XCTAssertFalse(decoded.canRevertToInitialState)
         decoded.saturationAdjustment = 0.5
