@@ -217,6 +217,9 @@ class ImageElement: LogoElement {
     /// 元画像の識別子（UUIDなど）
     var originalImageIdentifier: String?
 
+    /// 高画質化を適用済みかどうか
+    var hasAppliedUpscale: Bool = false
+
     // MARK: - 画像ソース管理
 
     /// 画像ソース種別
@@ -563,6 +566,8 @@ class ImageElement: LogoElement {
         case imageFileName, imageData
         // 元画像参照
         case originalImageURL, originalImagePath, originalImageIdentifier
+        // AI処理状態
+        case hasAppliedUpscale
         // 色・トーン調整
         case saturationAdjustment, brightnessAdjustment, contrastAdjustment
         case highlightsAdjustment, shadowsAdjustment, blacksAdjustment, whitesAdjustment
@@ -596,6 +601,7 @@ class ImageElement: LogoElement {
         try container.encodeIfPresent(originalImageURL, forKey: .originalImageURL)
         try container.encodeIfPresent(originalImagePath, forKey: .originalImagePath)
         try container.encodeIfPresent(originalImageIdentifier, forKey: .originalImageIdentifier)
+        try container.encode(hasAppliedUpscale, forKey: .hasAppliedUpscale)
         try container.encode(saturationAdjustment, forKey: .saturationAdjustment)
         try container.encode(brightnessAdjustment, forKey: .brightnessAdjustment)
         try container.encode(contrastAdjustment, forKey: .contrastAdjustment)
@@ -658,6 +664,7 @@ class ImageElement: LogoElement {
         originalImageURL = try container.decodeIfPresent(URL.self, forKey: .originalImageURL)
         originalImagePath = try container.decodeIfPresent(String.self, forKey: .originalImagePath)
         originalImageIdentifier = try container.decodeIfPresent(String.self, forKey: .originalImageIdentifier)
+        hasAppliedUpscale = try container.decodeIfPresent(Bool.self, forKey: .hasAppliedUpscale) ?? false
         saturationAdjustment = try container.decode(CGFloat.self, forKey: .saturationAdjustment)
         brightnessAdjustment = try container.decode(CGFloat.self, forKey: .brightnessAdjustment)
         contrastAdjustment = try container.decode(CGFloat.self, forKey: .contrastAdjustment)
@@ -878,10 +885,17 @@ class ImageElement: LogoElement {
     ///   - imageData: 差し替える画像データ
     ///   - resetAdjustments: フィルター調整値を初期化するかどうか
     ///   - originalIdentifier: 差し替え後に設定する識別子（nilの場合は新規生成）
+    ///   - hasAppliedUpscale: 差し替え後に高画質化済みとして扱うかどうか
     /// - Returns: なし
-    func replaceImageSource(with imageData: Data, resetAdjustments: Bool, originalIdentifier: String? = nil) {
+    func replaceImageSource(
+        with imageData: Data,
+        resetAdjustments: Bool,
+        originalIdentifier: String? = nil,
+        hasAppliedUpscale: Bool = false
+    ) {
         setImageSource(.data(imageData))
         originalImageIdentifier = originalIdentifier ?? UUID().uuidString
+        self.hasAppliedUpscale = hasAppliedUpscale
 
         if let image = UIImage(data: imageData) {
             updateSizeFromImage(image)
@@ -901,8 +915,16 @@ class ImageElement: LogoElement {
     ///   - url: 復元する画像URL
     ///   - path: 復元する画像パス
     ///   - originalIdentifier: 復元する識別子
+    ///   - hasAppliedUpscale: 復元後に高画質化済みとして扱うかどうか
     /// - Returns: なし
-    func restoreImageSource(imageData: Data?,fileName: String?,url: URL?,path: String?,originalIdentifier: String?) {
+    func restoreImageSource(
+        imageData: Data?,
+        fileName: String?,
+        url: URL?,
+        path: String?,
+        originalIdentifier: String?,
+        hasAppliedUpscale: Bool
+    ) {
         let source = resolveImageSource(
             imageData: imageData,
             fileName: fileName,
@@ -911,6 +933,7 @@ class ImageElement: LogoElement {
         )
         setImageSource(source)
         originalImageIdentifier = originalIdentifier
+        self.hasAppliedUpscale = hasAppliedUpscale
 
         if let source = source {
             switch source {

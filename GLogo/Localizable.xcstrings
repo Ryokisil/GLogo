@@ -420,13 +420,30 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AI super-resolution improves the selected image with a bundled Real-ESRGAN model."
+            "value" : "Enhances the selected image to make details look clearer."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "内蔵の Real-ESRGAN モデルで選択中の画像をAI超解像で高画質化します。"
+            "value" : "選択中の画像を高画質化して、細部をよりくっきり見やすくします。"
+          }
+        }
+      }
+    },
+    "aiTools.enhance.alreadyApplied" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This image has already been enhanced."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この画像にはすでに高画質化を適用しています。"
           }
         }
       }
@@ -437,13 +454,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The AI model realesr-general-x4v3 is not bundled yet. Add it under GLogo/Resources/MLModels to enable this feature."
+            "value" : "This feature is currently unavailable."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AIモデル realesr-general-x4v3 がまだバンドルされていません。GLogo/Resources/MLModels に追加してこの機能を有効にしてください。"
+            "value" : "現在この機能は利用できません。"
           }
         }
       }

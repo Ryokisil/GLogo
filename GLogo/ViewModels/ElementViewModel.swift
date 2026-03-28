@@ -93,6 +93,12 @@ class ElementViewModel: ObservableObject {
         imageElement?.appliedFilterPresetId
     }
 
+    /// 高画質化をまだ実行できるかどうか
+    var canRequestUpscale: Bool {
+        guard let imageElement else { return false }
+        return !imageElement.hasAppliedUpscale
+    }
+
     /// 選択中画像要素の表示用プレビュー画像
     var renderedPreviewImage: UIImage? {
         guard let imageElement else { return nil }

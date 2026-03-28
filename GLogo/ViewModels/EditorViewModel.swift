@@ -437,7 +437,7 @@ class EditorViewModel: ObservableObject {
     ///   - imageElement: 更新対象の画像要素
     /// - Returns: なし
     func applyManualBackgroundRemovalResult(_ image: UIImage, to imageElement: ImageElement) {
-        applyReplacedImage(image, to: imageElement)
+        applyReplacedImage(image, to: imageElement, hasAppliedUpscale: imageElement.hasAppliedUpscale)
     }
 
     /// 高画質化結果を画像要素に反映
@@ -446,15 +446,16 @@ class EditorViewModel: ObservableObject {
     ///   - imageElement: 更新対象の画像要素
     /// - Returns: なし
     func applyUpscaledImageResult(_ image: UIImage, to imageElement: ImageElement) {
-        applyReplacedImage(image, to: imageElement)
+        applyReplacedImage(image, to: imageElement, hasAppliedUpscale: true)
     }
 
     /// 差し替え画像を既存履歴へ反映
     /// - Parameters:
     ///   - image: 差し替え後の画像
     ///   - imageElement: 更新対象の画像要素
+    ///   - hasAppliedUpscale: 差し替え後に高画質化済みとして扱うかどうか
     /// - Returns: なし
-    private func applyReplacedImage(_ image: UIImage, to imageElement: ImageElement) {
+    private func applyReplacedImage(_ image: UIImage, to imageElement: ImageElement, hasAppliedUpscale: Bool) {
         guard let newImageData = image.pngData() else { return }
 
         let newOriginalIdentifier = UUID().uuidString
@@ -465,6 +466,7 @@ class EditorViewModel: ObservableObject {
             oldOriginalImageURL: imageElement.originalImageURL,
             oldOriginalImagePath: imageElement.originalImagePath,
             oldOriginalImageIdentifier: imageElement.originalImageIdentifier,
+            oldHasAppliedUpscale: imageElement.hasAppliedUpscale,
             oldToneCurveData: imageElement.toneCurveData,
             oldSaturation: imageElement.saturationAdjustment,
             oldBrightness: imageElement.brightnessAdjustment,
@@ -488,7 +490,8 @@ class EditorViewModel: ObservableObject {
             oldAppliedFilterRecipe: imageElement.appliedFilterRecipe,
             oldAppliedFilterPresetId: imageElement.appliedFilterPresetId,
             newImageData: newImageData,
-            newOriginalImageIdentifier: newOriginalIdentifier
+            newOriginalImageIdentifier: newOriginalIdentifier,
+            newHasAppliedUpscale: hasAppliedUpscale
         )
 
         history.recordAndApply(event)
@@ -1087,6 +1090,7 @@ class EditorViewModel: ObservableObject {
     ) {
         guard !isProcessingUpscale else { return }
         guard let originalImage = imageElement.originalImage else { return }
+        guard !imageElement.hasAppliedUpscale else { return }
         lastUpscaleErrorMessage = nil
         isProcessingUpscale = true
 

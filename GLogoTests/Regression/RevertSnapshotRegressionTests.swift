@@ -108,6 +108,17 @@ final class RevertSnapshotRegressionTests: XCTestCase {
         XCTAssertTrue(decoded.canRevertToInitialState)
     }
 
+    /// 高画質化済み状態がCodable往復後も保持されることを検証
+    func testHasAppliedUpscale_CodableRoundTrip_PreservesValue() throws {
+        let imageElement = try makeImageElement()
+        imageElement.hasAppliedUpscale = true
+
+        let encoded = try JSONEncoder().encode(imageElement)
+        let decoded = try JSONDecoder().decode(ImageElement.self, from: encoded)
+
+        XCTAssertTrue(decoded.hasAppliedUpscale)
+    }
+
     // MARK: - Helpers
 
     /// テスト用の画像要素を生成

@@ -1872,6 +1872,7 @@ struct ImageContentReplacedEvent: EditorEvent {
     let oldOriginalImageURL: URL?
     let oldOriginalImagePath: String?
     let oldOriginalImageIdentifier: String?
+    let oldHasAppliedUpscale: Bool
     let oldToneCurveData: ToneCurveData
     let oldSaturation: CGFloat
     let oldBrightness: CGFloat
@@ -1896,6 +1897,7 @@ struct ImageContentReplacedEvent: EditorEvent {
     let oldAppliedFilterPresetId: String?
     let newImageData: Data
     let newOriginalImageIdentifier: String
+    let newHasAppliedUpscale: Bool
 
     var description: String {
         return "画像内容を差し替えました"
@@ -1909,6 +1911,7 @@ struct ImageContentReplacedEvent: EditorEvent {
     ///   - oldOriginalImageURL: 以前の画像URL
     ///   - oldOriginalImagePath: 以前の画像パス
     ///   - oldOriginalImageIdentifier: 以前の画像識別子
+    ///   - oldHasAppliedUpscale: 以前の高画質化適用状態
     ///   - oldToneCurveData: 以前のトーンカーブ
     ///   - oldSaturation: 以前の彩度
     ///   - oldBrightness: 以前の明度
@@ -1933,6 +1936,7 @@ struct ImageContentReplacedEvent: EditorEvent {
     ///   - oldAppliedFilterPresetId: 以前のフィルタープリセットID
     ///   - newImageData: 差し替え後の画像データ
     ///   - newOriginalImageIdentifier: 差し替え後の画像識別子
+    ///   - newHasAppliedUpscale: 差し替え後の高画質化適用状態
     /// - Returns: なし
     init(
         elementId: UUID,
@@ -1941,6 +1945,7 @@ struct ImageContentReplacedEvent: EditorEvent {
         oldOriginalImageURL: URL?,
         oldOriginalImagePath: String?,
         oldOriginalImageIdentifier: String?,
+        oldHasAppliedUpscale: Bool,
         oldToneCurveData: ToneCurveData,
         oldSaturation: CGFloat,
         oldBrightness: CGFloat,
@@ -1964,7 +1969,8 @@ struct ImageContentReplacedEvent: EditorEvent {
         oldAppliedFilterRecipe: FilterRecipe?,
         oldAppliedFilterPresetId: String?,
         newImageData: Data,
-        newOriginalImageIdentifier: String
+        newOriginalImageIdentifier: String,
+        newHasAppliedUpscale: Bool
     ) {
         self.elementId = elementId
         self.oldImageData = oldImageData
@@ -1972,6 +1978,7 @@ struct ImageContentReplacedEvent: EditorEvent {
         self.oldOriginalImageURL = oldOriginalImageURL
         self.oldOriginalImagePath = oldOriginalImagePath
         self.oldOriginalImageIdentifier = oldOriginalImageIdentifier
+        self.oldHasAppliedUpscale = oldHasAppliedUpscale
         self.oldToneCurveData = oldToneCurveData
         self.oldSaturation = oldSaturation
         self.oldBrightness = oldBrightness
@@ -1996,11 +2003,12 @@ struct ImageContentReplacedEvent: EditorEvent {
         self.oldAppliedFilterPresetId = oldAppliedFilterPresetId
         self.newImageData = newImageData
         self.newOriginalImageIdentifier = newOriginalImageIdentifier
+        self.newHasAppliedUpscale = newHasAppliedUpscale
     }
 
     private enum CodingKeys: String, CodingKey {
         case timestamp, elementId
-        case oldImageData, oldImageFileName, oldOriginalImageURL, oldOriginalImagePath, oldOriginalImageIdentifier
+        case oldImageData, oldImageFileName, oldOriginalImageURL, oldOriginalImagePath, oldOriginalImageIdentifier, oldHasAppliedUpscale
         case oldToneCurveData, oldSaturation, oldBrightness, oldContrast, oldHighlights, oldShadows, oldBlacks, oldWhites
         case oldWarmth, oldVibrance
         case oldHue, oldSharpness, oldGaussianBlurRadius
@@ -2008,7 +2016,7 @@ struct ImageContentReplacedEvent: EditorEvent {
         case oldTintIntensity
         case oldTintColorData, hasOldTintColor
         case oldAppliedFilterRecipe, oldAppliedFilterPresetId
-        case newImageData, newOriginalImageIdentifier
+        case newImageData, newOriginalImageIdentifier, newHasAppliedUpscale
     }
 
     /// エンコード処理（UIColorの変換を含む）
@@ -2024,6 +2032,7 @@ struct ImageContentReplacedEvent: EditorEvent {
         try container.encodeIfPresent(oldOriginalImageURL, forKey: .oldOriginalImageURL)
         try container.encodeIfPresent(oldOriginalImagePath, forKey: .oldOriginalImagePath)
         try container.encodeIfPresent(oldOriginalImageIdentifier, forKey: .oldOriginalImageIdentifier)
+        try container.encode(oldHasAppliedUpscale, forKey: .oldHasAppliedUpscale)
         try container.encode(oldToneCurveData, forKey: .oldToneCurveData)
         try container.encode(oldSaturation, forKey: .oldSaturation)
         try container.encode(oldBrightness, forKey: .oldBrightness)
@@ -2045,6 +2054,7 @@ struct ImageContentReplacedEvent: EditorEvent {
         try container.encode(oldTintIntensity, forKey: .oldTintIntensity)
         try container.encode(newImageData, forKey: .newImageData)
         try container.encode(newOriginalImageIdentifier, forKey: .newOriginalImageIdentifier)
+        try container.encode(newHasAppliedUpscale, forKey: .newHasAppliedUpscale)
 
         try container.encode(oldTintColor != nil, forKey: .hasOldTintColor)
         if let oldTintColor = oldTintColor {
@@ -2069,6 +2079,7 @@ struct ImageContentReplacedEvent: EditorEvent {
         oldOriginalImageURL = try container.decodeIfPresent(URL.self, forKey: .oldOriginalImageURL)
         oldOriginalImagePath = try container.decodeIfPresent(String.self, forKey: .oldOriginalImagePath)
         oldOriginalImageIdentifier = try container.decodeIfPresent(String.self, forKey: .oldOriginalImageIdentifier)
+        oldHasAppliedUpscale = try container.decodeIfPresent(Bool.self, forKey: .oldHasAppliedUpscale) ?? false
         oldToneCurveData = try container.decode(ToneCurveData.self, forKey: .oldToneCurveData)
         oldSaturation = try container.decode(CGFloat.self, forKey: .oldSaturation)
         oldBrightness = try container.decode(CGFloat.self, forKey: .oldBrightness)
@@ -2090,6 +2101,7 @@ struct ImageContentReplacedEvent: EditorEvent {
         oldTintIntensity = try container.decode(CGFloat.self, forKey: .oldTintIntensity)
         newImageData = try container.decode(Data.self, forKey: .newImageData)
         newOriginalImageIdentifier = try container.decode(String.self, forKey: .newOriginalImageIdentifier)
+        newHasAppliedUpscale = try container.decodeIfPresent(Bool.self, forKey: .newHasAppliedUpscale) ?? false
 
         let hasOldTintColor = try container.decode(Bool.self, forKey: .hasOldTintColor)
         oldTintColor = nil
@@ -2116,7 +2128,8 @@ struct ImageContentReplacedEvent: EditorEvent {
         element.replaceImageSource(
             with: newImageData,
             resetAdjustments: true,
-            originalIdentifier: newOriginalImageIdentifier
+            originalIdentifier: newOriginalImageIdentifier,
+            hasAppliedUpscale: newHasAppliedUpscale
         )
         element.size = preservedSize
     }
@@ -2137,7 +2150,8 @@ struct ImageContentReplacedEvent: EditorEvent {
             fileName: oldImageFileName,
             url: oldOriginalImageURL,
             path: oldOriginalImagePath,
-            originalIdentifier: oldOriginalImageIdentifier
+            originalIdentifier: oldOriginalImageIdentifier,
+            hasAppliedUpscale: oldHasAppliedUpscale
         )
         element.size = preservedSize
 

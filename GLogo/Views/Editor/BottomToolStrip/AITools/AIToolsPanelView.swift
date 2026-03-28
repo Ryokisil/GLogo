@@ -280,6 +280,11 @@ struct AIToolsPanelView: View {
                     .font(.footnote)
                     .foregroundColor(.red)
                     .fixedSize(horizontal: false, vertical: true)
+            } else if hasSelectedImage && !viewModel.canRequestUpscale {
+                Text("aiTools.enhance.alreadyApplied")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else if !viewModel.isRealESRGANAvailable {
                 Text("aiTools.enhance.modelNotBundled")
                     .font(.footnote)
@@ -305,7 +310,7 @@ struct AIToolsPanelView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
             .buttonBorderShape(.roundedRectangle(radius: 10))
-            .disabled(!hasSelectedImage || isProcessingAnyAITask || !viewModel.isRealESRGANAvailable)
+            .disabled(!hasSelectedImage || isProcessingAnyAITask || !viewModel.isRealESRGANAvailable || !viewModel.canRequestUpscale)
         }
     }
 
