@@ -28,12 +28,6 @@ enum ActiveSheet: Identifiable {
 
 /// 純粋なUI表示状態（パネル表示、グリッド設定など）
 private struct EditorUIState {
-    /// ツールパネルの表示フラグ
-    var isShowingToolPanel = true
-    /// エクスポートシートの表示フラグ
-    var isShowingExportSheet = false
-    /// プロジェクト設定シートの表示フラグ
-    var isShowingProjectSettings = false
     /// グリッド表示フラグ
     var showGrid = true
     /// グリッドスナップフラグ
@@ -100,9 +94,6 @@ struct EditorView: View {
     /// キーボード非表示時のキャンバスサイズ（テキスト編集中のリサイズ防止用）
     @State private var stableCanvasSize: CGSize = .zero
 
-    /// 削除エフェクトの状態
-    @State private var deleteEffect = DeleteEffectState()
-
     /// アプリ設定を閉じたあとにガイドを開く要求
     @State private var shouldOpenEditorGuideAfterSettingsDismiss = false
 
@@ -126,7 +117,15 @@ struct EditorView: View {
             GeometryReader { geometry in
                 // テキスト編集中（キーボード表示中）はサイズを固定して画像縮小を防止
                 let effectiveSize = viewModel.isEditingText ? stableCanvasSize : geometry.size
-                canvasArea
+                EditorCanvasContainerView(
+                        viewModel: viewModel,
+                        elementViewModel: elementViewModel,
+                        showGrid: uiState.showGrid,
+                        snapToGrid: uiState.snapToGrid,
+                        activeSheet: $activeSheet,
+                        onShowConfirmation: showConfirmation,
+                        onOpenAppSettings: openAppSettings
+                    )
                     .frame(
                         width: effectiveSize.width,
                         height: effectiveSize.height
@@ -144,7 +143,23 @@ struct EditorView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
-                topActionBar
+                EditorTopBarView(
+                    viewModel: viewModel,
+                    onSave: saveToPhotoLibraryAuto,
+                    onRevert: {
+                        if canRevert() {
+                            showConfirmation(
+                                message: "editor.revertConfirmation",
+                                action: revertSelectedImageToInitial
+                            )
+                        } else {
+                            showAlert(
+                                title: "editor.cannotRevert.title",
+                                message: "editor.cannotRevert.message"
+                            )
+                        }
+                    }
+                )
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 EditorBottomToolStrip(
@@ -158,95 +173,13 @@ struct EditorView: View {
                 .accessibilityHidden(isBottomToolStripHidden)
             }
             .overlay(alignment: .bottom) {
-                if uiState.selectedBottomTool == .adjust {
-                    AdjustBasicPanelView(
-                        viewModel: elementViewModel,
-                        onClose: {
-                            uiState.selectedBottomTool = .select
-                        }
-                    )
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
-            .overlay(alignment: .bottom) {
-                if uiState.selectedBottomTool == .frame {
-                    FramePanelView(
-                        viewModel: elementViewModel,
-                        onClose: {
-                            uiState.selectedBottomTool = .select
-                        }
-                    )
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
-            .overlay(alignment: .bottom) {
-                if uiState.selectedBottomTool == .magicStudio {
-                    AIToolsPanelView(
-                        viewModel: elementViewModel,
-                        onClose: {
-                            uiState.selectedBottomTool = .select
-                        },
-                        onOpenManualBackgroundRemoval: {
-                            if viewModel.selectedElement is ImageElement {
-                                isNavigatingToManualRemoval = true
-                            }
-                        }
-                    )
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
-            .overlay(alignment: .bottom) {
-                if uiState.selectedBottomTool == .filters {
-                    FiltersPanelView(
-                        viewModel: elementViewModel,
-                        onClose: {
-                            uiState.selectedBottomTool = .select
-                        }
-                    )
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
-            .overlay(alignment: .bottom) {
-                if uiState.selectedBottomTool == .effects {
-                    EffectsPanelView(
-                        viewModel: elementViewModel,
-                        onClose: {
-                            uiState.selectedBottomTool = .select
-                        }
-                    )
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
-            .overlay(alignment: .bottom) {
-                if uiState.isTextPanelVisible && !viewModel.isEditingText {
-                    TextPropertyPanelView(
-                        viewModel: elementViewModel,
-                        onClose: {
-                            uiState.isTextPanelVisible = false
-                            viewModel.clearSelection()
-                            viewModel.editorMode = .select
-                        },
-                        onOpenTextEditor: {
-                            if let textElement = viewModel.selectedElement as? TextElement {
-                                viewModel.startTextEditing(for: textElement)
-                            }
-                        }
-                    )
-                    .ignoresSafeArea(.keyboard, edges: .bottom)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
+                EditorBottomPanelHostView(
+                    selectedBottomTool: $uiState.selectedBottomTool,
+                    isTextPanelVisible: $uiState.isTextPanelVisible,
+                    isNavigatingToManualRemoval: $isNavigatingToManualRemoval,
+                    elementViewModel: elementViewModel,
+                    viewModel: viewModel
+                )
             }
             .overlay {
                 if uiState.isShowingEditorIntro {
@@ -422,273 +355,6 @@ struct EditorView: View {
         )
     }
 
-    // MARK: - キャンバスエリア
-    
-    private var canvasArea: some View {
-        ZStack {
-            // キャンバス背景
-            Color.gray.opacity(0.2)
-                .edgesIgnoringSafeArea(.all)
-            
-            // キャンバスビュー
-            CanvasViewRepresentable(
-                viewModel: viewModel,
-                showGrid: uiState.showGrid,
-                snapToGrid: uiState.snapToGrid,
-                deleteEffect: $deleteEffect
-            )
-            
-            if viewModel.editorMode == .select {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 0, coordinateSpace: .named("canvas"))
-                            .onEnded { value in
-                                let hit = hitTestElement(at: value.startLocation, in: viewModel.project.elements)
-                                if let element = hit {
-                                    viewModel.selectElement(element)
-                                } else {
-                                    viewModel.clearSelection()
-                                }
-                            }
-                    )
-            }
-            
-            // オーバーレイは選択モードのみ表示（作成モードでは入力を塞がない）
-            if viewModel.editorMode == .select,
-               !viewModel.isEditingText,
-               let selected = viewModel.selectedElement {
-                ElementSelectionView(
-                    element: selected,
-                    onManipulationStarted: nil,
-                    onManipulationChanged: nil,
-                    onManipulationEnded: nil,
-                    onMagnifyChanged: { scale in
-                        elementViewModel.applyGestureTransform(translation: nil, scale: scale, rotation: nil, ended: false)
-                    },
-                    onMagnifyEnded: {
-                        elementViewModel.applyGestureTransform(translation: nil, scale: nil, rotation: nil, ended: true)
-                    },
-                    onRotateGestureChanged: { angle in
-                        elementViewModel.applyGestureTransform(translation: nil, scale: nil, rotation: angle, ended: false)
-                    },
-                    onRotateGestureEnded: {
-                        elementViewModel.applyGestureTransform(translation: nil, scale: nil, rotation: nil, ended: true)
-                    },
-                    onMoveChanged: { translation in
-                        elementViewModel.applyGestureTransform(translation: translation, scale: nil, rotation: nil, ended: false)
-                    },
-                    onMoveEnded: {
-                        elementViewModel.applyGestureTransform(translation: nil, scale: nil, rotation: nil, ended: true)
-                    },
-                    onTapSelect: { globalPoint in
-                        DispatchQueue.main.async {
-                            // まず最前面をヒットテスト
-                            if let primary = hitTestElement(at: globalPoint, in: viewModel.project.elements) {
-                                if let selected = viewModel.selectedElement {
-                                    if primary.id == selected.id {
-                                        return // 同じ要素なら切り替えない
-                                    }
-                                }
-                                viewModel.selectElement(primary)
-                            } else {
-                                viewModel.clearSelection()
-                            }
-                        }
-                    }
-                )
-            }
-
-            if viewModel.isEditingText,
-               let editingElement = viewModel.editingTextElement {
-                TextEditDialog(
-                    initialText: editingElement.text,
-                    onEditComplete: { newText in
-                        viewModel.updateTextContent(editingElement, newText: newText)
-                        viewModel.endTextEditing()
-                    },
-                    onCancel: {
-                        viewModel.endTextEditing()
-                    }
-                )
-                .ignoresSafeArea(.keyboard, edges: .bottom)
-                .zIndex(1000)
-                .offset(y: -110)
-            }
-
-            // 削除フェードアウトエフェクト
-            if deleteEffect.isActive, let snapshot = deleteEffect.snapshot {
-                DeleteFadeEffect(
-                    snapshot: snapshot,
-                    frame: deleteEffect.frame
-                ) {
-                    deleteEffect.isActive = false
-                    deleteEffect.snapshot = nil
-                }
-                .zIndex(999)
-            }
-
-            // ツールバー
-            VStack {
-                toolbarOverlay
-                Spacer()
-            }
-            .padding()
-        }
-        .frame(maxHeight: .infinity)
-        .coordinateSpace(name: "canvas")
-    }
-    
-    // MARK: - オーバーレイツールバー
-    
-    private var toolbarOverlay: some View {
-        HStack {
-            // モードセレクタ
-            modeSelector
-            
-            Spacer()
-            
-            // ビューコントロール
-            viewControls
-        }
-        .padding(8)
-        .background(Color(UIColor.systemBackground).opacity(0.9))
-        .cornerRadius(8)
-        .shadow(radius: 2)
-    }
-    
-    // MARK: - モードセレクタ
-    
-    private var modeSelector: some View {
-        HStack(spacing: 12) {
-            // 画像インポートモード
-            Button(action: {
-                viewModel.editorMode = .imageImport
-                // activeSheetを使用する方法に変更
-                activeSheet = .imagePicker
-            }) {
-                Image(systemName: "photo")
-                    .foregroundColor(viewModel.editorMode == .imageImport ? .blue : .primary)
-            }
-            .help("editor.help.addImage")
-            
-            // 削除モード
-            Button(action: {
-                if let element = viewModel.selectedElement {
-                    // 選択中の要素がある場合は削除の確認
-                    showConfirmation(
-                        message: "editor.deleteConfirmation",
-                        action: {
-                            // スナップショットを取得してフェードアウト
-                            deleteEffect.snapshot = element.renderSnapshot()
-                            deleteEffect.frame = element.frame
-                            deleteEffect.isActive = true
-                            viewModel.deleteSelectedElement()
-                        }
-                    )
-                } else {
-                    // 選択中の要素がない場合は削除モードに切り替え
-                    viewModel.editorMode = .delete
-                }
-            }) {
-                Image(systemName: "trash")
-                    .foregroundColor(viewModel.editorMode == .delete ? .red : .primary)
-            }
-            .help("editor.help.deleteTool")
-            
-            // 画像役割切り替え（ベース/オーバーレイ）
-            if let selectedElement = viewModel.selectedElement,
-               let imageElement = selectedElement as? ImageElement {
-                Button(action: {
-                    // ベース画像でない場合のみ切り替え可能
-                    if !imageElement.isBaseImage {
-                        viewModel.toggleImageRole(imageElement)
-                    }
-                }) {
-                    Image(systemName: imageElement.isBaseImage ? "star.fill" : "star")
-                        .foregroundColor(imageElement.isBaseImage ? .yellow : .primary)
-                        .opacity(imageElement.isBaseImage ? 0.7 : 1.0) // ベース画像時は少し薄く表示
-                }
-                .disabled(imageElement.isBaseImage) // ベース画像時は無効化
-                .help(imageElement.isBaseImage ? String(localized: "editor.help.baseImageLocked") : String(localized: "editor.help.setBaseImage"))
-            }
-        }
-    }
-    
-    // MARK: - ビューコントロール
-
-    /// 上部のカスタム操作バー（NavigationBar非依存）
-    private var topActionBar: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 10) {
-                Button("editor.save") {
-                    saveToPhotoLibraryAuto()
-                }
-                .help("editor.save")
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(Color.gray.opacity(0.15))
-                )
-
-                Button(action: { viewModel.undo() }) {
-                    Image(systemName: "arrow.uturn.backward")
-                }
-                .disabled(!viewModel.canUndo)
-                .keyboardShortcut("z", modifiers: .command)
-                .help("editor.help.undo")
-
-                Button(action: { viewModel.redo() }) {
-                    Image(systemName: "arrow.uturn.forward")
-                }
-                .disabled(!viewModel.canRedo)
-                .keyboardShortcut("z", modifiers: [.command, .shift])
-                .help("editor.help.redo")
-            }
-
-            Spacer()
-
-            Button("editor.revert") {
-                if canRevert() {
-                    showConfirmation(
-                        message: "editor.revertConfirmation",
-                        action: revertSelectedImageToInitial
-                    )
-                } else {
-                    showAlert(
-                        title: "editor.cannotRevert.title",
-                        message: "editor.cannotRevert.message"
-                    )
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color.gray.opacity(0.15))
-            )
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .disabled(viewModel.isSavingImage)
-        .background(
-            Color(UIColor.systemBackground)
-                .opacity(0.96)
-                .ignoresSafeArea(edges: .top)
-        )
-    }
-
-    private var viewControls: some View {
-        HStack(spacing: 12) {
-            Button(action: openAppSettings) {
-                Image(systemName: "gearshape")
-                    .foregroundColor(.primary)
-            }
-            .help("editor.help.appSettings")
-        }
-    }
-    
     private static let editorIntroSteps: [EditorIntroStep] = [
         EditorIntroStep(
             titleKey: "guide.editor.addImage.title",
@@ -723,24 +389,6 @@ struct EditorView: View {
                 showAlert(title: "editor.saveFailed.title", message: "editor.saveFailed.message")
             }
         }
-    }
-    
-    /// 画像選択後の処理
-    private func handleImageSelected(_ image: UIImage?) {
-        guard let image = image, let imageData = image.pngData() else {
-            return
-        }
-        
-        // カーソル位置（中央）に画像を追加
-        let centerPosition = CGPoint(
-            x: viewModel.project.canvasSize.width / 2,
-            y: viewModel.project.canvasSize.height / 2
-        )
-        
-        viewModel.addImageElement(imageData: imageData, position: centerPosition, phAsset: nil)
-        
-        // 選択モードに戻る
-        viewModel.editorMode = .select
     }
     
     /// アラートを表示
@@ -787,16 +435,6 @@ struct EditorView: View {
         openEditorGuide()
     }
 
-    /// zIndex降順でヒットテスト
-    private func hitTestElement(at location: CGPoint, in elements: [LogoElement], excluding excludeId: UUID? = nil) -> LogoElement? {
-        elements
-            .sorted { $0.zIndex > $1.zIndex }
-            .first { element in
-                if let excludeId = excludeId, element.id == excludeId { return false }
-                return element.hitTest(location)
-            }
-    }
-
     /// 保存中に入力をロックするオーバーレイ
     private var savingOverlay: some View {
         ZStack {
@@ -827,8 +465,6 @@ private extension View {
         }
     }
 }
-
-
 
 /// プレビュー
 struct EditorView_Previews: PreviewProvider {
