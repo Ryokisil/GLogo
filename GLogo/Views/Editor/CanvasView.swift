@@ -41,9 +41,6 @@ class CanvasView: UIView {
     /// タッチ開始時のポイント
     private var touchStartPoint: CGPoint = .zero
     
-    /// 現在の操作タイプ
-    private var currentManipulationType: ElementManipulationType = .none
-    
     /// 操作中に品質を下げるかのフラグ（4K+画像対応）
     var isReducingQualityDuringManipulation = false
     
@@ -61,9 +58,6 @@ class CanvasView: UIView {
     
     /// 要素の操作を終了するときのコールバック
     var onManipulationEnded: (@MainActor () -> Void)?
-    
-    /// 選択要素の変形変更通知（位置・サイズ・回転）
-    var onElementTransformChanged: ((LogoElement, CGPoint, CGSize, CGFloat) -> Void)?
     
     /// 新しい要素を作成するときのコールバック
     var onCreateElement: (@MainActor (CGPoint) -> Void)?
@@ -378,10 +372,6 @@ class CanvasView: UIView {
         }
     }
     
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        super.touchesMoved(touches, with: event)
-    }
-    
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesEnded(touches, with: event)
 
@@ -406,24 +396,6 @@ class CanvasView: UIView {
     }
     
     // MARK: - タッチイベントハンドラ
-    
-    /// 選択モードのタッチ開始処理（選択のみ）
-    private func handleSelectTouchBegan(at location: CGPoint) {
-        let hitElement = hitTestElement(at: location)
-        onElementSelected?(hitElement)
-    }
-    
-    /// 選択モードのタッチ終了処理
-    private func handleSelectTouchEnded(at location: CGPoint) {
-        // タッチ開始時に処理済みの場合は何もしない
-        if currentManipulationType != .none {
-            return
-        }
-        
-        // 位置にある要素を選択
-        let hitElement = hitTestElement(at: location)
-        onElementSelected?(hitElement)
-    }
     
     /// 削除モードのタッチ開始処理
     private func handleDeleteTouchBegan(at location: CGPoint) {
