@@ -1212,6 +1212,7 @@ class ImageElement: LogoElement {
         copy.frameStyle = frameStyle
         copy.roundedCorners = roundedCorners
         copy.cornerRadius = cornerRadius
+        copy.hasAppliedUpscale = hasAppliedUpscale
         copy.initialAdjustmentSnapshot = initialAdjustmentSnapshot
 
         return copy

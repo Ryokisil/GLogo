@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		5374D5942DC4BFE5003F5F23 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 5374D5932DC4BFE5003F5F23 /* README.md */; };
 		53CAFAE22E6D145D001E7CA4 /* OhisamaFont11.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 53CAFAE12E6D145D001E7CA4 /* OhisamaFont11.ttf */; };
+		53D0F0012F2F100100A1B2C3 /* realesr-general-x4v3.mlmodelc in Resources */ = {isa = PBXBuildFile; fileRef = 53D0F0022F2F100100A1B2C3 /* realesr-general-x4v3.mlmodelc */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -31,6 +32,7 @@
 /* Begin PBXFileReference section */
 		5374D5932DC4BFE5003F5F23 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		53CAFAE12E6D145D001E7CA4 /* OhisamaFont11.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = OhisamaFont11.ttf; sourceTree = "<group>"; };
+		53D0F0022F2F100100A1B2C3 /* realesr-general-x4v3.mlmodelc */ = {isa = PBXFileReference; lastKnownFileType = folder; path = GLogo/Resources/MLModels/realesr-general-x4v3.mlmodelc; sourceTree = SOURCE_ROOT; };
 		53FC07A42D7200B40049A129 /* GLogo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GLogo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		53FC07B42D7200B50049A129 /* GLogoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GLogoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		53FC07BE2D7200B50049A129 /* GLogoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GLogoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -40,7 +42,15 @@
 		53CAFAE42E6D1741001E7CA4 /* Exceptions for "GLogo" folder in "GLogo" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				.claude/settings.local.json,
 				Info.plist,
+				Resources/MLModels/MODEL_SETUP.md,
+				Resources/MLModels/realesr-general-x4v3.mlmodelc,
+				Resources/MLModels/realesr-general-x4v3.mlmodelc/analytics/coremldata.bin,
+				Resources/MLModels/realesr-general-x4v3.mlmodelc/coremldata.bin,
+				Resources/MLModels/realesr-general-x4v3.mlmodelc/metadata.json,
+				Resources/MLModels/realesr-general-x4v3.mlmodelc/model.mil,
+				Resources/MLModels/realesr-general-x4v3.mlmodelc/weights/weight.bin,
 			);
 			target = 53FC07A32D7200B40049A129 /* GLogo */;
 		};
@@ -111,6 +121,7 @@
 				53CAFAE02E6D1300001E7CA4 /* Fonts */,
 				5374D5962DC4CD8C003F5F23 /* images */,
 				5374D5932DC4BFE5003F5F23 /* README.md */,
+				53D0F0022F2F100100A1B2C3 /* realesr-general-x4v3.mlmodelc */,
 				53FC07A62D7200B40049A129 /* GLogo */,
 				53FC07B72D7200B50049A129 /* GLogoTests */,
 				53FC07C12D7200B50049A129 /* GLogoUITests */,
@@ -144,7 +155,6 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				5374D5962DC4CD8C003F5F23 /* images */,
 				53FC07A62D7200B40049A129 /* GLogo */,
 			);
 			name = GLogo;
@@ -251,6 +261,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				53CAFAE22E6D145D001E7CA4 /* OhisamaFont11.ttf in Resources */,
+				53D0F0012F2F100100A1B2C3 /* realesr-general-x4v3.mlmodelc in Resources */,
 				5374D5942DC4BFE5003F5F23 /* README.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -119,6 +119,16 @@ final class RevertSnapshotRegressionTests: XCTestCase {
         XCTAssertTrue(decoded.hasAppliedUpscale)
     }
 
+    /// copy生成時にも高画質化済み状態が保持されることを検証
+    func testHasAppliedUpscale_Copy_PreservesValue() throws {
+        let imageElement = try makeImageElement()
+        imageElement.hasAppliedUpscale = true
+
+        let copied = try XCTUnwrap(imageElement.copy() as? ImageElement)
+
+        XCTAssertTrue(copied.hasAppliedUpscale)
+    }
+
     // MARK: - Helpers
 
     /// テスト用の画像要素を生成
