@@ -2564,6 +2564,63 @@ struct ElementZIndexChangedEvent: EditorEvent {
     }
 }
 
+/// 画像要素の並び順一括変更イベント（画像一覧レールでのドラッグ並べ替え用）
+struct ImageOrderChangedEvent: EditorEvent {
+    var eventName = "ImageOrderChanged"
+    var timestamp = Date()
+    /// 変更対象: (要素ID, 旧zIndex, 新zIndex)
+    let changes: [(elementId: UUID, oldZIndex: Int, newZIndex: Int)]
+
+    var description: String {
+        return "画像の並び順を変更しました"
+    }
+
+    // Codable対応用の内部構造体
+    private struct ZIndexChange: Codable {
+        let elementId: UUID
+        let oldZIndex: Int
+        let newZIndex: Int
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case eventName, timestamp, changes
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(eventName, forKey: .eventName)
+        try container.encode(timestamp, forKey: .timestamp)
+        let codableChanges = changes.map { ZIndexChange(elementId: $0.elementId, oldZIndex: $0.oldZIndex, newZIndex: $0.newZIndex) }
+        try container.encode(codableChanges, forKey: .changes)
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        eventName = try container.decode(String.self, forKey: .eventName)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        let codableChanges = try container.decode([ZIndexChange].self, forKey: .changes)
+        changes = codableChanges.map { ($0.elementId, $0.oldZIndex, $0.newZIndex) }
+    }
+
+    init(changes: [(elementId: UUID, oldZIndex: Int, newZIndex: Int)]) {
+        self.changes = changes
+    }
+
+    func apply(to project: LogoProject) {
+        for change in changes {
+            guard let element = project.element(for: change.elementId) else { continue }
+            element.zIndex = change.newZIndex
+        }
+    }
+
+    func revert(from project: LogoProject) {
+        for change in changes {
+            guard let element = project.element(for: change.elementId) else { continue }
+            element.zIndex = change.oldZIndex
+        }
+    }
+}
+
 // MARK: - 背景ぼかし関連イベント
 
 /// 背景ぼかしマスク変更イベント

@@ -1,174 +1,156 @@
 //
 // 概要：フィルター適用・合成処理。
-// ベース画像の解像度そのままで出力し、キャンバス座標をスケール変換してオーバーレイを描画。画像要素は高解像度で再描画。
+// ベース画像の範囲を基準に、editor と同じキャンバス座標系で可視要素を再描画する。
+// 保存解像度はベース画像の実ピクセルサイズを使用し、はみ出した要素はクリップする。
 
 import UIKit
 
 struct ImageProcessingService: ImageProcessing {
+    private static let maxCompositePixelCount: CGFloat = 24_000_000
+    private static let maxCompositeLongSide: CGFloat = 6_144
+
+    private struct CompositeRenderMetrics {
+        let renderScale: CGSize
+        let renderSize: CGSize
+    }
+
     /// ImageElement に設定されたフィルターを適用した画像を返す
     func applyFilters(to imageElement: ImageElement) -> UIImage? {
         imageElement.getFilteredImageForce()
     }
 
-    /// ベース画像の解像度を保ったままオーバーレイを合成する
-    func makeCompositeImage(
-        baseImage: UIImage,
-        project: LogoProject
-    ) -> UIImage? {
-        print("[SaveDebug] makeCompositeImage input baseImage.size: \(baseImage.size), scale: \(baseImage.scale)")
+    /// ベース画像の範囲を基準に合成して返す
+    /// - Parameters:
+    ///   - baseElement: 保存基準となるベース画像要素
+    ///   - project: プロジェクト
+    /// - Returns: 合成画像（ベース画像の実ピクセルサイズで出力）
+    func makeCompositeImage(baseElement: ImageElement, project: LogoProject) -> UIImage? {
         logImageElements(project.elements)
 
-        let imageElements = project.elements.compactMap { $0 as? ImageElement }
-        guard let targetImageElement = imageElements.first(where: { element in
-            if let original = element.originalImage {
-                return original.size == baseImage.size || element.image?.size == baseImage.size
-            }
-            return false
-        }) else {
-            print("[SaveDebug] ❌ ベースに一致する画像要素が見つからないためベースのみで返す")
-            return baseImage
+        guard let baseImage = baseElement.getFilteredImageForce() else {
+            print("[SaveDebug] ❌ ベース画像のフィルタ適用に失敗")
+            return nil
         }
 
-        // 最終出力サイズはベース画像そのまま（解像度保持）
-        let imageSize = baseImage.size
+        let basePixelSize = pixelSize(of: baseImage)
+        guard basePixelSize.width > 0, basePixelSize.height > 0,
+              baseElement.size.width > 0, baseElement.size.height > 0 else {
+            print("[SaveDebug] ❌ ベース画像サイズが無効")
+            return nil
+        }
+
+        // ベース要素の editor 上フレームをキャンバスでクリップ
+        let baseFrame = CGRect(origin: baseElement.position, size: baseElement.size)
+        let canvasRect = CGRect(origin: .zero, size: project.canvasSize)
+        let exportRect = baseFrame.intersection(canvasRect)
+        guard !exportRect.isNull, !exportRect.isEmpty else {
+            print("[SaveDebug] ❌ ベース画像がキャンバス外")
+            return nil
+        }
+
+        // 保存倍率: ベース画像のピクセル密度を縦横別に反映する
+        let baseScaleX = basePixelSize.width / baseElement.size.width
+        let baseScaleY = basePixelSize.height / baseElement.size.height
+        let renderMetrics = resolveRenderMetrics(
+            xScale: baseScaleX,
+            yScale: baseScaleY,
+            exportRect: exportRect
+        )
+        let renderScale = renderMetrics.renderScale
+        let renderSize = renderMetrics.renderSize
+
+        let visibleElements = project.elements
+            .filter(\.isVisible)
+            .sorted { $0.zIndex < $1.zIndex }
+        let resolvedImages = resolvedImages(for: visibleElements)
 
         let format = UIGraphicsImageRendererFormat()
-        format.scale = baseImage.scale
-        format.opaque = true
+        format.scale = 1.0
+        format.opaque = false
 
-        let renderer = UIGraphicsImageRenderer(size: imageSize, format: format)
+        let renderer = UIGraphicsImageRenderer(size: renderSize, format: format)
         return renderer.image { context in
             let cgContext = context.cgContext
 
-            if let adjustedBaseElement = targetImageElement.copy() as? ImageElement {
-                adjustedBaseElement.position = .zero
-                adjustedBaseElement.size = imageSize
-                adjustedBaseElement.rotation = 0
-                adjustedBaseElement.opacity = 1.0
-                scaleImageFrameRenderingAttributes(
-                    adjustedBaseElement,
-                    originalSize: targetImageElement.size,
-                    renderedSize: imageSize
-                )
-                ImageElementRenderer.draw(adjustedBaseElement, in: cgContext, image: baseImage)
-            } else {
-                let baseRect = CGRect(origin: .zero, size: imageSize)
-                baseImage.draw(in: baseRect)
-            }
+            cgContext.scaleBy(x: renderScale.width, y: renderScale.height)
+            // editor と同じキャンバス座標系のまま描画し、ベース要素原点へ平行移動する
+            cgContext.translateBy(x: -exportRect.minX, y: -exportRect.minY)
+            // ベース画像範囲（∩キャンバス）でクリップ
+            cgContext.clip(to: exportRect)
 
-            // キャンバス座標系での画像要素矩形
-            let imageElementRect = CGRect(
-                x: targetImageElement.position.x,
-                y: targetImageElement.position.y,
-                width: targetImageElement.size.width,
-                height: targetImageElement.size.height
-            )
+            // 背景設定描画（editor と同じ座標系。clip によりベース画像範囲内のみ反映）
+            project.backgroundSettings.draw(in: cgContext, rect: canvasRect)
 
-            // キャンバス→保存画像へのスケール比率（縦横別々に適用、アスペクト比は維持）
-            let scaleX = imageSize.width / imageElementRect.width
-            let scaleY = imageSize.height / imageElementRect.height
-            print("[SaveDebug] scaleX: \(scaleX), scaleY: \(scaleY)")
-
-            // ZIndex順に要素を描画（ベース自身以外を対象）
-            let visibleOverlayElements = project.elements.filter { $0.id != targetImageElement.id && $0.isVisible }
-            let sortedElements = visibleOverlayElements.sorted { $0.zIndex < $1.zIndex }
-
-            for element in sortedElements {
-                let elementRect = CGRect(
-                    x: element.position.x,
-                    y: element.position.y,
-                    width: element.size.width,
-                    height: element.size.height
-                )
-                guard imageElementRect.intersects(elementRect) else { continue }
-
-                // 相対位置に基づきスケール変換
-                let relativeX = element.position.x - imageElementRect.minX
-                let relativeY = element.position.y - imageElementRect.minY
-                let drawRect = CGRect(
-                    x: relativeX * scaleX,
-                    y: relativeY * scaleY,
-                    width: element.size.width * scaleX,
-                    height: element.size.height * scaleY
-                )
-                guard drawRect.width > 0, drawRect.height > 0 else { continue }
-
-                let adjustedElement = element.copy()
-                adjustedElement.position = CGPoint(x: drawRect.minX, y: drawRect.minY)
-                adjustedElement.size = CGSize(width: drawRect.width, height: drawRect.height)
-
-                if let adjustedImageElement = adjustedElement as? ImageElement {
-                    scaleImageFrameRenderingAttributes(
-                        adjustedImageElement,
-                        originalSize: element.size,
-                        renderedSize: drawRect.size
-                    )
-                }
-
-                if let imageElement = adjustedElement as? ImageElement,
-                   let highResImage = imageElement.getFilteredImageForce() {
-                    drawHighResolutionImageElement(
-                        image: highResImage,
-                        element: imageElement,
-                        adjustedElement: adjustedElement,
-                        in: cgContext
-                    )
+            for element in visibleElements {
+                if let imageElement = element as? ImageElement,
+                   let highResImage = resolvedImages[element.id] {
+                    ImageElementRenderer.draw(imageElement, in: cgContext, image: highResImage)
                     continue
                 }
 
-                if let textElement = adjustedElement as? TextElement {
-                    // フォントの縦横比を維持するため、文字関連エフェクトも同じ最小倍率で統一スケールする
-                    scaleTextRenderingAttributes(textElement, by: min(scaleX, scaleY))
-                }
-
-                adjustedElement.draw(in: cgContext)
+                element.draw(in: cgContext)
             }
         }
     }
 
     // MARK: - 補助
 
-    /// 高解像度画像要素を直接描画（角丸・フレーム対応）
-    private func drawHighResolutionImageElement(
-        image: UIImage,
-        element: ImageElement,
-        adjustedElement: LogoElement,
-        in context: CGContext
-    ) {
-        _ = element
-        guard let adjustedImageElement = adjustedElement as? ImageElement else { return }
+    /// 可視画像要素のフル品質画像を一度だけ解決する
+    private func resolvedImages(for elements: [LogoElement]) -> [UUID: UIImage] {
+        Dictionary(
+            uniqueKeysWithValues: elements.compactMap { element in
+                guard let imageElement = element as? ImageElement,
+                      let highResImage = imageElement.getFilteredImageForce() else {
+                    return nil
+                }
 
-        ImageElementRenderer.draw(adjustedImageElement, in: context, image: image)
+                return (element.id, highResImage)
+            }
+        )
     }
 
-    /// 保存時の拡縮に合わせて画像フレーム属性を調整する
-    /// - Parameters:
-    ///   - imageElement: 調整対象の画像要素
-    ///   - originalSize: 編集時の要素サイズ
-    ///   - renderedSize: 保存時に描画するサイズ
-    /// - Returns: なし
-    private func scaleImageFrameRenderingAttributes(
-        _ imageElement: ImageElement,
-        originalSize: CGSize,
-        renderedSize: CGSize
-    ) {
-        guard originalSize.width > 0, originalSize.height > 0 else { return }
-        let scale = min(renderedSize.width / originalSize.width, renderedSize.height / originalSize.height)
-        guard scale.isFinite, scale > 0 else { return }
+    /// ピクセル上限を考慮しつつ、実際の出力サイズと描画倍率を解決する
+    private func resolveRenderMetrics(
+        xScale: CGFloat,
+        yScale: CGFloat,
+        exportRect: CGRect
+    ) -> CompositeRenderMetrics {
+        let requestedSize = CGSize(
+            width: exportRect.width * xScale,
+            height: exportRect.height * yScale
+        )
+        let requestedPixelCount = max(requestedSize.width * requestedSize.height, 1)
+        let requestedLongSide = max(requestedSize.width, requestedSize.height, 1)
 
-        imageElement.frameWidth *= scale
-        imageElement.cornerRadius *= scale
+        let pixelLimitedScale = sqrt(Self.maxCompositePixelCount / requestedPixelCount)
+        let longSideLimitedScale = Self.maxCompositeLongSide / requestedLongSide
+        let downscaleFactor = min(1.0, pixelLimitedScale, longSideLimitedScale)
+
+        let renderSize = CGSize(
+            width: max(1.0, (requestedSize.width * downscaleFactor).rounded()),
+            height: max(1.0, (requestedSize.height * downscaleFactor).rounded())
+        )
+        let renderScale = CGSize(
+            width: renderSize.width / exportRect.width,
+            height: renderSize.height / exportRect.height
+        )
+
+        return CompositeRenderMetrics(
+            renderScale: renderScale,
+            renderSize: renderSize
+        )
     }
 
-    /// 保存時の拡縮に合わせてテキスト描画属性（フォント・影・縁取り・グロー）を調整する
-    /// - Parameters:
-    ///   - textElement: 調整対象のテキスト要素
-    ///   - scale: 拡縮倍率
-    private func scaleTextRenderingAttributes(_ textElement: TextElement, by scale: CGFloat) {
-        guard scale > 0 else { return }
+    /// UIImage の実ピクセルサイズを返す
+    private func pixelSize(of image: UIImage) -> CGSize {
+        if let cgImage = image.cgImage {
+            return CGSize(width: cgImage.width, height: cgImage.height)
+        }
 
-        textElement.fontSize *= scale
-        textElement.effects = textElement.effects.map { $0.scaled(by: scale) }
+        return CGSize(
+            width: image.size.width * image.scale,
+            height: image.size.height * image.scale
+        )
     }
 
     /// 保存処理用の画像要素ログを出力

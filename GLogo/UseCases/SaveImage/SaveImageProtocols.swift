@@ -13,7 +13,7 @@ import UIKit
 /// 画像フィルタ適用・合成処理の抽象
 protocol ImageProcessing: Sendable {
     func applyFilters(to imageElement: ImageElement) -> UIImage?
-    func makeCompositeImage(baseImage: UIImage, project: LogoProject) -> UIImage?
+    func makeCompositeImage(baseElement: ImageElement, project: LogoProject) -> UIImage?
 }
 
 /// ベース画像要素の選択ロジックの抽象

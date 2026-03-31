@@ -140,37 +140,20 @@ struct SaveImageCoordinator: Sendable {
                     return
                 }
 
-                guard let finalImage = processingService.makeCompositeImage(
-                    baseImage: processedImage,
-                    project: project
-                ) else {
-                    await completion(.failure(.compositeGenerationFailed))
-                    return
-                }
-
                 do {
-                    let format = SaveImageCoordinator.resolveFormat(for: finalImage, mode: mode)
-                    try await writer.performSave(of: finalImage, format: format)
+                    let format = SaveImageCoordinator.resolveFormat(for: processedImage, mode: mode)
+                    try await writer.performSave(of: processedImage, format: format)
                     await completion(.success(()))
                 } catch {
                     Self.logger.error("写真ライブラリ保存に失敗: \(error.localizedDescription, privacy: .public)")
                     await completion(.failure(.writeFailed))
                 }
             case .composite:
-                let baseImageElement = selectionService.selectBaseImageElement(from: imageElements)
-                guard let selectedBaseImageElement = baseImageElement else {
+                guard let baseElement = selectionService.selectBaseImageElement(from: imageElements) else {
                     await completion(.failure(.imageSelectionFailed))
                     return
                 }
-                guard let baseImage = processingService.applyFilters(to: selectedBaseImageElement) else {
-                    await completion(.failure(.filterApplicationFailed))
-                    return
-                }
-
-                guard let finalImage = processingService.makeCompositeImage(
-                    baseImage: baseImage,
-                    project: project
-                ) else {
+                guard let finalImage = processingService.makeCompositeImage(baseElement: baseElement, project: project) else {
                     Self.logger.warning("合成保存に失敗: makeCompositeImage が nil を返却")
                     await completion(.failure(.compositeGenerationFailed))
                     return
@@ -193,7 +176,7 @@ struct SaveImageCoordinator: Sendable {
         case .individual:
             return imageHasAlpha(image) ? .png : .heic
         case .composite:
-            return .heic
+            return imageHasAlpha(image) ? .png : .heic
         case .failure:
             return .heic
         }

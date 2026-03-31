@@ -105,6 +105,9 @@ class EditorViewModel: ObservableObject {
     /// 直近の写真ライブラリ保存失敗理由
     @Published private(set) var lastPhotoLibrarySaveFailure: PhotoLibrarySaveFailure?
 
+    /// 画像一覧レールの表示フラグ
+    @Published var isImageListRailVisible = false
+
     /// メモリ警告監視
     private var memoryWarningObserver: MemoryWarningObserver?
 
@@ -1637,4 +1640,65 @@ class EditorViewModel: ObservableObject {
         selectElement(imageElement)
     }
 #endif
+
+    // MARK: - 画像一覧レール
+
+    /// 画像要素のみをzIndex降順（前面→背面）で返す
+    var imageElements: [ImageElement] {
+        project.elements
+            .compactMap { $0 as? ImageElement }
+            .sorted { $0.zIndex > $1.zIndex }
+    }
+
+    /// 画像一覧レールでのドラッグ並べ替え
+    /// - Parameters:
+    ///   - source: 移動元インデックス（降順リスト上）
+    ///   - destination: 移動先インデックス（降順リスト上）
+    func reorderImageElements(from source: IndexSet, to destination: Int) {
+        var ordered = imageElements
+        ordered.move(fromOffsets: source, toOffset: destination)
+        applyImageElementOrder(ordered)
+    }
+
+    /// ドラッグ中の画像を指定ターゲット位置へ移動する
+    /// - Parameters:
+    ///   - draggedImageID: ドラッグ中の画像要素ID
+    ///   - targetImageID: ドロップ先の画像要素ID
+    /// - Returns: なし
+    func reorderImageElement(draggedImageID: UUID, to targetImageID: UUID) {
+        var ordered = imageElements
+        guard let sourceIndex = ordered.firstIndex(where: { $0.id == draggedImageID }),
+              let targetIndex = ordered.firstIndex(where: { $0.id == targetImageID }),
+              sourceIndex != targetIndex else {
+            return
+        }
+
+        let destination = targetIndex > sourceIndex ? targetIndex + 1 : targetIndex
+        ordered.move(fromOffsets: IndexSet(integer: sourceIndex), toOffset: destination)
+        applyImageElementOrder(ordered)
+    }
+
+    /// 並べ替え後の画像配列に既存zIndex帯を再割り当てし、履歴へ記録する
+    /// - Parameters:
+    ///   - orderedElements: 前面→背面順に並んだ画像要素配列
+    /// - Returns: なし
+    private func applyImageElementOrder(_ orderedElements: [ImageElement]) {
+        let currentImageElements = imageElements
+        let sortedZIndices = currentImageElements.map(\.zIndex).sorted(by: >)
+        var changes: [(elementId: UUID, oldZIndex: Int, newZIndex: Int)] = []
+
+        for (index, element) in orderedElements.enumerated() {
+            let newZIndex = sortedZIndices[index]
+            if element.zIndex != newZIndex {
+                changes.append((elementId: element.id, oldZIndex: element.zIndex, newZIndex: newZIndex))
+            }
+        }
+
+        guard !changes.isEmpty else { return }
+
+        let event = ImageOrderChangedEvent(changes: changes)
+        history.recordAndApply(event)
+        isProjectModified = true
+        objectWillChange.send()
+    }
 }

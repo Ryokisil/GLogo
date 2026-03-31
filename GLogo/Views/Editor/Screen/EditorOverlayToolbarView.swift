@@ -80,21 +80,18 @@ struct EditorOverlayToolbarView: View {
             .accessibilityIdentifier("editor.overlay.deleteButton")
             .help("editor.help.deleteTool")
 
-            // 画像役割切り替え（ベース/オーバーレイ）
-            if let selectedElement = viewModel.selectedElement,
-               let imageElement = selectedElement as? ImageElement {
-                Button(action: {
-                    if !imageElement.isBaseImage {
-                        viewModel.toggleImageRole(imageElement)
-                    }
-                }) {
-                    Image(systemName: imageElement.isBaseImage ? "star.fill" : "star")
-                        .foregroundColor(imageElement.isBaseImage ? .yellow : .primary)
-                        .opacity(imageElement.isBaseImage ? 0.7 : 1.0)
+            // 画像一覧レール表示切り替え
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    viewModel.isImageListRailVisible.toggle()
                 }
-                .disabled(imageElement.isBaseImage)
-                .help(imageElement.isBaseImage ? String(localized: "editor.help.baseImageLocked") : String(localized: "editor.help.setBaseImage"))
+            }) {
+                Image(systemName: "square.3.layers.3d.down.left")
+                    .foregroundColor(viewModel.isImageListRailVisible ? .blue : .primary)
             }
+            .accessibilityIdentifier("editor.overlay.imageListButton")
+            .help("editor.help.imageList")
+
         }
     }
 

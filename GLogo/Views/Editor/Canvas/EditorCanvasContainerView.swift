@@ -146,7 +146,7 @@ struct EditorCanvasContainerView: View {
                 .zIndex(999)
             }
 
-            // ツールバー
+            // ツールバー + 画像一覧レール
             VStack {
                 EditorOverlayToolbarView(
                     viewModel: viewModel,
@@ -158,6 +158,18 @@ struct EditorCanvasContainerView: View {
                 Spacer()
             }
             .padding()
+
+            // 画像一覧レール（左端オーバーレイ）
+            if viewModel.isImageListRailVisible {
+                HStack {
+                    ImageListRailView(viewModel: viewModel)
+                        .padding(.top, 52) // ツールバー分のオフセット
+                        .padding(.leading, 8)
+                        .padding(.bottom, 8)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    Spacer()
+                }
+            }
         }
         .frame(maxHeight: .infinity)
         .coordinateSpace(name: "canvas")

@@ -32,9 +32,9 @@ private struct MainActorCompletionImageProcessingStub: ImageProcessing {
         return makeMainActorCompletionSolidImage(color: .white)
     }
 
-    func makeCompositeImage(baseImage: UIImage, project: LogoProject) -> UIImage? {
-        _ = project
-        return baseImage
+    func makeCompositeImage(baseElement: ImageElement, project: LogoProject) -> UIImage? {
+        _ = baseElement; _ = project
+        return makeMainActorCompletionSolidImage(color: .white)
     }
 }
 
