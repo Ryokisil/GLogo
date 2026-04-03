@@ -187,7 +187,8 @@ class LogoElement: Codable {
     func copy() -> LogoElement {
         // 基本的なコピーを作成
         let copy = LogoElement(name: self.name)
-        copy.id = UUID() // 新しいIDを生成（または必要に応じて同じIDを維持）
+        // 複製後は別要素として履歴・選択を区別できるよう、新しいIDを採番する。
+        copy.id = UUID()
         copy.position = self.position
         copy.size = self.size
         copy.rotation = self.rotation

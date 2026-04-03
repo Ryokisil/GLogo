@@ -240,10 +240,6 @@ struct ToneCurveView: View {
         // 出力値は0.0〜1.0の範囲内にクランプ
         newOutput = max(0.0, min(newOutput, 1.0))
 
-        #if DEBUG
-        print("✅ [ToneCurve] Point[\(index)] = (\(String(format: "%.3f", newInput)), \(String(format: "%.3f", newOutput))) - \(selectedChannel)")
-        #endif
-
         // 制御点を更新
         let newPoint = CurvePoint(input: newInput, output: newOutput)
         curveData.updatePoint(at: index, to: newPoint, for: selectedChannel)

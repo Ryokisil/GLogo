@@ -11,9 +11,11 @@
 import Foundation
 import UIKit
 import CoreImage
+import OSLog
 
 /// トーンカーブフィルター適用ユーティリティ
 class ToneCurveFilter {
+    private static let logger = Logger(subsystem: "com.silvia.GLogo", category: "ToneCurve")
 
     enum Quality {
         case preview   // 軽量プレビュー用
@@ -85,10 +87,8 @@ class ToneCurveFilter {
     ///   - curveData: トーンカーブデータ
     /// - Returns: フィルター適用済み画像（失敗時はnil）
     static func apply(to image: UIImage, curveData: ToneCurveData, quality: Quality = .full) -> UIImage? {
-        let startTime = CFAbsoluteTimeGetCurrent()
-
         guard let cgImage = image.cgImage else {
-            print("⚠️ [ToneCurve] CGImageの取得に失敗")
+            logger.warning("トーンカーブ適用に失敗: CGImage の取得に失敗")
             return nil
         }
 
@@ -99,21 +99,15 @@ class ToneCurveFilter {
 
         // CIColorCubeWithColorSpaceフィルターを適用
         guard let processedCIImage = applyCubeFilter(to: ciImage, curveData: curveData, quality: quality) else {
-            print("⚠️ [ToneCurve] フィルター適用に失敗")
+            logger.warning("トーンカーブ適用に失敗: CIColorCubeWithColorSpace の適用に失敗")
             return nil
         }
 
         // CIImage → UIImage（共有コンテキストを使用）
         guard let outputCGImage = sharedContext.createCGImage(processedCIImage, from: processedCIImage.extent) else {
-            print("⚠️ [ToneCurve] CGImage生成に失敗")
+            logger.warning("トーンカーブ適用に失敗: 出力 CGImage の生成に失敗")
             return nil
         }
-
-        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-
-        #if DEBUG
-        print("✅ [ToneCurve] 処理完了 (\(String(format: "%.0fms", elapsed * 1000)))")
-        #endif
 
         return UIImage(cgImage: outputCGImage, scale: image.scale, orientation: image.imageOrientation)
     }
@@ -137,8 +131,6 @@ class ToneCurveFilter {
     ///   - curveData: トーンカーブデータ
     /// - Returns: フィルター適用済みCIImage（失敗時はnil）
     private static func applyCubeFilter(to ciImage: CIImage, curveData: ToneCurveData, quality: Quality) -> CIImage? {
-        let cubeStartTime = CFAbsoluteTimeGetCurrent()
-
         // 入力を作業色空間に揃える（ciImage生成時に色空間指定済み）
         let inputImage = ciImage
 
@@ -152,15 +144,9 @@ class ToneCurveFilter {
 
         // 3D LUTを生成
         guard let cubeData = createColorCube(from: curveData, quality: quality) else {
-            print("⚠️ [ToneCurve] 3D LUT生成に失敗")
+            logger.warning("トーンカーブ適用に失敗: 3D LUT 生成に失敗")
             return nil
         }
-
-        let cubeElapsed = CFAbsoluteTimeGetCurrent() - cubeStartTime
-
-        #if DEBUG
-        print("📊 [ToneCurve] 3D LUT生成完了 (\(String(format: "%.0fms", cubeElapsed * 1000)))")
-        #endif
 
         // CIColorCubeWithColorSpaceフィルターを適用
         let filter = CIFilter(
@@ -174,7 +160,7 @@ class ToneCurveFilter {
         )
 
         guard let outputImage = filter?.outputImage else {
-            print("⚠️ [ToneCurve] フィルター出力の取得に失敗")
+            logger.warning("トーンカーブ適用に失敗: フィルター出力の取得に失敗")
             return nil
         }
 
@@ -190,15 +176,8 @@ class ToneCurveFilter {
 
         // キャッシュをチェック
         if let cachedLUT = lutCache.value(for: cacheKey) {
-            #if DEBUG
-            print("🎯 [ToneCurve] LUTキャッシュヒット")
-            #endif
             return cachedLUT
         }
-
-        #if DEBUG
-        print("🔨 [ToneCurve] LUT新規生成（キャッシュミス）")
-        #endif
 
         let dimension = cubeDimension(for: quality)
         let cubeSize = dimension * dimension * dimension * 4 // RGBA
@@ -217,14 +196,6 @@ class ToneCurveFilter {
         let redIsDefault = isDefaultCurve(curveData.redPoints)
         let greenIsDefault = isDefaultCurve(curveData.greenPoints)
         let blueIsDefault = isDefaultCurve(curveData.bluePoints)
-
-        #if DEBUG
-        print("📐 [ToneCurve] LUT生成開始: \(dimension)³ = \(dimension * dimension * dimension)エントリ")
-        print("  RGB: \(rgbIsDefault ? "デフォルト" : "カスタム")")
-        print("  Red: \(redIsDefault ? "デフォルト" : "カスタム")")
-        print("  Green: \(greenIsDefault ? "デフォルト" : "カスタム")")
-        print("  Blue: \(blueIsDefault ? "デフォルト" : "カスタム")")
-        #endif
 
         // 3D LUTを構築（Blue → Green → Red の順）
         for blueIndex in 0..<dimension {
@@ -281,17 +252,8 @@ class ToneCurveFilter {
         // Float配列をDataに変換
         let data = Data(bytes: &cubeDataArray, count: cubeSize * MemoryLayout<Float>.size)
 
-        #if DEBUG
-        print("✅ [ToneCurve] LUT生成完了: \(data.count / 1024)KB")
-        #endif
-
         // キャッシュに保存（次回すぐヒットできるようにする）
-        let didEvict = lutCache.insert(data, for: cacheKey)
-        if didEvict {
-            #if DEBUG
-            print("🗑️ [ToneCurve] LUTキャッシュ削除（上限到達）")
-            #endif
-        }
+        _ = lutCache.insert(data, for: cacheKey)
 
         return data
     }
@@ -316,9 +278,6 @@ class ToneCurveFilter {
     /// LUTキャッシュをクリア（メモリ解放用）
     static func clearCache() {
         lutCache.clear()
-        #if DEBUG
-        print("🗑️ [ToneCurve] LUTキャッシュをクリア")
-        #endif
     }
 
     /// 制御点がデフォルト状態（対角線）かチェック

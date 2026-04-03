@@ -52,18 +52,14 @@ xcodebuild -workspace GLogo.xcworkspace -scheme GLogo -only-testing:GLogoTests/T
 
 ## Coding Standards
 
-### Language
+### Documentation & Comments
+- Repository source of truth: follow `AGENTS.md` for repository-wide comment/documentation rules; keep this file aligned with it.
 - **All comments in Japanese** (日本語でコメントを記述)
-- Documentation: `///` (Swift DocC format)
-- Implementation notes: `//`
-
-### MARK Separation (Mandatory)
-```swift
-// MARK: - Properties
-// MARK: - Initialization
-// MARK: - Public Methods
-// MARK: - Private Methods
-```
+- Prefer comments that explain `why`, constraints, compatibility, performance, concurrency, rendering assumptions, or API quirks.
+- Use `///` for non-obvious contracts of types, methods, serialization rules, and only those properties whose behavior is not self-evident.
+- Avoid line-by-line explanations, property-name restatements, Swift syntax explanations, debug leftovers, and generic placeholder notes.
+- Keep file header summaries short and responsibility-focused.
+- Use `// MARK: - <Section>` to group by responsibility. Prefer labels such as `Canvas Rendering`, `Image Import`, `Persistence Compatibility`, or `Gesture Handling` over a fixed template.
 
 ### Naming Conventions
 - Variables/Properties: `camelCase`

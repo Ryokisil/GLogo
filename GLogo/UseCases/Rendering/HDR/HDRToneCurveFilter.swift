@@ -10,9 +10,11 @@
 import Foundation
 import UIKit
 import CoreImage
+import OSLog
 
 /// HDR用トーンカーブフィルター適用ユーティリティ（Display P3色空間）
 class HDRToneCurveFilter {
+    private static let logger = Logger(subsystem: "com.silvia.GLogo", category: "HDRToneCurve")
 
     /// LUTキャッシュの排他制御つきストア
     private final class LUTCache: @unchecked Sendable {
@@ -75,10 +77,8 @@ class HDRToneCurveFilter {
     ///   - quality: レンダリング品質
     /// - Returns: フィルター適用済み画像（失敗時はnil）
     static func apply(to image: UIImage, curveData: ToneCurveData, quality: ToneCurveFilter.Quality = .full) -> UIImage? {
-        let startTime = CFAbsoluteTimeGetCurrent()
-
         guard let cgImage = image.cgImage else {
-            print("⚠️ [HDRToneCurve] CGImageの取得に失敗")
+            logger.warning("HDRトーンカーブ適用に失敗: CGImage の取得に失敗")
             return nil
         }
 
@@ -88,20 +88,14 @@ class HDRToneCurveFilter {
         )
 
         guard let processedCIImage = applyCubeFilter(to: ciImage, curveData: curveData, quality: quality) else {
-            print("⚠️ [HDRToneCurve] フィルター適用に失敗")
+            logger.warning("HDRトーンカーブ適用に失敗: CIColorCubeWithColorSpace の適用に失敗")
             return nil
         }
 
         guard let outputCGImage = sharedContext.createCGImage(processedCIImage, from: processedCIImage.extent) else {
-            print("⚠️ [HDRToneCurve] CGImage生成に失敗")
+            logger.warning("HDRトーンカーブ適用に失敗: 出力 CGImage の生成に失敗")
             return nil
         }
-
-        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-
-        #if DEBUG
-        print("✅ [HDRToneCurve] 処理完了 (\(String(format: "%.0fms", elapsed * 1000)))")
-        #endif
 
         return UIImage(cgImage: outputCGImage, scale: image.scale, orientation: image.imageOrientation)
     }
@@ -122,8 +116,6 @@ class HDRToneCurveFilter {
 
     /// CIColorCubeWithColorSpaceフィルターを適用（P3色空間）
     private static func applyCubeFilter(to ciImage: CIImage, curveData: ToneCurveData, quality: ToneCurveFilter.Quality) -> CIImage? {
-        let cubeStartTime = CFAbsoluteTimeGetCurrent()
-
         // すべてのカーブがデフォルト状態かチェック
         if isDefaultCurve(curveData.rgbPoints) &&
            isDefaultCurve(curveData.redPoints) &&
@@ -134,15 +126,9 @@ class HDRToneCurveFilter {
 
         // 3D LUTを生成
         guard let cubeData = createColorCube(from: curveData, quality: quality) else {
-            print("⚠️ [HDRToneCurve] 3D LUT生成に失敗")
+            logger.warning("HDRトーンカーブ適用に失敗: 3D LUT 生成に失敗")
             return nil
         }
-
-        let cubeElapsed = CFAbsoluteTimeGetCurrent() - cubeStartTime
-
-        #if DEBUG
-        print("📊 [HDRToneCurve] 3D LUT生成完了 (\(String(format: "%.0fms", cubeElapsed * 1000)))")
-        #endif
 
         // CIColorCubeWithColorSpaceフィルターを適用（P3色空間を指定）
         let filter = CIFilter(
@@ -156,7 +142,7 @@ class HDRToneCurveFilter {
         )
 
         guard let outputImage = filter?.outputImage else {
-            print("⚠️ [HDRToneCurve] フィルター出力の取得に失敗")
+            logger.warning("HDRトーンカーブ適用に失敗: フィルター出力の取得に失敗")
             return nil
         }
 
@@ -169,15 +155,8 @@ class HDRToneCurveFilter {
 
         // キャッシュをチェック
         if let cachedLUT = lutCache.value(for: cacheKey) {
-            #if DEBUG
-            print("🎯 [HDRToneCurve] LUTキャッシュヒット")
-            #endif
             return cachedLUT
         }
-
-        #if DEBUG
-        print("🔨 [HDRToneCurve] LUT新規生成（キャッシュミス）")
-        #endif
 
         let dimension = cubeDimension(for: quality)
         let cubeSize = dimension * dimension * dimension * 4
@@ -194,10 +173,6 @@ class HDRToneCurveFilter {
         let redIsDefault = isDefaultCurve(curveData.redPoints)
         let greenIsDefault = isDefaultCurve(curveData.greenPoints)
         let blueIsDefault = isDefaultCurve(curveData.bluePoints)
-
-        #if DEBUG
-        print("📐 [HDRToneCurve] LUT生成開始: \(dimension)³ = \(dimension * dimension * dimension)エントリ")
-        #endif
 
         // 3D LUTを構築（Blue → Green → Red の順）
         for blueIndex in 0..<dimension {
@@ -250,17 +225,8 @@ class HDRToneCurveFilter {
 
         let data = Data(bytes: &cubeDataArray, count: cubeSize * MemoryLayout<Float>.size)
 
-        #if DEBUG
-        print("✅ [HDRToneCurve] LUT生成完了: \(data.count / 1024)KB")
-        #endif
-
         // キャッシュに保存
-        let didEvict = lutCache.insert(data, for: cacheKey)
-        if didEvict {
-            #if DEBUG
-            print("🗑️ [HDRToneCurve] LUTキャッシュ削除（上限到達）")
-            #endif
-        }
+        _ = lutCache.insert(data, for: cacheKey)
 
         return data
     }
@@ -281,9 +247,6 @@ class HDRToneCurveFilter {
     /// LUTキャッシュをクリア
     static func clearCache() {
         lutCache.clear()
-        #if DEBUG
-        print("🗑️ [HDRToneCurve] LUTキャッシュをクリア")
-        #endif
     }
 
     /// 制御点がデフォルト状態（対角線）かチェック

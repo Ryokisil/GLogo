@@ -72,7 +72,8 @@ class EditorHistory {
         undoneEventStack.removeAll()
     }
     
-    /// アンドゥ操作 使いたい時だけ使う設計なので戻り値をBool型に。リドゥも同じ あと戻り値破棄しても警告出ないようにdiscardableResult使用
+    /// 最後のイベントを巻き戻す。
+    /// - Returns: 巻き戻し対象が存在した場合は `true`。
     @discardableResult
     func undo() -> Bool {
         

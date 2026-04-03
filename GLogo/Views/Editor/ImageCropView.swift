@@ -35,7 +35,7 @@ struct ImageCropView: View {
                             
                             // 画像表示用ビュー
                             ImagePreviewView(
-                                image: viewModel.backgroundRemovedImage ?? viewModel.originalImage,
+                                image: viewModel.originalImage,
                                 viewModel: viewModel,
                                 geometry: geometry
                             )

@@ -10,6 +10,7 @@
 
 import Foundation
 import UIKit
+import OSLog
 
 /// 背景種類の列挙型
 enum BackgroundType: String, Codable {
@@ -34,6 +35,8 @@ enum GradientDirection: String, Codable {
 
 /// 背景設定を管理するクラス
 struct BackgroundSettings: Codable {
+    private static let logger = Logger(subsystem: "com.silvia.GLogo", category: "Background")
+
     /// 背景タイプ
     var type: BackgroundType = .solid
     
@@ -255,13 +258,10 @@ struct BackgroundSettings: Codable {
         
         // 画像が見つからない場合は終了
         guard let cgImage = image?.cgImage else {
-            print("画像が見つかりません: \(imageFileName)")
+            Self.logger.warning("背景画像の描画をスキップ: 画像が見つからない fileName=\(imageFileName, privacy: .public)")
             return
         }
-        
-        // 画像をデバッグ情報としてログに出力
-        print("背景画像を描画します: \(imageFileName), サイズ: \(image?.size ?? CGSize.zero)")
-        
+
         // 画像を指定された矩形に描画
         context.saveGState()
         context.setAlpha(opacity) // 不透明度を設定

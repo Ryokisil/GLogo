@@ -87,47 +87,29 @@ struct ToneCurveData: Codable, Equatable {
 
     /// 制御点の出力値を検証し、0.0〜1.0の範囲内にクランプする
     private mutating func validateAndClampPoints() {
-        #if DEBUG
-        print("🔍 [ToneCurve] データ検証を開始...")
-        #endif
-
-        var hasModified = false
-
         // RGB チャンネル
-        let validatedRGB = clampPoints(rgbPoints, channelName: "RGB", hasModified: &hasModified)
+        let validatedRGB = clampPoints(rgbPoints)
         self.rgbPoints = validatedRGB
 
         // 赤チャンネル
-        let validatedRed = clampPoints(redPoints, channelName: "Red", hasModified: &hasModified)
+        let validatedRed = clampPoints(redPoints)
         self.redPoints = validatedRed
 
         // 緑チャンネル
-        let validatedGreen = clampPoints(greenPoints, channelName: "Green", hasModified: &hasModified)
+        let validatedGreen = clampPoints(greenPoints)
         self.greenPoints = validatedGreen
 
         // 青チャンネル
-        let validatedBlue = clampPoints(bluePoints, channelName: "Blue", hasModified: &hasModified)
+        let validatedBlue = clampPoints(bluePoints)
         self.bluePoints = validatedBlue
-
-        #if DEBUG
-        if hasModified {
-            print("⚠️ [ToneCurve] 範囲外の値が検出され、0.0〜1.0にクランプされました")
-        } else {
-            print("✅ [ToneCurve] すべての制御点が正常範囲内です")
-        }
-        #endif
     }
 
     /// 制御点配列の各要素を0.0〜1.0の範囲内にクランプ
-    private func clampPoints(_ points: [CurvePoint], channelName: String, hasModified: inout Bool) -> [CurvePoint] {
-        return points.enumerated().map { index, point in
+    private func clampPoints(_ points: [CurvePoint]) -> [CurvePoint] {
+        return points.map { point in
             let clampedOutput = max(0.0, min(point.output, 1.0))
 
             if abs(clampedOutput - point.output) > 0.001 {
-                #if DEBUG
-                print("  ⚠️ [\(channelName)] Point[\(index)]: (\(String(format: "%.3f", point.input)), \(String(format: "%.3f", point.output))) → (\(String(format: "%.3f", point.input)), \(String(format: "%.3f", clampedOutput)))")
-                #endif
-                hasModified = true
                 return CurvePoint(input: point.input, output: clampedOutput)
             }
 

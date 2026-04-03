@@ -53,18 +53,15 @@ struct ImagePickerView: View {
             if source == .photoLibrary {
                 if #available(iOS 14, *) {
                     PhotoPicker(onSelect: { imageInfo in
-                        print("PhotoPickerで画像が選択されました") // デバッグログ
                         onSelect(imageInfo)
                     })
                 } else {
                     LegacyImagePicker(source: .photoLibrary, onSelect: { imageInfo in
-                        print("LegacyImagePickerで画像が選択されました") // デバッグログ
                         onSelect(imageInfo)
                     })
                 }
             } else {
                 LegacyImagePicker(source: .camera, onSelect: { imageInfo in
-                    print("カメラで画像が撮影されました") // デバッグログ
                     onSelect(imageInfo)
                 })
             }

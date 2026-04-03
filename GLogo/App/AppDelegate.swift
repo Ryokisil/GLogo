@@ -8,8 +8,10 @@
 //
 
 import UIKit
+import OSLog
 
 class AppDelegate: UIResponder, UIApplicationDelegate {
+    private let logger = Logger(subsystem: "com.silvia.GLogo", category: "AppLifecycle")
     
     // MARK: - アプリ起動時の処理
     
@@ -18,11 +20,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         
         // アプリのデータディレクトリを確保
         setupAppDirectories()
-        
-        // デフォルト設定の初期化
         setupDefaultSettings()
-        
-        // アプリの起動統計などの記録（必要に応じて）
         logAppLaunch()
         
         return true
@@ -31,13 +29,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // MARK: - UISceneSessionのライフサイクル
     
     func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
-        // 新しいウィンドウを作成する際に呼ばれ、SceneConfigurationを返す
         return UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
     }
     
     func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {
-        // シーンが破棄されたときに呼ばれる（例：ユーザーがマルチタスキングによってアプリを閉じた場合）
-        // 必要に応じて、破棄されたシーンに関連するリソースをクリーンアップする
     }
 
     /// アプリ全体でサポートする画面向きを返す
@@ -53,13 +48,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     
     /// アプリのデータディレクトリを設定
     private func setupAppDirectories() {
-        // プロジェクトストレージの初期化
         _ = ProjectStorage.shared
-        
-        // アセットマネージャーの初期化
         _ = AssetManager.shared
-        
-        // その他必要なディレクトリの作成
         createDirectoryIfNeeded("Temp")
         createDirectoryIfNeeded("Cache")
     }
@@ -73,7 +63,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             do {
                 try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true, attributes: nil)
             } catch {
-                print("Error creating directory \(directoryName): \(error)")
+                logger.error("ディレクトリ作成に失敗: name=\(directoryName, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -126,9 +116,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
     
     /// アプリのアップデート時の処理
-    private func handleAppUpdate(from oldVersion: String?, to newVersion: String) {
-        print("App updated from \(oldVersion ?? "unknown") to \(newVersion)")
-        
+    private func handleAppUpdate(from _: String?, to _: String) {
         // バージョンに応じた移行処理などを実装可能
         
         // 例：データ構造の変更が必要な場合のマイグレーション
@@ -143,14 +131,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let defaults = UserDefaults.standard
         let launchCount = defaults.integer(forKey: "appLaunchCount") + 1
         defaults.set(launchCount, forKey: "appLaunchCount")
-        
-        print("App launched \(launchCount) times")
-        
-        // デバイス情報やシステム情報のログ（開発中のみ）
-#if DEBUG
-        let device = UIDevice.current
-        print("Device: \(device.name), iOS: \(device.systemVersion), Model: \(device.model)")
-#endif
     }
     
     // MARK: - アプリ終了時の処理
@@ -186,7 +166,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 try? fileManager.removeItem(at: fileURL)
             }
         } catch {
-            print("Error cleaning up temporary files: \(error)")
+            logger.error("一時ファイル削除に失敗: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

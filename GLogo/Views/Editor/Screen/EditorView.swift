@@ -1,4 +1,3 @@
-///
 //  EditorView.swift
 //  GameLogoMaker
 //
@@ -16,7 +15,7 @@ enum ActiveSheet: Identifiable {
     case imagePicker
     case imageCrop(UIImage, String?)
 
-    var id: String {  // ビルド時にInt型だとクラッシュしたのでString型に変更
+    var id: String {
         switch self {
         case .imagePicker: return "imagePicker"
         case .imageCrop: return "imageCrop"
@@ -64,25 +63,19 @@ private struct EditorAlertState {
 struct EditorView: View {
     // MARK: - プロパティ
     
-    /// 複数ビューで参照するかもなのでこのラッパーを使用
     @ObservedObject var viewModel: EditorViewModel
     
-    /// オブジェクトを維持しこのビューに所有権を渡すためこのラッパーを使用             ||   EditorView → ElementViewModel（強参照）
-    /// 要素編集ビューモデル - 強参照で保持され、EditorViewModel（弱参照）と通信。 ||   ElementViewModel → EditorViewModel（弱参照）
-    /// これにより循環参照を避けつつ、選択された要素の編集機能を提供。                    ||   EditorView → EditorViewModel（強参照）
+    /// 選択要素の編集状態を保持するため、このビューが所有する。
     @StateObject private var elementViewModel: ElementViewModel
     
     // MARK: - UI状態（グルーピング済み）
 
-    /// 純粋なUI表示状態
     @State private var uiState = EditorUIState()
 
-    /// アラート・確認ダイアログの状態
     @State private var alertState = EditorAlertState()
 
     // MARK: - 画面遷移・シート制御
 
-    /// 画像ピッカーやクロップビューの表示を切り替えるために使用
     @State private var activeSheet: ActiveSheet?
 
     /// 手動背景除去画面への遷移フラグ
@@ -99,14 +92,13 @@ struct EditorView: View {
 
     // MARK: - 永続化
 
-    /// 初回ガイド表示の判定
     @AppStorage("hasSeenEditorIntro") private var hasSeenEditorIntro = false
     
     // MARK: - イニシャライザ
     
     init(viewModel: EditorViewModel) {
         self.viewModel = viewModel
-        // StateObjectの初期化はプロパティイニシャライザで行えないため、_elementViewModelを直接初期化 プロパティラッパーの初期化などを行う際 _ を付けた変数を使って初期化する必要がある
+        // 注入された EditorViewModel を使って要素編集用 StateObject を構築する。
         _elementViewModel = StateObject(wrappedValue: ElementViewModel(editorViewModel: viewModel))
     }
     

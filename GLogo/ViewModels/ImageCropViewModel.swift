@@ -4,7 +4,7 @@
 //
 //  概要:
 //  画像クロップ機能のビューモデルです。
-//  画像の表示、クロップ領域の管理、AI背景除去機能を提供します。
+//  画像の表示、クロップ領域の管理を提供します。
 //
 
 import Foundation
@@ -27,17 +27,9 @@ class ImageCropViewModel: ObservableObject {
     @Published var imageIsLoaded: Bool = false
     @Published var hasCropped: Bool = false
     
-    /// AI背景除去の処理状態
-    @Published var isProcessingBackgroundRemoval: Bool = false
-    
-    /// 背景除去済みの画像（nilの場合は未処理）
-    @Published var backgroundRemovedImage: UIImage?
-    
-    
     let originalImage: UIImage
     private let completion: (UIImage) -> Void
     private let cropHandleUseCase: CropHandleInteractionUseCase
-    private let backgroundRemovalUseCase: BackgroundRemovalUseCase
     private var activeHandle: CropHandleType?
     private var dragStart: CGPoint = .zero
     private var initialRect: CGRect = .zero
@@ -47,43 +39,11 @@ class ImageCropViewModel: ObservableObject {
     init(
         image: UIImage,
         completion: @escaping (UIImage) -> Void,
-        cropHandleUseCase: CropHandleInteractionUseCase = CropHandleInteractionUseCase(),
-        backgroundRemovalUseCase: BackgroundRemovalUseCase = BackgroundRemovalUseCase()
+        cropHandleUseCase: CropHandleInteractionUseCase = CropHandleInteractionUseCase()
     ) {
         self.originalImage = image
         self.completion = completion
         self.cropHandleUseCase = cropHandleUseCase
-        self.backgroundRemovalUseCase = backgroundRemovalUseCase
-    }
-    
-    // MARK: - AI背景除去（UIエントリーポイント）
-    //
-    // フロー概要:
-    //  - UIの「AI背景除去」ボタンが startBackgroundRemoval を呼ぶ。
-    //  - ViewModelは処理状態を更新し、UseCaseに背景除去処理を委譲する。
-    //  - 成功時は backgroundRemovedImage を更新し、表示/クロップ対象に反映する。
-    
-    /// AI背景除去を開始
-    @MainActor
-    func startBackgroundRemoval() {
-        guard !isProcessingBackgroundRemoval else { return }
-        
-        isProcessingBackgroundRemoval = true
-        
-        Task {
-            do {
-                let processedImage = try await backgroundRemovalUseCase.removeBackground(from: originalImage)
-                await MainActor.run {
-                    self.backgroundRemovedImage = processedImage
-                    self.isProcessingBackgroundRemoval = false
-                }
-            } catch {
-                print("AI背景除去エラー: \(error.localizedDescription)")
-                await MainActor.run {
-                    self.isProcessingBackgroundRemoval = false
-                }
-            }
-        }
     }
     
     // MARK: - クロップ（UIエントリーポイント）
@@ -95,20 +55,9 @@ class ImageCropViewModel: ObservableObject {
     //  - 完了ボタンは onComplete を呼び、クロップ処理して completion に返す。
 
     func onComplete() {
-        print("===完了時点でのデバッグ情報===")
-        print("元画像サイズ: \(originalImage.size)")
-        print("表示フレーム: \(imageViewFrame)")
-        print("クロップ領域: \(cropRect)")
-        print("クロップ実行の有無: \(hasCropped)")
-        
-        // AI背景除去済みの画像があればそれを使用、なければ通常のクロップ処理
-        let sourceImage = backgroundRemovedImage ?? originalImage
-        
-        if let croppedImage = cropImage(from: sourceImage) {
-            print("クロップ完了 - 結果画像サイズ: \(croppedImage.size)")
+        if let croppedImage = cropImage(from: originalImage) {
             completion(croppedImage)
         } else {
-            print("エラー: クロップ処理に失敗しました")
             // フォールバックとして元画像を返す
             completion(originalImage)
         }
@@ -155,7 +104,6 @@ class ImageCropViewModel: ObservableObject {
         if imageIsLoaded {
             self.cropRect = imageViewFrame
             self.hasCropped = false
-            print("クロップ領域をリセット: \(cropRect)")
         }
     }
     
@@ -217,32 +165,21 @@ class ImageCropViewModel: ObservableObject {
     private func cropImage(from sourceImage: UIImage? = nil) -> UIImage? {
         let imageToProcess = sourceImage ?? originalImage
         guard imageViewFrame.width > 0 && imageViewFrame.height > 0 else {
-            print("エラー: 画像表示フレームが無効です")
             return nil
         }
-        
-        print("=== クロップ処理デバッグ ===")
-        print("処理画像サイズ: \(imageToProcess.size)")
-        print("画像表示サイズ: \(imageViewFrame)")
-        print("クロップ領域: \(cropRect)")
-        print("クロップ実行済み: \(hasCropped)")
-        
+
         if !hasCropped {
-            print("クロップなし: 処理画像を返します")
             return imageToProcess
         }
         
         // クロップ枠を画像フレーム内に制限
         let boundedCropRect = cropRect.intersection(imageViewFrame)
-        print("制限されたクロップ枠: \(boundedCropRect)")
         
         // 正規化座標系への変換
         let normalizedX = (boundedCropRect.minX - imageViewFrame.minX) / imageViewFrame.width
         let normalizedY = (boundedCropRect.minY - imageViewFrame.minY) / imageViewFrame.height
         let normalizedWidth = boundedCropRect.width / imageViewFrame.width
         let normalizedHeight = boundedCropRect.height / imageViewFrame.height
-        
-        print("正規化座標: x=\(normalizedX), y=\(normalizedY), w=\(normalizedWidth), h=\(normalizedHeight)")
         
         // UIImage.sizeを使用してスケーリング
         let imageSize = imageToProcess.size
@@ -251,11 +188,8 @@ class ImageCropViewModel: ObservableObject {
         let scaledWidth = normalizedWidth * imageSize.width
         let scaledHeight = normalizedHeight * imageSize.height
         
-        print("スケールされた浮動小数点値: x=\(scaledX), y=\(scaledY), w=\(scaledWidth), h=\(scaledHeight)")
-        
         // 画像の向きを考慮してCGImageを取得
         guard let orientedCGImage = createOrientedCGImage(from: imageToProcess) else {
-            print("エラー: orientedCGImageの作成に失敗")
             return nil
         }
         
@@ -265,27 +199,19 @@ class ImageCropViewModel: ObservableObject {
         let intWidth = Int(scaledWidth.rounded(.toNearestOrAwayFromZero))
         let intHeight = Int(scaledHeight.rounded(.toNearestOrAwayFromZero))
         
-        print("整数変換後: x=\(intX), y=\(intY), w=\(intWidth), h=\(intHeight)")
-        
         let scaledCropRect = CGRect(
             x: CGFloat(intX),
             y: CGFloat(intY),
             width: CGFloat(intWidth),
             height: CGFloat(intHeight)
         )
-        
-        print("スケールされたクロップ枠: \(scaledCropRect)")
-        
+
         guard let croppedCGImage = orientedCGImage.cropping(to: scaledCropRect) else {
-            print("エラー: クロップに失敗しました")
             return nil
         }
-        
-        print("クロップ成功！")
+
         let resultImage = UIImage(cgImage: croppedCGImage)
-        
-        print("クロップ完了 - 結果画像サイズ: \(resultImage.size)")
-        
+
         return resultImage
     }
     

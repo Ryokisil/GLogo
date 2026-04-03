@@ -11,6 +11,7 @@
 
 import Foundation
 import UIKit
+import OSLog
 
 /// プロジェクト保存エラーの種類
 enum ProjectStorageError: Error {
@@ -25,6 +26,7 @@ enum ProjectStorageError: Error {
 final class ProjectStorage: Sendable {
     /// シングルトンインスタンス
     static let shared = ProjectStorage()
+    private let logger = Logger(subsystem: "com.silvia.GLogo", category: "ProjectStorage")
     
     /// プロジェクトディレクトリ名
     private let projectDirectoryName = "Projects"
@@ -49,7 +51,7 @@ final class ProjectStorage: Sendable {
             // アセットディレクトリ
             try createDirectoryIfNeeded(at: assetDirectoryURL)
         } catch {
-            print("Error creating directories: \(error)")
+            logger.error("保存ディレクトリ作成に失敗: \(error.localizedDescription, privacy: .public)")
         }
     }
     
@@ -88,12 +90,12 @@ final class ProjectStorage: Sendable {
                     try jsonData.write(to: projectURL)
                     DispatchQueue.main.async { completion(true) }
                 } catch {
-                    print("Failed to save project: \(error)")
+                    self.logger.error("プロジェクト保存に失敗: id=\(project.id.uuidString, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
                     DispatchQueue.main.async { completion(false) }
                 }
             }
         } catch {
-            print("Failed to save project: \(error)")
+            logger.error("プロジェクト保存に失敗: id=\(project.id.uuidString, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
             DispatchQueue.main.async { completion(false) }
         }
     }
@@ -125,7 +127,7 @@ final class ProjectStorage: Sendable {
                 let project = try Self.makeDecoder().decode(LogoProject.self, from: jsonData)
                 DispatchQueue.main.async { completion(project) }
             } catch {
-                print("Failed to load project: \(error)")
+                self.logger.error("プロジェクト読込に失敗: id=\(id.uuidString, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
                 DispatchQueue.main.async { completion(nil) }
             }
         }
@@ -171,7 +173,7 @@ final class ProjectStorage: Sendable {
                 
                 DispatchQueue.main.async { completion(projects) }
             } catch {
-                print("Failed to get projects: \(error)")
+                self.logger.error("プロジェクト一覧取得に失敗: \(error.localizedDescription, privacy: .public)")
                 DispatchQueue.main.async { completion([]) }
             }
         }
@@ -196,7 +198,7 @@ final class ProjectStorage: Sendable {
                     projects.sort { $0.updatedAt > $1.updatedAt }
                     continuation.resume(returning: projects)
                 } catch {
-                    print("Failed to get projects: \(error)")
+                    self.logger.error("プロジェクト一覧取得に失敗: \(error.localizedDescription, privacy: .public)")
                     continuation.resume(returning: [])
                 }
             }
@@ -217,7 +219,7 @@ final class ProjectStorage: Sendable {
                     DispatchQueue.main.async { completion(false) }
                 }
             } catch {
-                print("Failed to delete project: \(error)")
+                self.logger.error("プロジェクト削除に失敗: id=\(id.uuidString, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
                 DispatchQueue.main.async { completion(false) }
             }
         }
@@ -257,7 +259,7 @@ final class ProjectStorage: Sendable {
             
             return assetName
         } catch {
-            print("Failed to save image asset: \(error)")
+            logger.error("画像アセット保存に失敗: name=\(assetName, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
             return nil
         }
     }
@@ -279,7 +281,7 @@ final class ProjectStorage: Sendable {
             }
             return false
         } catch {
-            print("Failed to delete image asset: \(error)")
+            logger.error("画像アセット削除に失敗: name=\(name, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
             return false
         }
     }

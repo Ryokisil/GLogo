@@ -9,11 +9,13 @@
 //
 
 import UIKit
+import OSLog
 
 /// アセット管理ユーティリティ
 final class AssetManager: @unchecked Sendable {
     /// シングルトンインスタンス
     static let shared = AssetManager()
+    private let logger = Logger(subsystem: "com.silvia.GLogo", category: "AssetManager")
     
     /// アセットタイプ
     enum AssetType: String {
@@ -66,7 +68,7 @@ final class AssetManager: @unchecked Sendable {
                     )
                 }
             } catch {
-                print("Failed to create directory for \(type.rawValue): \(error)")
+                logger.error("アセットディレクトリ作成に失敗: type=\(type.rawValue, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -104,7 +106,7 @@ final class AssetManager: @unchecked Sendable {
             
             return true
         } catch {
-            print("Failed to save image \(name): \(error)")
+            logger.error("画像保存に失敗: name=\(name, privacy: .public), type=\(type.rawValue, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
             return false
         }
     }
@@ -175,7 +177,7 @@ final class AssetManager: @unchecked Sendable {
             }
             return false
         } catch {
-            print("Failed to delete image \(name): \(error)")
+            logger.error("画像削除に失敗: name=\(name, privacy: .public), type=\(type.rawValue, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
             return false
         }
     }
@@ -194,7 +196,7 @@ final class AssetManager: @unchecked Sendable {
                 .filter { $0.pathExtension.lowercased() == "png" }
                 .map { $0.deletingPathExtension().lastPathComponent }
         } catch {
-            print("Failed to get image names for \(type.rawValue): \(error)")
+            logger.error("画像一覧取得に失敗: type=\(type.rawValue, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
             return []
         }
     }

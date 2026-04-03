@@ -255,7 +255,7 @@ struct TemplatePreviewView: View {
                         .font(.title2)
                         .fontWeight(.bold)
                     
-                    // テンプレートの詳細情報（実際のアプリでは拡張可能）
+                    // テンプレートの基本情報
                     Group {
                         detailRow(title: String(localized: "library.template.preview.size"), value: "\(Int(template.project.canvasSize.width)) × \(Int(template.project.canvasSize.height)) px")
                         detailRow(title: String(localized: "library.template.preview.elementCount"), value: "\(template.project.elements.count)")

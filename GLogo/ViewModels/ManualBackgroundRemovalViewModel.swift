@@ -39,6 +39,7 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
 
     /// マスク適用プレビューのキャッシュ
     private var cachedMaskedImage: UIImage?
+    
     /// キャッシュに対応するマスク更新ID
     private var cachedMaskedImageMaskUpdateId: UUID?
 

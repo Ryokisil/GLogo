@@ -1553,40 +1553,7 @@ class EditorViewModel: ObservableObject {
         )
     }
     
-    // MARK: - デバッグ
-    
 #if DEBUG
-    /// 履歴の状態をデバッグ出力
-    func printHistoryStatus() {
-        print("===== 履歴状態 =====")
-        print("アンドゥスタック: \(history.undoCount) 項目")
-        print("リドゥスタック: \(history.redoCount) 項目")
-        print("アンドゥ可能: \(history.canUndo)")
-        print("リドゥ可能: \(history.canRedo)")
-        
-        // 選択状態などの追加情報
-        print("選択中の要素: \(selectedElement != nil ? "あり (\(selectedElement!.type))" : "なし")")
-        print("エディタモード: \(editorMode)")
-        print("プロジェクト変更済み: \(isProjectModified)")
-        print("====================")
-    }
-    
-    /// テスト用の要素を追加
-    func addTestElements() {
-        // テキスト要素を追加
-        let textElement = TextElement(text: "テスト文字列")
-        textElement.position = CGPoint(x: 100, y: 100)
-        addElement(textElement)
-        
-        // 図形要素を追加
-        let shapeElement = ShapeElement(shapeType: .rectangle)
-        shapeElement.position = CGPoint(x: 200, y: 200)
-        shapeElement.fillColor = .systemBlue
-        addElement(shapeElement)
-        
-        print("テスト要素を追加しました")
-    }
-
     // MARK: - UIテスト用 fixture
 
     /// UIテスト用の fixture 名を表す列挙型

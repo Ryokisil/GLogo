@@ -118,12 +118,6 @@ class MonotonicCubicInterpolator {
             tangents[n - 1] = deltas[n - 2]
         }
 
-        #if DEBUG
-        print("📐 [Monotonic] 接線計算完了: \(n)点")
-        print("  始点接線: \(String(format: "%.3f", tangents[0]))")
-        print("  終点接線: \(String(format: "%.3f", tangents[n - 1]))")
-        #endif
-
         // 単調性を保証するために接線を調整
         adjustTangentsForMonotonicity(deltas: deltas)
     }
@@ -151,10 +145,6 @@ class MonotonicCubicInterpolator {
                 let tau = 3.0 / sqrt(sum)
                 tangents[i] = tau * alpha * deltas[i]
                 tangents[i + 1] = tau * beta * deltas[i]
-
-                #if DEBUG
-                print("⚠️ [Monotonic] 区間[\(i)] 接線調整: α²+β²=\(String(format: "%.1f", sum))")
-                #endif
             }
         }
     }

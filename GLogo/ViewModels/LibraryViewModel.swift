@@ -237,9 +237,7 @@ class LibraryViewModel: ObservableObject {
     
     /// テンプレートの読み込み
     private func loadTemplates() -> [TemplateItem] {
-        // ここではダミーデータを返します
-        // 実際のアプリでは、テンプレートファイルから読み込むか、
-        // アセットから生成するなどの処理が必要です
+        // TODO: ダミーデータをテンプレート永続化/読込処理へ置き換える。
         let templates: [TemplateItem] = [
             TemplateItem(
                 name: "シンプルロゴ",
@@ -468,26 +466,19 @@ class LibraryViewModel: ObservableObject {
         if let editorViewModel = editorViewModel {
             switch item {
             case let templateItem as TemplateItem:
-                // テンプレートを適用（新しいプロジェクトを作成）
-                // 注意：これは現在のプロジェクトを上書きする
-                // 実際のアプリでは確認ダイアログなどを表示する必要があります
                 applyTemplate(templateItem)
                 
             case let shapeItem as ShapeItem:
-                // 図形を追加
                 let shape = shapeItem.createShapeElement()
                 addElementToCenter(shape)
                 
             case let textStyleItem as TextStyleItem:
-                // テキスト要素を追加、または選択中のテキスト要素にスタイルを適用
                 applyTextStyle(textStyleItem)
                 
             case let backgroundItem as BackgroundItem:
-                // 背景を適用
                 editorViewModel.updateBackgroundSettings(backgroundItem.backgroundSettings)
                 
             case let effectItem as EffectItem:
-                // エフェクトを適用（選択中のテキスト要素に適用）
                 applyEffect(effectItem)
                 
             default:
@@ -498,8 +489,7 @@ class LibraryViewModel: ObservableObject {
     
     /// テンプレートを適用
     private func applyTemplate(_ template: TemplateItem) {
-        // 確認が必要なため、実際のアプリでは
-        // プロジェクト変更の確認方法を提供する必要があります
+        // TODO: 既存プロジェクトを置き換える前の確認フローを追加する。
     }
     
     /// 要素をキャンバスの中央に追加

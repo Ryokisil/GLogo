@@ -4,8 +4,10 @@
 // 保存解像度はベース画像の実ピクセルサイズを使用し、はみ出した要素はクリップする。
 
 import UIKit
+import OSLog
 
 struct ImageProcessingService: ImageProcessing {
+    private static let logger = Logger(subsystem: "com.silvia.GLogo", category: "Save")
     private static let maxCompositePixelCount: CGFloat = 24_000_000
     private static let maxCompositeLongSide: CGFloat = 6_144
 
@@ -25,17 +27,15 @@ struct ImageProcessingService: ImageProcessing {
     ///   - project: プロジェクト
     /// - Returns: 合成画像（ベース画像の実ピクセルサイズで出力）
     func makeCompositeImage(baseElement: ImageElement, project: LogoProject) -> UIImage? {
-        logImageElements(project.elements)
-
         guard let baseImage = baseElement.getFilteredImageForce() else {
-            print("[SaveDebug] ❌ ベース画像のフィルタ適用に失敗")
+            Self.logger.warning("合成保存に失敗: ベース画像のフィルタ適用に失敗")
             return nil
         }
 
         let basePixelSize = pixelSize(of: baseImage)
         guard basePixelSize.width > 0, basePixelSize.height > 0,
               baseElement.size.width > 0, baseElement.size.height > 0 else {
-            print("[SaveDebug] ❌ ベース画像サイズが無効")
+            Self.logger.warning("合成保存に失敗: ベース画像サイズが無効")
             return nil
         }
 
@@ -44,7 +44,7 @@ struct ImageProcessingService: ImageProcessing {
         let canvasRect = CGRect(origin: .zero, size: project.canvasSize)
         let exportRect = baseFrame.intersection(canvasRect)
         guard !exportRect.isNull, !exportRect.isEmpty else {
-            print("[SaveDebug] ❌ ベース画像がキャンバス外")
+            Self.logger.warning("合成保存に失敗: ベース画像がキャンバス外")
             return nil
         }
 
@@ -151,18 +151,5 @@ struct ImageProcessingService: ImageProcessing {
             width: image.size.width * image.scale,
             height: image.size.height * image.scale
         )
-    }
-
-    /// 保存処理用の画像要素ログを出力
-    private func logImageElements(_ elements: [LogoElement]) {
-        let imageElements = elements.compactMap { $0 as? ImageElement }
-        print("[SaveDebug] imageElements count: \(imageElements.count)")
-        for (index, element) in imageElements.enumerated() {
-            let original = element.originalImage?.size ?? .zero
-            let processed = element.image?.size ?? .zero
-            print("[SaveDebug]   [\(index)] id: \(element.id.uuidString.prefix(8)) pos: \(element.position) size: \(element.size)")
-            print("[SaveDebug]       original: \(original) processed: \(processed) scale: \(element.originalImage?.scale ?? 0)/\(element.image?.scale ?? 0)")
-            print("[SaveDebug]       visible: \(element.isVisible)")
-        }
     }
 }

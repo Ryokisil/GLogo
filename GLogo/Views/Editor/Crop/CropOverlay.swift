@@ -33,10 +33,5 @@ struct CropOverlay: View {
             }
             .compositingGroup()
         }
-        // 【デバッグのために追加】
-        .onAppear {
-            print("CropOverlay - imageFrame: \(viewModel.imageViewFrame)")
-            print("CropOverlay - cropRect: \(viewModel.cropRect)")
-        }
     }
 }
