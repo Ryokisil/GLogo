@@ -3236,6 +3236,40 @@
         }
       }
     },
+    "guide.editor.reorderLayers.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag an image thumbnail in the layer list on the left to change the front-to-back order."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "左側のレイヤー一覧で画像サムネイルをドラッグすると、前面・背面の順番を入れ替えられます。"
+          }
+        }
+      }
+    },
+    "guide.editor.reorderLayers.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reorder Layers"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "レイヤー順を変更"
+          }
+        }
+      }
+    },
     "guide.editor.save.message" : {
       "extractionState" : "manual",
       "localizations" : {

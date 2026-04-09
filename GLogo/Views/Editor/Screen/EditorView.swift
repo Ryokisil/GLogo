@@ -365,6 +365,11 @@ struct EditorView: View {
             systemImageName: "slider.horizontal.3"
         ),
         EditorIntroStep(
+            titleKey: "guide.editor.reorderLayers.title",
+            messageKey: "guide.editor.reorderLayers.message",
+            systemImageName: "arrow.up.arrow.down"
+        ),
+        EditorIntroStep(
             titleKey: "guide.editor.save.title",
             messageKey: "guide.editor.save.message",
             systemImageName: "square.and.arrow.down"
