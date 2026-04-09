@@ -22,7 +22,7 @@ enum FilterCategory: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// 表示名
+    /// 表示名（英語固定。ローカライズは View 層で LocalizedStringKey 経由で解決する）
     var displayName: String {
         switch self {
         case .basic:
@@ -34,5 +34,10 @@ enum FilterCategory: String, CaseIterable, Identifiable {
         case .cinematic:
             return "Cinematic"
         }
+    }
+
+    /// View 層でローカライズ表示に使用するキー文字列
+    var localizationKey: String {
+        "filters.category.\(rawValue)"
     }
 }

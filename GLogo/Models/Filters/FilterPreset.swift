@@ -23,6 +23,11 @@ struct FilterPreset: Identifiable, Equatable {
     /// プレビューカード用の代表色
     let previewColor: UIColor
 
+    /// View 層でローカライズ表示に使用するキー文字列
+    var localizationKey: String {
+        "filters.preset.\(id)"
+    }
+
     static func == (lhs: FilterPreset, rhs: FilterPreset) -> Bool {
         lhs.id == rhs.id
     }

@@ -63,12 +63,12 @@ struct FiltersPanelHDRView: View {
     private var categorySelector: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                categoryPill(title: String(localized: "filters.category.all"), isSelected: selectedCategory == nil) {
+                categoryPill(titleKey: "filters.category.all", isSelected: selectedCategory == nil) {
                     selectedCategory = nil
                 }
                 ForEach(availableCategories) { category in
                     categoryPill(
-                        title: category.displayName,
+                        titleKey: LocalizedStringKey(category.localizationKey),
                         isSelected: selectedCategory == category
                     ) {
                         selectedCategory = category
@@ -79,9 +79,9 @@ struct FiltersPanelHDRView: View {
         }
     }
 
-    private func categoryPill(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+    private func categoryPill(titleKey: LocalizedStringKey, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title)
+            Text(titleKey)
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(isSelected ? .blue : .primary)
                 .padding(.horizontal, 12)
@@ -138,7 +138,7 @@ struct FiltersPanelHDRView: View {
                         .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2.5)
                 )
 
-                Text(preset.name)
+                Text(LocalizedStringKey(preset.localizationKey))
                     .font(.caption2.weight(.medium))
                     .foregroundColor(isSelected ? .blue : .primary)
                     .lineLimit(1)
