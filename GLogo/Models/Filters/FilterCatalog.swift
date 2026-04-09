@@ -27,6 +27,12 @@ enum FilterCatalog {
         vivid,
         crisp,
         soft,
+        softPortrait,
+        cleanPortrait,
+        warmPortrait,
+        glowPortrait,
+        studioPortrait,
+        peachPortrait,
         dramatic,
         goldenHour,
         tealOrange,
@@ -39,6 +45,14 @@ enum FilterCatalog {
         coolMatte,
         coolShadowsWarmHighlights,
         subtleFade,
+        pastelAir,
+        roseHaze,
+        coolCalm,
+        cloudMood,
+        blushMood,
+        lilacMood,
+        mintMood,
+        mistMood,
         bwHighContrast,
         monoSoft,
         monoMatte,
@@ -419,6 +433,266 @@ enum FilterCatalog {
             sharpness: 0.18
         ),
         previewColor: UIColor.systemGray2
+    )
+
+    // MARK: - Portrait プリセット
+
+    /// Soft: 柔らかい光で肌を滑らかに見せるポートレート
+    static let softPortrait = FilterPreset(
+        id: "soft_portrait",
+        name: "Soft",
+        category: .portrait,
+        recipe: FilterRecipe(
+            saturation: 0.96,
+            brightness: 0.04,
+            contrast: 0.94,
+            highlights: 0.04,
+            shadows: 0.10,
+            sharpness: 0.0,
+            gaussianBlur: 1.2,
+            tintColorHex: "#F0D8C8",
+            tintIntensity: 0.06
+        ),
+        previewColor: UIColor(hex: "#F0D8C8") ?? UIColor.systemPink
+    )
+
+    /// Clean: 透明感のあるクリアなポートレート
+    static let cleanPortrait = FilterPreset(
+        id: "clean_portrait",
+        name: "Clean",
+        category: .portrait,
+        recipe: FilterRecipe(
+            saturation: 1.02,
+            brightness: 0.03,
+            contrast: 1.02,
+            highlights: -0.04,
+            shadows: 0.06,
+            sharpness: 0.10
+        ),
+        previewColor: UIColor.systemCyan.withAlphaComponent(0.45)
+    )
+
+    /// Warm: 暖かみのある人物向け補正
+    static let warmPortrait = FilterPreset(
+        id: "warm_portrait",
+        name: "Warm",
+        category: .portrait,
+        recipe: FilterRecipe(
+            saturation: 1.06,
+            brightness: 0.02,
+            contrast: 0.98,
+            highlights: 0.02,
+            shadows: 0.08,
+            hue: 4.0,
+            sharpness: 0.04,
+            tintColorHex: "#E8C49C",
+            tintIntensity: 0.10
+        ),
+        previewColor: UIColor(hex: "#E8C49C") ?? UIColor.systemOrange
+    )
+
+    /// Glow: 明るい光感で顔まわりをやわらかく見せるポートレート
+    static let glowPortrait = FilterPreset(
+        id: "glow_portrait",
+        name: "Glow",
+        category: .portrait,
+        recipe: FilterRecipe(
+            saturation: 1.00,
+            brightness: 0.05,
+            contrast: 0.97,
+            highlights: 0.10,
+            shadows: 0.08,
+            sharpness: 0.02,
+            tintColorHex: "#F6E4D6",
+            tintIntensity: 0.05
+        ),
+        previewColor: UIColor(hex: "#F6E4D6") ?? UIColor.systemYellow
+    )
+
+    /// Studio: 室内照明でも輪郭を保ちやすい整ったポートレート
+    static let studioPortrait = FilterPreset(
+        id: "studio_portrait",
+        name: "Studio",
+        category: .portrait,
+        recipe: FilterRecipe(
+            saturation: 0.99,
+            brightness: 0.01,
+            contrast: 1.06,
+            highlights: -0.10,
+            shadows: 0.10,
+            sharpness: 0.14
+        ),
+        previewColor: UIColor.systemBlue.withAlphaComponent(0.45)
+    )
+
+    /// Peach: ピーチ系の血色感を足すやわらかなポートレート
+    static let peachPortrait = FilterPreset(
+        id: "peach_portrait",
+        name: "Peach",
+        category: .portrait,
+        recipe: FilterRecipe(
+            saturation: 1.00,
+            brightness: 0.03,
+            contrast: 0.95,
+            highlights: 0.03,
+            shadows: 0.10,
+            hue: 2.0,
+            gaussianBlur: 0.4,
+            tintColorHex: "#E7B7A0",
+            tintIntensity: 0.12
+        ),
+        previewColor: UIColor(hex: "#E7B7A0") ?? UIColor.systemPink
+    )
+
+    // MARK: - Mood プリセット
+
+    /// Pastel Air: 明るく軽い空気感のあるパステルトーン
+    static let pastelAir = FilterPreset(
+        id: "pastel_air",
+        name: "Pastel Air",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 0.88,
+            brightness: 0.06,
+            contrast: 0.90,
+            highlights: 0.10,
+            shadows: 0.14,
+            sharpness: 0.0,
+            gaussianBlur: 0.7,
+            tintColorHex: "#D4C8E8",
+            tintIntensity: 0.08
+        ),
+        previewColor: UIColor(hex: "#D4C8E8") ?? UIColor.systemPurple
+    )
+
+    /// Rose Haze: ローズ色の柔らかい霞感
+    static let roseHaze = FilterPreset(
+        id: "rose_haze",
+        name: "Rose Haze",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 0.92,
+            brightness: 0.03,
+            contrast: 0.94,
+            highlights: 0.06,
+            shadows: 0.12,
+            hue: -3.0,
+            gaussianBlur: 0.5,
+            tintColorHex: "#D4A0A8",
+            tintIntensity: 0.14
+        ),
+        previewColor: UIColor(hex: "#D4A0A8") ?? UIColor.systemPink
+    )
+
+    /// Cool Calm: 静かで落ち着いた寒色系トーン
+    static let coolCalm = FilterPreset(
+        id: "cool_calm",
+        name: "Cool Calm",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 0.94,
+            brightness: 0.01,
+            contrast: 0.96,
+            highlights: -0.02,
+            shadows: 0.08,
+            hue: 6.0,
+            sharpness: 0.04,
+            tintColorHex: "#A8BCD4",
+            tintIntensity: 0.10
+        ),
+        previewColor: UIColor(hex: "#A8BCD4") ?? UIColor.systemBlue
+    )
+
+    /// Cloud: 白っぽく軽い空気感を足すニュートラルなムード
+    static let cloudMood = FilterPreset(
+        id: "cloud",
+        name: "Cloud",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 0.82,
+            brightness: 0.08,
+            contrast: 0.86,
+            highlights: 0.14,
+            shadows: 0.08,
+            sharpness: 0.0,
+            gaussianBlur: 0.5
+        ),
+        previewColor: UIColor.systemGray5
+    )
+
+    /// Blush: ほのかな赤みを足してやわらかく見せるムード
+    static let blushMood = FilterPreset(
+        id: "blush",
+        name: "Blush",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 1.00,
+            brightness: 0.05,
+            contrast: 0.98,
+            highlights: 0.10,
+            shadows: 0.08,
+            hue: 1.0,
+            sharpness: 0.02,
+            tintColorHex: "#E8B8BE",
+            tintIntensity: 0.08
+        ),
+        previewColor: UIColor(hex: "#E8B8BE") ?? UIColor.systemPink
+    )
+
+    /// Lilac: 紫寄りの夢っぽい空気感を加えるムード
+    static let lilacMood = FilterPreset(
+        id: "lilac",
+        name: "Lilac",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 0.90,
+            brightness: 0.02,
+            contrast: 0.91,
+            highlights: 0.02,
+            shadows: 0.12,
+            hue: 5.0,
+            gaussianBlur: 0.4,
+            tintColorHex: "#BFADE8",
+            tintIntensity: 0.16
+        ),
+        previewColor: UIColor(hex: "#BFADE8") ?? UIColor.systemPurple
+    )
+
+    /// Mint: みずみずしい青緑の抜け感を作るムード
+    static let mintMood = FilterPreset(
+        id: "mint",
+        name: "Mint",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 0.96,
+            brightness: 0.04,
+            contrast: 0.95,
+            highlights: 0.04,
+            shadows: 0.10,
+            hue: 10.0,
+            sharpness: 0.02,
+            tintColorHex: "#B7DCCF",
+            tintIntensity: 0.10
+        ),
+        previewColor: UIColor(hex: "#B7DCCF") ?? UIColor.systemTeal
+    )
+
+    /// Mist: 彩度を抑えた霧っぽい静かなムード
+    static let mistMood = FilterPreset(
+        id: "mist",
+        name: "Mist",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 0.80,
+            brightness: 0.00,
+            contrast: 0.87,
+            highlights: -0.04,
+            shadows: 0.18,
+            gaussianBlur: 0.9,
+            tintColorHex: "#BDC7D4",
+            tintIntensity: 0.05
+        ),
+        previewColor: UIColor(hex: "#BDC7D4") ?? UIColor.systemGray
     )
 
     /// Noir: 完全モノクロ コントラスト↑ シャープネス↑

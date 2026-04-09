@@ -29,6 +29,12 @@ enum HDRFilterCatalog {
         vivid,
         crisp,
         soft,
+        softPortrait,
+        cleanPortrait,
+        warmPortrait,
+        glowPortrait,
+        studioPortrait,
+        peachPortrait,
         dramatic,
         cityNight,
         goldenHour,
@@ -41,6 +47,14 @@ enum HDRFilterCatalog {
         fadedMemory,
         dustyFilm,
         retroChrome,
+        pastelAir,
+        roseHaze,
+        coolCalm,
+        cloudMood,
+        blushMood,
+        lilacMood,
+        mintMood,
+        mistMood,
         mono,
         monoContrast,
         monoSoft,
@@ -352,6 +366,266 @@ enum HDRFilterCatalog {
             tintIntensity: 0.10
         ),
         previewColor: UIColor(hex: "#7E8FA4") ?? UIColor.systemGray
+    )
+
+    // MARK: - Portrait プリセット
+
+    /// Soft HDR: 柔らかい光で肌を滑らかに見せるHDRポートレート
+    static let softPortrait = FilterPreset(
+        id: "hdr_soft_portrait",
+        name: "Soft",
+        category: .portrait,
+        recipe: FilterRecipe(
+            saturation: 0.98,
+            brightness: 0.04,
+            contrast: 0.94,
+            highlights: -0.06,
+            shadows: 0.18,
+            sharpness: 0.0,
+            gaussianBlur: 0.9,
+            tintColorHex: "#F0D8C8",
+            tintIntensity: 0.06
+        ),
+        previewColor: UIColor(hex: "#F0D8C8") ?? UIColor.systemPink
+    )
+
+    /// Clean HDR: 透明感のあるクリアなHDRポートレート
+    static let cleanPortrait = FilterPreset(
+        id: "hdr_clean_portrait",
+        name: "Clean",
+        category: .portrait,
+        recipe: FilterRecipe(
+            saturation: 1.04,
+            brightness: 0.03,
+            contrast: 1.04,
+            highlights: -0.10,
+            shadows: 0.14,
+            sharpness: 0.12
+        ),
+        previewColor: UIColor.systemCyan.withAlphaComponent(0.5)
+    )
+
+    /// Warm HDR: 暖かみのあるHDR人物向け補正
+    static let warmPortrait = FilterPreset(
+        id: "hdr_warm_portrait",
+        name: "Warm",
+        category: .portrait,
+        recipe: FilterRecipe(
+            saturation: 1.08,
+            brightness: 0.02,
+            contrast: 1.00,
+            highlights: -0.06,
+            shadows: 0.16,
+            hue: 4.0,
+            sharpness: 0.06,
+            tintColorHex: "#E8C49C",
+            tintIntensity: 0.10
+        ),
+        previewColor: UIColor(hex: "#E8C49C") ?? UIColor.systemOrange
+    )
+
+    /// Glow HDR: 明るい光感で顔まわりをやわらかく見せるHDRポートレート
+    static let glowPortrait = FilterPreset(
+        id: "hdr_glow_portrait",
+        name: "Glow",
+        category: .portrait,
+        recipe: FilterRecipe(
+            saturation: 1.02,
+            brightness: 0.05,
+            contrast: 0.98,
+            highlights: 0.02,
+            shadows: 0.16,
+            sharpness: 0.02,
+            tintColorHex: "#F6E4D6",
+            tintIntensity: 0.05
+        ),
+        previewColor: UIColor(hex: "#F6E4D6") ?? UIColor.systemYellow
+    )
+
+    /// Studio HDR: 室内照明でも輪郭を保ちやすい整ったHDRポートレート
+    static let studioPortrait = FilterPreset(
+        id: "hdr_studio_portrait",
+        name: "Studio",
+        category: .portrait,
+        recipe: FilterRecipe(
+            saturation: 1.00,
+            brightness: 0.01,
+            contrast: 1.08,
+            highlights: -0.16,
+            shadows: 0.16,
+            sharpness: 0.16
+        ),
+        previewColor: UIColor.systemBlue.withAlphaComponent(0.5)
+    )
+
+    /// Peach HDR: ピーチ系の血色感を足すやわらかなHDRポートレート
+    static let peachPortrait = FilterPreset(
+        id: "hdr_peach_portrait",
+        name: "Peach",
+        category: .portrait,
+        recipe: FilterRecipe(
+            saturation: 1.02,
+            brightness: 0.03,
+            contrast: 0.96,
+            highlights: -0.04,
+            shadows: 0.16,
+            hue: 2.0,
+            gaussianBlur: 0.3,
+            tintColorHex: "#E7B7A0",
+            tintIntensity: 0.12
+        ),
+        previewColor: UIColor(hex: "#E7B7A0") ?? UIColor.systemPink
+    )
+
+    // MARK: - Mood プリセット
+
+    /// Pastel Air HDR: 明るく軽い空気感のあるHDRパステルトーン
+    static let pastelAir = FilterPreset(
+        id: "hdr_pastel_air",
+        name: "Pastel Air",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 0.90,
+            brightness: 0.05,
+            contrast: 0.92,
+            highlights: 0.04,
+            shadows: 0.20,
+            sharpness: 0.02,
+            gaussianBlur: 0.3,
+            tintColorHex: "#D4C8E8",
+            tintIntensity: 0.08
+        ),
+        previewColor: UIColor(hex: "#D4C8E8") ?? UIColor.systemPurple
+    )
+
+    /// Rose Haze HDR: ローズ色の柔らかい霞感を持つHDR
+    static let roseHaze = FilterPreset(
+        id: "hdr_rose_haze",
+        name: "Rose Haze",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 0.94,
+            brightness: 0.03,
+            contrast: 0.96,
+            highlights: 0.02,
+            shadows: 0.16,
+            hue: -3.0,
+            gaussianBlur: 0.35,
+            tintColorHex: "#D4A0A8",
+            tintIntensity: 0.14
+        ),
+        previewColor: UIColor(hex: "#D4A0A8") ?? UIColor.systemPink
+    )
+
+    /// Cool Calm HDR: 静かで落ち着いた寒色系HDRトーン
+    static let coolCalm = FilterPreset(
+        id: "hdr_cool_calm",
+        name: "Cool Calm",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 0.96,
+            brightness: 0.01,
+            contrast: 0.98,
+            highlights: -0.06,
+            shadows: 0.14,
+            hue: 6.0,
+            sharpness: 0.06,
+            tintColorHex: "#A8BCD4",
+            tintIntensity: 0.10
+        ),
+        previewColor: UIColor(hex: "#A8BCD4") ?? UIColor.systemBlue
+    )
+
+    /// Cloud HDR: 白っぽく軽い空気感を足すニュートラルなHDRムード
+    static let cloudMood = FilterPreset(
+        id: "hdr_cloud",
+        name: "Cloud",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 0.84,
+            brightness: 0.07,
+            contrast: 0.88,
+            highlights: 0.06,
+            shadows: 0.18,
+            sharpness: 0.0,
+            gaussianBlur: 0.4
+        ),
+        previewColor: UIColor.systemGray5
+    )
+
+    /// Blush HDR: ほのかな赤みを足してやわらかく見せるHDRムード
+    static let blushMood = FilterPreset(
+        id: "hdr_blush",
+        name: "Blush",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 1.02,
+            brightness: 0.05,
+            contrast: 1.00,
+            highlights: 0.02,
+            shadows: 0.14,
+            hue: 1.0,
+            sharpness: 0.02,
+            tintColorHex: "#E8B8BE",
+            tintIntensity: 0.08
+        ),
+        previewColor: UIColor(hex: "#E8B8BE") ?? UIColor.systemPink
+    )
+
+    /// Lilac HDR: 紫寄りの夢っぽい空気感を加えるHDRムード
+    static let lilacMood = FilterPreset(
+        id: "hdr_lilac",
+        name: "Lilac",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 0.92,
+            brightness: 0.02,
+            contrast: 0.93,
+            highlights: -0.02,
+            shadows: 0.18,
+            hue: 5.0,
+            gaussianBlur: 0.3,
+            tintColorHex: "#BFADE8",
+            tintIntensity: 0.16
+        ),
+        previewColor: UIColor(hex: "#BFADE8") ?? UIColor.systemPurple
+    )
+
+    /// Mint HDR: みずみずしい青緑の抜け感を作るHDRムード
+    static let mintMood = FilterPreset(
+        id: "hdr_mint",
+        name: "Mint",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 0.98,
+            brightness: 0.04,
+            contrast: 0.97,
+            highlights: -0.02,
+            shadows: 0.16,
+            hue: 10.0,
+            sharpness: 0.04,
+            tintColorHex: "#B7DCCF",
+            tintIntensity: 0.10
+        ),
+        previewColor: UIColor(hex: "#B7DCCF") ?? UIColor.systemTeal
+    )
+
+    /// Mist HDR: 彩度を抑えた霧っぽい静かなHDRムード
+    static let mistMood = FilterPreset(
+        id: "hdr_mist",
+        name: "Mist",
+        category: .mood,
+        recipe: FilterRecipe(
+            saturation: 0.82,
+            brightness: 0.00,
+            contrast: 0.89,
+            highlights: -0.10,
+            shadows: 0.24,
+            gaussianBlur: 0.7,
+            tintColorHex: "#BDC7D4",
+            tintIntensity: 0.05
+        ),
+        previewColor: UIColor(hex: "#BDC7D4") ?? UIColor.systemGray
     )
 
     /// HDR Mono: ディテール豊富なモノクロHDR

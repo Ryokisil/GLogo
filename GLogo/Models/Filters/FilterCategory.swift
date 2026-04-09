@@ -13,12 +13,16 @@ import Foundation
 enum FilterCategory: String, CaseIterable, Identifiable {
     /// 基本的なフィルター
     case basic
-    /// ヴィンテージ風フィルター
-    case vintage
-    /// モノクロ系フィルター
-    case mono
+    /// ポートレート向けフィルター
+    case portrait
     /// 映画風フィルター
     case cinematic
+    /// ヴィンテージ風フィルター
+    case vintage
+    /// 雰囲気・空気感フィルター
+    case mood
+    /// モノクロ系フィルター
+    case mono
 
     var id: String { rawValue }
 
@@ -27,12 +31,16 @@ enum FilterCategory: String, CaseIterable, Identifiable {
         switch self {
         case .basic:
             return "Basic"
-        case .vintage:
-            return "Vintage"
-        case .mono:
-            return "Mono"
+        case .portrait:
+            return "Portrait"
         case .cinematic:
             return "Cinematic"
+        case .vintage:
+            return "Vintage"
+        case .mood:
+            return "Mood"
+        case .mono:
+            return "Mono"
         }
     }
 

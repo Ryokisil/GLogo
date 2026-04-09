@@ -54,4 +54,60 @@ final class FilterCatalogRegressionTests: XCTestCase {
             XCTAssertEqual(actual, expected, "HDRカテゴリ \(category.rawValue) の取得結果がallPresets定義と一致しない")
         }
     }
+
+    // MARK: - カテゴリ整合性
+
+    /// 全カテゴリにStandard側で少なくとも1つのプリセットが存在することを検証する
+    func testAllCategoriesHaveStandardPresets() {
+        for category in FilterCategory.allCases {
+            let presets = FilterCatalog.presets(for: category)
+            XCTAssertFalse(presets.isEmpty, "Standardカテゴリ \(category.rawValue) にプリセットがない")
+        }
+    }
+
+    /// 全カテゴリにHDR側で少なくとも1つのプリセットが存在することを検証する
+    func testAllCategoriesHaveHDRPresets() {
+        for category in FilterCategory.allCases {
+            let presets = HDRFilterCatalog.presets(for: category)
+            XCTAssertFalse(presets.isEmpty, "HDRカテゴリ \(category.rawValue) にプリセットがない")
+        }
+    }
+
+    /// Standard/HDR 間でプリセットIDが衝突しないことを検証する
+    func testStandardAndHDRPresetIDsDoNotCollide() {
+        let sdrIds = Set(FilterCatalog.allPresets.map(\.id))
+        let hdrIds = Set(HDRFilterCatalog.allPresets.map(\.id))
+        let collision = sdrIds.intersection(hdrIds)
+        XCTAssertTrue(collision.isEmpty, "Standard/HDR間でプリセットIDが衝突している: \(collision)")
+    }
+
+    // MARK: - 新規プリセット存在確認
+
+    /// portrait / mood カテゴリの新規SDRプリセットが存在し、IDが一意であることを検証する
+    func testNewStandardPresetsExist() {
+        let expectedIds: Set<String> = [
+            "soft_portrait", "clean_portrait", "warm_portrait",
+            "glow_portrait", "studio_portrait", "peach_portrait",
+            "pastel_air", "rose_haze", "cool_calm",
+            "cloud", "blush", "lilac", "mint", "mist"
+        ]
+        let actualIds = Set(FilterCatalog.allPresets.map(\.id))
+        for id in expectedIds {
+            XCTAssertTrue(actualIds.contains(id), "Standard新規プリセット \(id) が見つからない")
+        }
+    }
+
+    /// portrait / mood カテゴリの新規HDRプリセットが存在し、hdr_接頭辞を持つことを検証する
+    func testNewHDRPresetsExist() {
+        let expectedIds: Set<String> = [
+            "hdr_soft_portrait", "hdr_clean_portrait", "hdr_warm_portrait",
+            "hdr_glow_portrait", "hdr_studio_portrait", "hdr_peach_portrait",
+            "hdr_pastel_air", "hdr_rose_haze", "hdr_cool_calm",
+            "hdr_cloud", "hdr_blush", "hdr_lilac", "hdr_mint", "hdr_mist"
+        ]
+        let actualIds = Set(HDRFilterCatalog.allPresets.map(\.id))
+        for id in expectedIds {
+            XCTAssertTrue(actualIds.contains(id), "HDR新規プリセット \(id) が見つからない")
+        }
+    }
 }
