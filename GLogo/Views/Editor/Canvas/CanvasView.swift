@@ -515,23 +515,11 @@ struct CanvasViewRepresentable: UIViewRepresentable {
             canvasView.onManipulationStarted = { [weak canvasView, weak self] type, point in
                 // 4K+画像の操作中品質低下判定と設定
                 if let canvasView = canvasView {
-                    canvasView.isReducingQualityDuringManipulation = canvasView.shouldReduceQualityDuringManipulation()
-                    
-                    // 高解像度画像要素の編集開始フラグを設定
-                    if let project = canvasView.project {
-                        for element in project.elements {
-                            if let imageElement = element as? ImageElement,
-                               let image = imageElement.originalImage {
-                                let pixelCount = image.size.width * image.size.height * image.scale * image.scale
-                                // 調整済み画像はfull経路を維持し、ドラッグ中の色揺れを防止する
-                                if pixelCount > canvasView.highResolutionThreshold,
-                                   imageElement.shouldUseInstantPreviewForManipulation {
-                                    imageElement.startEditing()
-                                }
-                            }
-                        }
-                    }
-                    
+                    canvasView.isReducingQualityDuringManipulation = self?.parent.viewModel
+                        .prepareImageRenderingForManipulation(
+                            in: canvasView.project,
+                            highResolutionThreshold: canvasView.highResolutionThreshold
+                        ) ?? false
                     canvasView.setNeedsDisplay()
                 }
                 
@@ -548,16 +536,7 @@ struct CanvasViewRepresentable: UIViewRepresentable {
                 // 4K+画像の操作中品質低下を解除
                 if let canvasView = canvasView {
                     canvasView.isReducingQualityDuringManipulation = false
-                    
-                    // 高解像度画像要素の編集終了フラグを設定
-                    if let project = canvasView.project {
-                        for element in project.elements {
-                            if let imageElement = element as? ImageElement {
-                                imageElement.endEditing()
-                            }
-                        }
-                    }
-                    
+                    self?.parent.viewModel.finishImageRenderingAfterManipulation(in: canvasView.project)
                     canvasView.setNeedsDisplay()
                 }
                 

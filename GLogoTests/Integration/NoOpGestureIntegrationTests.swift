@@ -53,10 +53,10 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         )
     }
 
-    /// 調整変更の有無でドラッグ中プレビュー経路の切替条件が変わることを検証
+    /// ドラッグ中プレビュー経路が編集差分に依存しないことを検証
     /// - Parameters: なし
     /// - Returns: なし
-    func testManipulationPreviewSwitching_FollowsAdjustmentState() throws {
+    func testManipulationPreviewSwitching_DoesNotDependOnEditState() throws {
         let imageData = try XCTUnwrap(makeSolidImage(color: .systemBlue, size: CGSize(width: 32, height: 32)).pngData())
         let imageElement = ImageElement(imageData: imageData, importOrder: 0)
 
@@ -66,9 +66,17 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         )
 
         imageElement.saturationAdjustment = 1.2
-        XCTAssertFalse(
+        XCTAssertTrue(
             imageElement.shouldUseInstantPreviewForManipulation,
-            "調整変更ありでは即時プレビュー経路を避けるべき"
+            "手動調整差分があっても manipulation 中は即時プレビュー経路を維持するべき"
+        )
+
+        imageElement.appliedFilterRecipe = FilterCatalog.noir.recipe
+        imageElement.appliedFilterPresetId = FilterCatalog.noir.id
+
+        XCTAssertTrue(
+            imageElement.shouldUseInstantPreviewForManipulation,
+            "フィルタープリセット差分があっても manipulation 中は即時プレビュー経路を維持するべき"
         )
     }
 

@@ -84,6 +84,9 @@ class ElementViewModel: ObservableObject {
     /// フレーム色編集の開始値（ドラッグ開始時）
     private var frameColorStartState: UIColor?
 
+    /// フィルタープリセット反映の世代管理。古い async 完了で新しい選択状態を上書きしない。
+    private var filterPresetRenderGeneration: UInt = 0
+
     /// 現在適用中のフィルタープリセットID（ImageElement から読み出す）
     var appliedFilterPresetId: String? {
         imageElement?.appliedFilterPresetId
@@ -1240,8 +1243,7 @@ class ElementViewModel: ObservableObject {
         ) else { return }
 
         editorViewModel?.applyEvent(plan.event)
-        editorViewModel?.updateImageElement(imageElement)
-        objectWillChange.send()
+        refreshImageAfterFilterPresetChange(imageElement)
     }
 
     /// フィルタープリセットを解除（manual 調整値は維持）
@@ -1250,8 +1252,38 @@ class ElementViewModel: ObservableObject {
         guard let plan = filterPresetUseCase.makeResetPlan(for: imageElement) else { return }
 
         editorViewModel?.applyEvent(plan.event)
+        refreshImageAfterFilterPresetChange(imageElement)
+    }
+
+    /// プリセット変更直後は軽量プレビューを即時表示し、後段で高品質版へ差し替える
+    /// - Parameter imageElement: 更新対象の画像要素
+    private func refreshImageAfterFilterPresetChange(_ imageElement: ImageElement) {
+        imageEditingSessionUseCase.beginEditing(imageElement)
         editorViewModel?.updateImageElement(imageElement)
         objectWillChange.send()
+
+        filterPresetRenderGeneration &+= 1
+        let generation = filterPresetRenderGeneration
+
+        imageRenderRefreshUseCase.scheduleFinalRefresh { [weak self] in
+            guard let self else { return }
+
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+
+                let processedImage = await imageElement.renderFullQualityImageAsync()
+                guard self.filterPresetRenderGeneration == generation else { return }
+
+                imageElement.cachedImage = processedImage
+                self.imageEditingSessionUseCase.endEditing(imageElement)
+
+                // 他要素へ選択が移っていた場合は再選択せず、現在の表示更新だけを継続する。
+                guard self.imageElement?.id == imageElement.id else { return }
+
+                self.editorViewModel?.updateImageElement(imageElement)
+                self.objectWillChange.send()
+            }
+        }
     }
 
     /// フィルタープリセットのプレビュー画像を生成

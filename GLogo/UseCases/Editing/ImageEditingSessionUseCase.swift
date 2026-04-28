@@ -21,11 +21,8 @@ struct ImageEditingSessionUseCase {
             return
         }
 
-        if imageElement.shouldUseInstantPreviewForManipulation {
-            imageElement.startEditing()
-        } else {
-            imageElement.endEditing()
-        }
+        // 移動・拡縮・回転は頻度が高い操作のため、調整差分ではなく追従性を優先する。
+        imageElement.startEditing()
     }
 
     /// 画像調整ディスクリプタに応じて描画モードを切り替える
