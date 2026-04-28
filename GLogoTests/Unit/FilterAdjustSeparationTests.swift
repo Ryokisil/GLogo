@@ -22,6 +22,8 @@ final class FilterAdjustSeparationTests: XCTestCase {
         var lastMode: ImageRenderMode?
 
         var nextImage: UIImage?
+        var queuedAsyncImages: [UIImage] = []
+        var asyncDelayNanoseconds: UInt64 = 0
 
         func generatePreviewImage(
             editingImage: UIImage?,
@@ -74,6 +76,12 @@ final class FilterAdjustSeparationTests: XCTestCase {
             _ = quality
             applyFiltersAsyncCallCount += 1
             lastMode = mode
+            if asyncDelayNanoseconds > 0 {
+                try? await Task.sleep(nanoseconds: asyncDelayNanoseconds)
+            }
+            if !queuedAsyncImages.isEmpty {
+                return queuedAsyncImages.removeFirst()
+            }
             return nextImage
         }
 
@@ -133,6 +141,31 @@ final class FilterAdjustSeparationTests: XCTestCase {
             UIColor.systemBlue.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
         }
+    }
+
+    /// 比較しやすい単色画像を生成
+    /// - Parameter color: 塗りつぶし色
+    /// - Returns: 単色画像
+    private func makeSolidImage(color: UIColor) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 6, height: 6))
+        return renderer.image { context in
+            color.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 6, height: 6))
+        }
+    }
+
+    /// 条件が成立するまでメインループを回す
+    /// - Parameters:
+    ///   - timeout: 待機上限秒数
+    ///   - condition: 成立待ち条件
+    /// - Returns: 条件成立時は true
+    @discardableResult
+    private func waitUntil(timeout: TimeInterval, condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
+        return condition()
     }
 
     /// フィルター適用時に manual 側調整値が上書きされないことを確認
@@ -246,6 +279,77 @@ final class FilterAdjustSeparationTests: XCTestCase {
         let historyCountAfterSecondApply = editorViewModel.getHistoryDescriptions().count
 
         XCTAssertEqual(historyCountAfterSecondApply, historyCountAfterFirstApply)
+    }
+
+    /// プリセット適用時は即時プレビューを先に表示し、後段で async 高品質反映することを確認
+    @MainActor
+    func testApplyFilterPreset_UsesInstantPreviewBeforeAsyncFullQualityRefresh() {
+        let originalService = ImageElement.previewService
+        let spy = PreviewServiceSpy()
+        spy.nextImage = makeSolidImage(color: .systemBlue)
+        ImageElement.previewService = spy
+        defer { ImageElement.previewService = originalService }
+
+        let (project, element) = makeProjectWithImageElement()
+        let editorViewModel = EditorViewModel(project: project)
+        let elementViewModel = ElementViewModel(editorViewModel: editorViewModel)
+
+        editorViewModel.selectElement(element)
+        flushMainRunLoop()
+
+        elementViewModel.applyFilterPreset(FilterCatalog.noir)
+        _ = element.image
+
+        XCTAssertEqual(spy.generatePreviewImageCallCount, 1)
+        XCTAssertEqual(spy.instantPreviewCallCount, 1)
+        XCTAssertEqual(spy.applyFiltersCallCount, 0)
+        XCTAssertTrue(waitUntil(timeout: 1.0) { spy.applyFiltersAsyncCallCount == 1 })
+
+        _ = element.image
+
+        XCTAssertEqual(spy.applyFiltersAsyncCallCount, 1)
+        XCTAssertEqual(spy.applyFiltersCallCount, 0)
+    }
+
+    /// 古い async 完了が新しいプリセット選択中プレビューを中断しないことを確認
+    @MainActor
+    func testApplyFilterPreset_DoesNotApplyStaleAsyncRefreshOverNewerSelection() {
+        let originalService = ImageElement.previewService
+        let spy = PreviewServiceSpy()
+        let previewImage = makeSolidImage(color: .systemBlue)
+        let firstFullImage = makeSolidImage(color: .systemRed)
+        let secondFullImage = makeSolidImage(color: .systemGreen)
+        spy.nextImage = previewImage
+        spy.queuedAsyncImages = [firstFullImage, secondFullImage]
+        spy.asyncDelayNanoseconds = 250_000_000
+        ImageElement.previewService = spy
+        defer { ImageElement.previewService = originalService }
+
+        let (project, element) = makeProjectWithImageElement()
+        let editorViewModel = EditorViewModel(project: project)
+        let elementViewModel = ElementViewModel(editorViewModel: editorViewModel)
+
+        editorViewModel.selectElement(element)
+        flushMainRunLoop()
+
+        elementViewModel.applyFilterPreset(FilterCatalog.noir)
+        XCTAssertEqual(element.image?.pngData(), previewImage.pngData())
+        XCTAssertTrue(waitUntil(timeout: 0.3) { spy.applyFiltersAsyncCallCount == 1 })
+
+        elementViewModel.applyFilterPreset(FilterCatalog.crisp)
+        XCTAssertEqual(element.image?.pngData(), previewImage.pngData())
+
+        RunLoop.main.run(until: Date().addingTimeInterval(0.20))
+        XCTAssertEqual(
+            element.image?.pngData(),
+            previewImage.pngData(),
+            "古い async 完了で新しいプリセット選択中のプレビューが終了しないこと"
+        )
+
+        XCTAssertTrue(waitUntil(timeout: 1.0) { spy.applyFiltersAsyncCallCount == 2 })
+        RunLoop.main.run(until: Date().addingTimeInterval(0.30))
+
+        XCTAssertEqual(element.image?.pngData(), secondFullImage.pngData())
     }
 
     /// プリセットIDからレンダリング経路が正しく判定されることを確認

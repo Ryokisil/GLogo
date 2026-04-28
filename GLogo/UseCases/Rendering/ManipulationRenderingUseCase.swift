@@ -38,8 +38,7 @@ struct ManipulationRenderingUseCase {
                 shouldReduceQuality = true
             }
 
-            guard pixelCount > highResolutionThreshold,
-                  imageElement.shouldUseInstantPreviewForManipulation else {
+            guard pixelCount > highResolutionThreshold else {
                 continue
             }
 

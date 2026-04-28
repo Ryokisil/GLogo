@@ -558,6 +558,20 @@ class ImageElement: LogoElement {
         cachedImage = processedImage
         return processedImage
     }
+
+    /// フル品質のフィルター適用結果を非同期で生成する
+    ///
+    /// キャッシュ書き込みを伴わないため、呼び出し側で世代管理後に採用可否を判定できる。
+    /// - Parameters: なし
+    /// - Returns: フィルター適用済み画像。元画像未解決時は nil
+    @MainActor
+    func renderFullQualityImageAsync() async -> UIImage? {
+        guard let originalImage = self.originalImage else {
+            return nil
+        }
+
+        return await applyFiltersAsync(to: originalImage, quality: .full)
+    }
     
     /// ローカル保存用Imageのエンコードキー
     /// - Note: 新規キー追加時は旧データとの互換性を確認すること
@@ -1303,12 +1317,13 @@ class ImageElement: LogoElement {
 
     /// ジェスチャー操作中に即時プレビュー経路へ切り替えるべきかを返す
     /// - Parameters: なし
-    /// - Returns: 調整未変更の場合はtrue、調整変更ありの場合はfalse
+    /// - Returns: 即時プレビュー経路を許可する場合は true
     ///
-    /// 調整変更ありでプレビュー経路へ切り替えると、proxy画像との色差が視認されることがあるため、
-    /// ドラッグ中の色揺れ防止のためにfull経路を維持する。
+    /// 移動・拡縮・回転は操作頻度が高く、編集中の追従性が体感品質へ直結する。
+    /// そのため manipulation 中の軽量描画可否は編集差分とは切り離し、常に preview 経路を許可する。
+    /// 高解像度画像に対して実際に切り替えるかどうかは ManipulationRenderingUseCase 側で判定する。
     var shouldUseInstantPreviewForManipulation: Bool {
-        !hasRevertableAdjustmentChanges
+        true
     }
 
     /// 現在の調整値スナップショットを生成
