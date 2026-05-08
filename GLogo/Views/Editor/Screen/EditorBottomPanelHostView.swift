@@ -97,9 +97,7 @@ struct EditorBottomPanelHostView: View {
                         viewModel.editorMode = .select
                     },
                     onOpenTextEditor: {
-                        if let textElement = viewModel.selectedElement as? TextElement {
-                            viewModel.startTextEditing(for: textElement)
-                        }
+                        viewModel.startTextEditingForSelectedElement()
                     }
                 )
                 .ignoresSafeArea(.keyboard, edges: .bottom)

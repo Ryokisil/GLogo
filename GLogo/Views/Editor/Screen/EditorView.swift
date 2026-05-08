@@ -195,7 +195,7 @@ struct EditorView: View {
             .onChange(of: viewModel.selectedElement?.id) {
                 // テキスト要素選択時にパネルを自動表示、それ以外で非表示
                 uiState.isTextPanelVisible = viewModel.selectedElement is TextElement
-                if shouldCollapseBottomTool(for: viewModel.selectedElement, selectedTool: uiState.selectedBottomTool) {
+                if shouldCollapseBottomTool(for:uiState.selectedBottomTool) {
                     uiState.selectedBottomTool = .select
                 }
             }
@@ -237,7 +237,7 @@ struct EditorView: View {
             }
             // 手動背景除去画面への遷移
             .navigationDestination(isPresented: $isNavigatingToManualRemoval) {
-                if let imageElement = viewModel.selectedElement as? ImageElement {
+                if let imageElement = viewModel.selectedImageElement {
                     ManualBackgroundRemovalView(imageElement: imageElement) { editedImage in
                         viewModel.applyManualBackgroundRemovalResult(editedImage, to: imageElement)
                     }
@@ -311,9 +311,9 @@ struct EditorView: View {
         tool == .effects
     }
 
-    private func shouldCollapseBottomTool(for selectedElement: LogoElement?, selectedTool: EditorBottomTool) -> Bool {
+    private func shouldCollapseBottomTool(for selectedTool: EditorBottomTool) -> Bool {
         guard isImagePropertyTool(selectedTool) else { return false }
-        return (selectedElement as? ImageElement) == nil
+        return !viewModel.isImageElementSelected
     }
 
     private func handleBottomToolSelection(_ tool: EditorBottomTool) {
@@ -327,7 +327,7 @@ struct EditorView: View {
             uiState.isTextPanelVisible = false
             if tool == .adjust || tool == .frame || tool == .magicStudio || tool == .filters || tool == .effects {
                 viewModel.editorMode = .select
-                if shouldCollapseBottomTool(for: viewModel.selectedElement, selectedTool: tool) {
+                if shouldCollapseBottomTool(for:tool) {
                     uiState.selectedBottomTool = .select
                 }
             }

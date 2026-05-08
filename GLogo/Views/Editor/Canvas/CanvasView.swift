@@ -122,24 +122,7 @@ class CanvasView: UIView {
     }
     
     // MARK: - 描画
-    
-    /// 高解像度画像が含まれているかチェック
-    func shouldReduceQualityDuringManipulation() -> Bool {
-        guard let project = project else { return false }
-        
-        // 画像要素の中に4K超えがあるかチェック
-        for element in project.elements {
-            if let imageElement = element as? ImageElement,
-               let image = imageElement.image {
-                let pixelCount = image.size.width * image.size.height * image.scale * image.scale
-                if pixelCount > highResolutionThreshold {
-                    return true
-                }
-            }
-        }
-        return false
-    }
-    
+
     override func draw(_ rect: CGRect) {
         guard let context = UIGraphicsGetCurrentContext() else { return }
         
@@ -177,10 +160,8 @@ class CanvasView: UIView {
             .sorted { $0.zIndex < $1.zIndex }
         
         for element in sortedElements {
-            // 編集中のテキスト要素は描画しない
-            if let editingId = editingTextElementId, 
-               let textElement = element as? TextElement,
-               textElement.id == editingId {
+            // 編集中の要素は描画しない（ID一致のみで判定し、要素種別への依存を避ける）
+            if let editingId = editingTextElementId, element.id == editingId {
                 continue
             }
             element.draw(in: context)

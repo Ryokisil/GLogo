@@ -10,6 +10,7 @@ import XCTest
 import UIKit
 @testable import GLogo
 
+@MainActor
 class ImageCropTests: XCTestCase {
     
     var testImage: UIImage!
