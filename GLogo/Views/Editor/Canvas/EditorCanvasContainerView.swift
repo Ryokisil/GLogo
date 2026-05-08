@@ -82,22 +82,58 @@ struct EditorCanvasContainerView: View {
                     onManipulationChanged: nil,
                     onManipulationEnded: nil,
                     onMagnifyChanged: { scale in
-                        elementViewModel.applyGestureTransform(translation: nil, scale: scale, rotation: nil, ended: false)
+                        elementViewModel.applyGestureTransform(
+                            kind: .magnify,
+                            translation: nil,
+                            scale: scale,
+                            rotation: nil,
+                            ended: false
+                        )
                     },
                     onMagnifyEnded: {
-                        elementViewModel.applyGestureTransform(translation: nil, scale: nil, rotation: nil, ended: true)
+                        elementViewModel.applyGestureTransform(
+                            kind: .magnify,
+                            translation: nil,
+                            scale: nil,
+                            rotation: nil,
+                            ended: true
+                        )
                     },
                     onRotateGestureChanged: { angle in
-                        elementViewModel.applyGestureTransform(translation: nil, scale: nil, rotation: angle, ended: false)
+                        elementViewModel.applyGestureTransform(
+                            kind: .rotate,
+                            translation: nil,
+                            scale: nil,
+                            rotation: angle,
+                            ended: false
+                        )
                     },
                     onRotateGestureEnded: {
-                        elementViewModel.applyGestureTransform(translation: nil, scale: nil, rotation: nil, ended: true)
+                        elementViewModel.applyGestureTransform(
+                            kind: .rotate,
+                            translation: nil,
+                            scale: nil,
+                            rotation: nil,
+                            ended: true
+                        )
                     },
                     onMoveChanged: { translation in
-                        elementViewModel.applyGestureTransform(translation: translation, scale: nil, rotation: nil, ended: false)
+                        elementViewModel.applyGestureTransform(
+                            kind: .move,
+                            translation: translation,
+                            scale: nil,
+                            rotation: nil,
+                            ended: false
+                        )
                     },
                     onMoveEnded: {
-                        elementViewModel.applyGestureTransform(translation: nil, scale: nil, rotation: nil, ended: true)
+                        elementViewModel.applyGestureTransform(
+                            kind: .move,
+                            translation: nil,
+                            scale: nil,
+                            rotation: nil,
+                            ended: true
+                        )
                     },
                     onTapSelect: { globalPoint in
                         DispatchQueue.main.async {
