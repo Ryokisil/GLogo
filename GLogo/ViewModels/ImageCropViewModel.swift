@@ -10,6 +10,7 @@
 import Foundation
 import UIKit
 
+@MainActor
 class ImageCropViewModel: ObservableObject {
     // MARK: - プロパティ
     

@@ -270,11 +270,29 @@ class EditorViewModel: ObservableObject {
     func startTextEditing(for textElement: TextElement) {
         // 現在の編集を終了（もしあれば）
         endTextEditing()
-        
+
         editingTextElement = textElement
         isEditingText = true
         selectedElement = textElement
-        
+
+    }
+
+    /// 選択中の要素がテキストならテキスト編集を開始する。View 側の型ダウンキャストを排除するための入口
+    /// - Parameters: なし
+    /// - Returns: なし
+    func startTextEditingForSelectedElement() {
+        guard let textElement = selectedElement as? TextElement else { return }
+        startTextEditing(for: textElement)
+    }
+
+    /// 選択中の要素が画像かどうか。View 側で `as? ImageElement` を書かずに判定するための入口
+    var isImageElementSelected: Bool {
+        selectedElement is ImageElement
+    }
+
+    /// 選択中の画像要素を型付きで返す。View 側のダウンキャストを排除するための入口
+    var selectedImageElement: ImageElement? {
+        selectedElement as? ImageElement
     }
     
     /// テキスト編集を終了
