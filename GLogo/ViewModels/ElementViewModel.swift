@@ -10,6 +10,13 @@ import Foundation
 import UIKit
 import Combine
 
+/// 要素変形ジェスチャーの種別
+enum ElementGestureTransformKind: Hashable {
+    case move
+    case magnify
+    case rotate
+}
+
 /// 要素編集ビューモデル - 選択された要素の編集機能を提供
 @MainActor
 class ElementViewModel: ObservableObject {
@@ -108,6 +115,7 @@ class ElementViewModel: ObservableObject {
     private var gestureBasePosition: CGPoint?
     private var gestureBaseSize: CGSize?
     private var gestureBaseRotation: CGFloat?
+    private var activeGestureKinds = Set<ElementGestureTransformKind>()
 
     // MARK: - イニシャライザ
 
@@ -155,6 +163,10 @@ class ElementViewModel: ObservableObject {
     private func updateElement(_ element: LogoElement?) {
         // 要素切り替え時にキャッシュをクリアして、別要素への状態持ち越しを防ぐ
         if self.element?.id != element?.id {
+            if let currentImageElement = self.imageElement {
+                imageEditingSessionUseCase.applyManipulationState(to: currentImageElement, ended: true)
+            }
+            clearGestureTransformState()
             imageAdjustmentUseCase.reset()
             imageRenderRefreshUseCase.cancelScheduledRefresh()
             textFontStartState = nil
@@ -222,66 +234,80 @@ class ElementViewModel: ObservableObject {
     }
 
     /// ジェスチャーによる変形（移動・拡大縮小・回転）
-    func applyGestureTransform(translation: CGSize?, scale: CGFloat?, rotation: CGFloat?, ended: Bool) {
+    func applyGestureTransform(
+        kind: ElementGestureTransformKind,
+        translation: CGSize?,
+        scale: CGFloat?,
+        rotation: CGFloat?,
+        ended: Bool
+    ) {
         guard let element = element else { return }
 
-        // タップ誤検知によるゼロ移動ドラッグを除外し、不要なプレビュー切替を防止
-        let hasMeaningfulTranslation: Bool = {
-            guard let translation else { return false }
-            return abs(translation.width) > 0.5 || abs(translation.height) > 0.5
+        let hasMeaningfulInput: Bool = {
+            switch kind {
+            case .move:
+                guard let translation else { return false }
+                return abs(translation.width) > 0.5 || abs(translation.height) > 0.5
+            case .magnify:
+                guard let scale else { return false }
+                return abs(scale - 1.0) > 0.001
+            case .rotate:
+                guard let rotation else { return false }
+                return abs(rotation) > 0.001
+            }
         }()
-        let hasMeaningfulScale: Bool = {
-            guard let scale else { return false }
-            return abs(scale - 1.0) > 0.001
-        }()
-        let hasMeaningfulRotation: Bool = {
-            guard let rotation else { return false }
-            return abs(rotation) > 0.001
-        }()
-        let hasMeaningfulInput = hasMeaningfulTranslation || hasMeaningfulScale || hasMeaningfulRotation
 
         // ジェスチャー中で入力が実質ゼロなら無視（選択タップ時の副作用を抑制）
         if !ended && !hasMeaningfulInput { return }
 
         // 終了イベントだけ飛んできたケースは無視（未開始ジェスチャーの終了）
-        if ended, gestureBasePosition == nil, gestureBaseSize == nil, gestureBaseRotation == nil {
+        if ended, !hasGestureBase(for: kind) {
             return
         }
 
-        // 画像要素はジェスチャー中にプレビュー品質へ切り替えて操作遅延を抑える
         if let imageElement = element as? ImageElement {
-            imageEditingSessionUseCase.applyManipulationState(
-                to: imageElement,
-                ended: ended
-            )
+            if ended {
+                activeGestureKinds.remove(kind)
+                if activeGestureKinds.isEmpty {
+                    imageEditingSessionUseCase.applyManipulationState(to: imageElement, ended: true)
+                }
+            } else {
+                activeGestureKinds.insert(kind)
+                imageEditingSessionUseCase.applyManipulationState(to: imageElement, ended: false)
+            }
+        } else if ended {
+            activeGestureKinds.remove(kind)
+        } else {
+            activeGestureKinds.insert(kind)
         }
 
-        // 基準値を保持（ジェスチャー開始時のみ）
-        if gestureBasePosition == nil { gestureBasePosition = element.position }
-        if gestureBaseSize == nil { gestureBaseSize = element.size }
-        if gestureBaseRotation == nil { gestureBaseRotation = element.rotation }
+        if ended {
+            clearGestureBase(for: kind)
+            if activeGestureKinds.isEmpty {
+                editorViewModel?.markProjectModified()
+            }
+            return
+        }
 
-        if let basePos = gestureBasePosition, let delta = translation, hasMeaningfulTranslation {
+        switch kind {
+        case .move:
+            if gestureBasePosition == nil { gestureBasePosition = element.position }
+            guard let basePos = gestureBasePosition, let delta = translation else { return }
             element.position = CGPoint(x: basePos.x + delta.width, y: basePos.y + delta.height)
-        }
 
-        if let baseSize = gestureBaseSize, let scale = scale, hasMeaningfulScale {
+        case .magnify:
+            if gestureBaseSize == nil { gestureBaseSize = element.size }
+            guard let baseSize = gestureBaseSize, let scale else { return }
             let clampedScale = max(scale, 0.01) // 極端な縮小を防止
             element.size = CGSize(width: baseSize.width * clampedScale, height: baseSize.height * clampedScale)
-        }
 
-        if let baseRot = gestureBaseRotation, let deltaRot = rotation, hasMeaningfulRotation {
+        case .rotate:
+            if gestureBaseRotation == nil { gestureBaseRotation = element.rotation }
+            guard let baseRot = gestureBaseRotation, let deltaRot = rotation else { return }
             element.rotation = baseRot + deltaRot
         }
 
         updateElement(to: element)
-
-        if ended {
-            gestureBasePosition = nil
-            gestureBaseSize = nil
-            gestureBaseRotation = nil
-            editorViewModel?.markProjectModified()
-        }
     }
 
 
@@ -1371,19 +1397,60 @@ class ElementViewModel: ObservableObject {
 
         // エディタビューモデルに要素の更新を通知
         if let editorViewModel = editorViewModel {
-            editorViewModel.updateSelectedElement(element)
-
             // 要素の種類に応じて専用の更新メソッドを呼び出す
             if let textElement = element as? TextElement {
-                editorViewModel.updateTextElement(textElement)
                 self.textElement = textElement
+                self.shapeElement = nil
+                self.imageElement = nil
+                editorViewModel.updateTextElement(textElement)
             } else if let shapeElement = element as? ShapeElement {
-                editorViewModel.updateShapeElement(shapeElement)
+                self.textElement = nil
                 self.shapeElement = shapeElement
+                self.imageElement = nil
+                editorViewModel.updateShapeElement(shapeElement)
             } else if let imageElement = element as? ImageElement {
-                editorViewModel.updateImageElement(imageElement)
+                self.textElement = nil
+                self.shapeElement = nil
                 self.imageElement = imageElement
+                editorViewModel.updateImageElement(imageElement)
+            } else {
+                self.textElement = nil
+                self.shapeElement = nil
+                self.imageElement = nil
+                editorViewModel.updateSelectedElement(element)
             }
+        }
+    }
+
+    /// ジェスチャー変形の保持状態を初期化
+    private func clearGestureTransformState() {
+        gestureBasePosition = nil
+        gestureBaseSize = nil
+        gestureBaseRotation = nil
+        activeGestureKinds.removeAll()
+    }
+
+    /// 指定ジェスチャーに対応する基準値を破棄
+    private func clearGestureBase(for kind: ElementGestureTransformKind) {
+        switch kind {
+        case .move:
+            gestureBasePosition = nil
+        case .magnify:
+            gestureBaseSize = nil
+        case .rotate:
+            gestureBaseRotation = nil
+        }
+    }
+
+    /// 指定ジェスチャーの基準値が開始済みかを返す
+    private func hasGestureBase(for kind: ElementGestureTransformKind) -> Bool {
+        switch kind {
+        case .move:
+            return gestureBasePosition != nil
+        case .magnify:
+            return gestureBaseSize != nil
+        case .rotate:
+            return gestureBaseRotation != nil
         }
     }
 }

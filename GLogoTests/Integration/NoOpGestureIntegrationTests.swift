@@ -35,12 +35,14 @@ final class NoOpGestureIntegrationTests: XCTestCase {
 
         // タップ誤検知相当（translationがゼロ）
         elementViewModel.applyGestureTransform(
+            kind: .move,
             translation: .zero,
             scale: nil,
             rotation: nil,
             ended: false
         )
         elementViewModel.applyGestureTransform(
+            kind: .move,
             translation: nil,
             scale: nil,
             rotation: nil,
@@ -95,7 +97,124 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         XCTAssertTrue(backgroundBlur.usesInstantPreviewWhileEditing, "背景ぼかしは編集中プレビューを許可するべき")
     }
 
+    /// 回転中に別ジェスチャーの終了イベントが割り込んでも、累積角度の基準が再アンカーされないことを検証
+    /// - Parameters: なし
+    /// - Returns: なし
+    @MainActor
+    func testRotationGesture_DoesNotReanchorAfterInterleavedEndedEvent() throws {
+        let project = LogoProject(name: "rotation-ended-interleave", canvasSize: CGSize(width: 1080, height: 1920))
+        let imageData = try XCTUnwrap(makeSolidImage(color: .systemOrange, size: CGSize(width: 64, height: 64)).pngData())
+        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        project.addElement(imageElement)
+
+        let editorViewModel = EditorViewModel(project: project)
+        let elementViewModel = ElementViewModel(editorViewModel: editorViewModel)
+
+        editorViewModel.selectElement(imageElement)
+        waitForSelectionPropagation()
+
+        elementViewModel.applyGestureTransform(
+            kind: .rotate,
+            translation: nil,
+            scale: nil,
+            rotation: 0.25,
+            ended: false
+        )
+
+        XCTAssertEqual(imageElement.rotation, 0.25, accuracy: 0.0001, "最初の回転差分はそのまま反映されるべき")
+
+        elementViewModel.applyGestureTransform(
+            kind: .magnify,
+            translation: nil,
+            scale: 1.05,
+            rotation: nil,
+            ended: false
+        )
+
+        // ピンチ終了など、回転以外のジェスチャー終了イベントが先に飛ぶケースを模擬する。
+        elementViewModel.applyGestureTransform(
+            kind: .magnify,
+            translation: nil,
+            scale: nil,
+            rotation: nil,
+            ended: true
+        )
+
+        // RotationGesture が累積角度を返し続ける前提では、次の onChanged でも 0.5rad のまま反映されるべき。
+        elementViewModel.applyGestureTransform(
+            kind: .rotate,
+            translation: nil,
+            scale: nil,
+            rotation: 0.5,
+            ended: false
+        )
+
+        XCTAssertEqual(
+            imageElement.rotation,
+            0.5,
+            accuracy: 0.0001,
+            "別ジェスチャーの ended により回転基準が再アンカーされると角度が飛ぶ"
+        )
+    }
+
+    /// 選択要素を切り替えた際に、前要素の回転ジェスチャー基準が次要素へ漏れないことを検証
+    /// - Parameters: なし
+    /// - Returns: なし
+    @MainActor
+    func testRotationGesture_ClearsBaseStateWhenSelectionChanges() throws {
+        let project = LogoProject(name: "rotation-selection-switch", canvasSize: CGSize(width: 1080, height: 1920))
+        let firstImageData = try XCTUnwrap(makeSolidImage(color: .systemPink, size: CGSize(width: 64, height: 64)).pngData())
+        let secondImageData = try XCTUnwrap(makeSolidImage(color: .systemIndigo, size: CGSize(width: 64, height: 64)).pngData())
+        let firstElement = ImageElement(imageData: firstImageData, importOrder: 0)
+        let secondElement = ImageElement(imageData: secondImageData, importOrder: 1)
+        secondElement.rotation = 1.0
+        project.addElement(firstElement)
+        project.addElement(secondElement)
+
+        let editorViewModel = EditorViewModel(project: project)
+        let elementViewModel = ElementViewModel(editorViewModel: editorViewModel)
+
+        editorViewModel.selectElement(firstElement)
+        waitForSelectionPropagation()
+
+        elementViewModel.applyGestureTransform(
+            kind: .rotate,
+            translation: nil,
+            scale: nil,
+            rotation: 0.3,
+            ended: false
+        )
+
+        XCTAssertEqual(firstElement.rotation, 0.3, accuracy: 0.0001, "最初の要素の回転差分は反映されるべき")
+
+        editorViewModel.selectElement(secondElement)
+        waitForSelectionPropagation()
+
+        elementViewModel.applyGestureTransform(
+            kind: .rotate,
+            translation: nil,
+            scale: nil,
+            rotation: 0.2,
+            ended: false
+        )
+
+        XCTAssertEqual(
+            secondElement.rotation,
+            1.2,
+            accuracy: 0.0001,
+            "選択切り替え後は次要素の回転値を基準にジェスチャーを開始するべき"
+        )
+    }
+
     // MARK: - Helpers
+
+    /// @Published による選択要素伝播を1ターン待機
+    /// - Parameters: なし
+    /// - Returns: なし
+    @MainActor
+    private func waitForSelectionPropagation() {
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+    }
 
     /// 単色画像を生成
     /// - Parameters:
