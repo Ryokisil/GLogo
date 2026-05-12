@@ -76,4 +76,7 @@ struct ManualBackgroundRemovalState {
 
     /// 元画像の取得に失敗した場合のメッセージ
     var sourceImageErrorMessage: String? = nil
+
+    /// AI マスク生成失敗時のメッセージ（再試行時に nil クリア）
+    var aiMaskErrorMessage: String? = nil
 }

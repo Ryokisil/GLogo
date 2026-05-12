@@ -61,6 +61,12 @@ class ElementViewModel: ObservableObject {
     /// 高画質化エラーメッセージ（EditorViewModelの状態を反映）
     @Published var lastUpscaleErrorMessage: String?
 
+    /// AI 背景除去のエラーメッセージ（EditorViewModel から伝播）
+    @Published var lastBackgroundRemovalErrorMessage: String?
+
+    /// AI 背景ぼかしのエラーメッセージ（EditorViewModel から伝播）
+    @Published var lastBackgroundBlurErrorMessage: String?
+
     /// Real-ESRGAN モデルが利用可能かどうか
     @Published private(set) var isRealESRGANAvailable: Bool = false
 
@@ -154,6 +160,22 @@ class ElementViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // AI 背景除去エラーメッセージを監視
+        editorViewModel.$lastBackgroundRemovalErrorMessage
+            .receive(on: RunLoop.main)
+            .sink { [weak self] message in
+                self?.lastBackgroundRemovalErrorMessage = message
+            }
+            .store(in: &cancellables)
+
+        // AI 背景ぼかしエラーメッセージを監視
+        editorViewModel.$lastBackgroundBlurErrorMessage
+            .receive(on: RunLoop.main)
+            .sink { [weak self] message in
+                self?.lastBackgroundBlurErrorMessage = message
+            }
+            .store(in: &cancellables)
+
         isRealESRGANAvailable = editorViewModel.isRealESRGANAvailable
     }
 
@@ -179,6 +201,8 @@ class ElementViewModel: ObservableObject {
             textGradientFillOpacityStartState = nil
             frameColorStartState = nil
             lastUpscaleErrorMessage = nil
+            lastBackgroundRemovalErrorMessage = nil
+            lastBackgroundBlurErrorMessage = nil
         }
 
         self.element = element
@@ -1374,6 +1398,16 @@ class ElementViewModel: ObservableObject {
     /// - Returns: なし
     func clearUpscaleError() {
         editorViewModel?.clearUpscaleError()
+    }
+
+    /// AI 背景除去エラーメッセージをクリア（EditorViewModel へ委譲）
+    func clearBackgroundRemovalError() {
+        editorViewModel?.clearBackgroundRemovalError()
+    }
+
+    /// AI 背景ぼかしエラーメッセージをクリア（EditorViewModel へ委譲）
+    func clearBackgroundBlurError() {
+        editorViewModel?.clearBackgroundBlurError()
     }
 
     /// 背景ぼかしマスク編集をリクエスト

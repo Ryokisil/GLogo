@@ -145,6 +145,13 @@ struct AIToolsPanelView: View {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
+            if let errorMessage = viewModel.lastBackgroundRemovalErrorMessage, !errorMessage.isEmpty {
+                Text(errorMessage)
+                    .font(.footnote)
+                    .foregroundColor(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             HStack(spacing: 6) {
                 Button {
                     viewModel.requestAIBackgroundRemoval()
@@ -194,6 +201,13 @@ struct AIToolsPanelView: View {
             Text("aiTools.blurRadius")
                 .font(.subheadline.weight(.medium))
                 .foregroundColor(.secondary)
+
+            if let errorMessage = viewModel.lastBackgroundBlurErrorMessage, !errorMessage.isEmpty {
+                Text(errorMessage)
+                    .font(.footnote)
+                    .foregroundColor(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             HStack(spacing: 12) {
                 Slider(
@@ -324,10 +338,12 @@ struct AIToolsPanelView: View {
         guard let imageElement = viewModel.imageElement else { return false }
         switch selectedTab {
         case .backgroundRemoval:
-            // 背景除去タブは即時アクションのみで、保持状態を持たないためリセット対象はありません。
-            return false
+            // 残存エラーメッセージがあるときだけリセット可能とする
+            return viewModel.lastBackgroundRemovalErrorMessage != nil
         case .backgroundBlur:
-            return imageElement.backgroundBlurRadius != 0 || imageElement.backgroundBlurMaskData != nil
+            return imageElement.backgroundBlurRadius != 0
+                || imageElement.backgroundBlurMaskData != nil
+                || viewModel.lastBackgroundBlurErrorMessage != nil
         case .upscale:
             return viewModel.lastUpscaleErrorMessage != nil
         }
@@ -338,8 +354,7 @@ struct AIToolsPanelView: View {
         guard let imageElement = viewModel.imageElement else { return }
         switch selectedTab {
         case .backgroundRemoval:
-            // 背景除去タブはリセット対象の内部状態を持たないため何もしません。
-            return
+            viewModel.clearBackgroundRemovalError()
         case .backgroundBlur:
             // 履歴イベントのノイズを避けるため、変更がある場合のみ更新します。
             if imageElement.backgroundBlurRadius != 0 {
@@ -351,6 +366,7 @@ struct AIToolsPanelView: View {
             if imageElement.backgroundBlurMaskData != nil {
                 viewModel.removeBackgroundBlurMask()
             }
+            viewModel.clearBackgroundBlurError()
         case .upscale:
             viewModel.clearUpscaleError()
         }

@@ -301,6 +301,7 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
     /// - Parameters: なし
     /// - Returns: なし
     func applyAIMask() async {
+        state.aiMaskErrorMessage = nil
         state.isProcessingAI = true
         defer { state.isProcessingAI = false }
 
@@ -310,6 +311,8 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
             state.maskImage = aiMask
             state.maskUpdateId = UUID()
         } catch {
+            // AI マスク生成失敗を UI に伝える
+            state.aiMaskErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
