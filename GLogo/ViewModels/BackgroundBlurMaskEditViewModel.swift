@@ -42,7 +42,7 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
     private let manualBackgroundBlurUseCase: ManualBackgroundBlurUseCase
 
     /// AI背景除去ユースケース
-    private let backgroundRemovalUseCase: BackgroundRemovalUseCase
+    private let backgroundRemovalUseCase: any BackgroundRemovalProcessing
 
     /// 背景ぼかしプレビューのキャッシュ
     private var cachedBlurPreviewImage: UIImage?
@@ -68,7 +68,7 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
         completion: @escaping (Data?) -> Void,
         useCase: ManualBackgroundRemovalUseCase = ManualBackgroundRemovalUseCase(),
         manualBackgroundBlurUseCase: ManualBackgroundBlurUseCase = ManualBackgroundBlurUseCase(),
-        backgroundRemovalUseCase: BackgroundRemovalUseCase = BackgroundRemovalUseCase()
+        backgroundRemovalUseCase: any BackgroundRemovalProcessing = BackgroundRemovalUseCase()
     ) {
         self.originalMaskData = initialMaskData
         self.blurRadius = blurRadius
@@ -312,7 +312,7 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
             state.maskUpdateId = UUID()
         } catch {
             // AI マスク生成失敗を UI に伝える
-            state.aiMaskErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            state.aiMaskErrorMessage = String(localized: "aiTools.aiMaskGeneration.failed")
         }
     }
 

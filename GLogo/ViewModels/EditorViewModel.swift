@@ -114,8 +114,12 @@ class EditorViewModel: ObservableObject {
     // MARK: - イニシャライザ
     
     /// 新しいプロジェクトでエディタを初期化
-    init(project: LogoProject = LogoProject()) {
+    init(
+        project: LogoProject = LogoProject(),
+        backgroundRemovalUseCase: any BackgroundRemovalProcessing = BackgroundRemovalUseCase()
+    ) {
         self.project = project
+        self.backgroundRemovalUseCase = backgroundRemovalUseCase
         
         // 履歴管理の初期化
         history = EditorHistory(project: project)
@@ -1050,7 +1054,7 @@ class EditorViewModel: ObservableObject {
     // MARK: - 背景ぼかし
 
     /// AI背景ぼかし用のユースケース
-    private let backgroundRemovalUseCase = BackgroundRemovalUseCase()
+    private let backgroundRemovalUseCase: any BackgroundRemovalProcessing
     
     /// 背景ぼかし適用ルールのユースケース
     private let backgroundBlurUseCase = BackgroundBlurUseCase()
@@ -1092,6 +1096,8 @@ class EditorViewModel: ObservableObject {
             defer { isProcessingAI = false }
 
             guard let originalImage = imageElement.originalImage else {
+                // 元画像が未解決のままだとボタン押下が無反応に見えるため、UI 用メッセージを設定
+                lastBackgroundRemovalErrorMessage = String(localized: "aiTools.sourceImageUnavailable")
                 return
             }
 
@@ -1099,8 +1105,8 @@ class EditorViewModel: ObservableObject {
                 let resultImage = try await backgroundRemovalUseCase.removeBackground(from: originalImage)
                 applyManualBackgroundRemovalResult(resultImage, to: imageElement)
             } catch {
-                // 失敗を UI に伝える。LocalizedError があれば優先採用、無ければシステム文字列
-                lastBackgroundRemovalErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                // 内部エラー詳細ではなく、ユーザーが理解しやすい固定文言を表示する。
+                lastBackgroundRemovalErrorMessage = String(localized: "aiTools.backgroundRemoval.failed")
             }
         }
     }
@@ -1170,6 +1176,8 @@ class EditorViewModel: ObservableObject {
             defer { isProcessingAI = false }
 
             guard let originalImage = imageElement.originalImage else {
+                // 元画像が未解決のままだとボタン押下が無反応に見えるため、UI 用メッセージを設定
+                lastBackgroundBlurErrorMessage = String(localized: "aiTools.sourceImageUnavailable")
                 return
             }
 
@@ -1179,12 +1187,14 @@ class EditorViewModel: ObservableObject {
                     maskImage: maskImage,
                     for: imageElement
                 ) else {
+                    // マスク生成は成功したが、適用プラン構築に失敗した内部状態は無反応にせず通知
+                    lastBackgroundBlurErrorMessage = String(localized: "aiTools.aiMaskGeneration.failed")
                     return
                 }
                 applyBackgroundBlurPlan(plan, elementId: imageElement.id)
             } catch {
-                // 失敗を UI に伝える。LocalizedError があれば優先採用、無ければシステム文字列
-                lastBackgroundBlurErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                // 内部エラー詳細ではなく、ユーザーが理解しやすい固定文言を表示する。
+                lastBackgroundBlurErrorMessage = String(localized: "aiTools.aiMaskGeneration.failed")
             }
         }
     }

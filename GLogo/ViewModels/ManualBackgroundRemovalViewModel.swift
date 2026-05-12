@@ -35,7 +35,7 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
     private let useCase: ManualBackgroundRemovalUseCase
 
     /// AI背景除去ユースケース
-    private let backgroundRemovalUseCase: BackgroundRemovalUseCase
+    private let backgroundRemovalUseCase: any BackgroundRemovalProcessing
 
     /// マスク適用プレビューのキャッシュ
     private var cachedMaskedImage: UIImage?
@@ -56,7 +56,7 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
         imageElement: ImageElement,
         completion: @escaping (UIImage) -> Void,
         useCase: ManualBackgroundRemovalUseCase = ManualBackgroundRemovalUseCase(),
-        backgroundRemovalUseCase: BackgroundRemovalUseCase = BackgroundRemovalUseCase()
+        backgroundRemovalUseCase: any BackgroundRemovalProcessing = BackgroundRemovalUseCase()
     ) {
         self.completion = completion
         self.useCase = useCase
@@ -255,7 +255,7 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
             state.maskUpdateId = UUID()
         } catch {
             // AI マスク生成失敗を UI に伝える
-            state.aiMaskErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            state.aiMaskErrorMessage = String(localized: "aiTools.aiMaskGeneration.failed")
         }
     }
 
