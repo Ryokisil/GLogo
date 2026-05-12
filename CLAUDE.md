@@ -12,6 +12,27 @@ GLogo is an iOS image editing application built with Swift 6.0 and SwiftUI (iOS 
 
 **Dependency Rule**: Views → ViewModels → UseCases → Models (inner layers must never depend on outer layers)
 
+## Tooling for Code Analysis
+
+正確さが要求される作業では **Serena MCP** を積極的に使用すること。LSP ベースのシンボル解析が grep/find より信頼できるため、以下のような場面で必ず Serena を利用する：
+
+- **コードベース確認**: 関数/型の定義場所、参照範囲、影響範囲の特定
+- **リファクタリング**: シンボルのリネーム、安全な削除、依存関係の追跡
+- **新規機能追加**: 既存 API との整合性確認、命名衝突チェック、配置先決定
+- **テスト作成**: 対象シンボルの呼び出し元・依存関係の網羅
+
+主に使う Serena ツール：
+
+| ツール | 用途 |
+|--------|------|
+| `mcp__serena__find_symbol` | 関数/型の定義検索（grep の代わり、構造を保持） |
+| `mcp__serena__find_referencing_symbols` | 参照元の正確な列挙（"未使用"判定にも使う） |
+| `mcp__serena__get_symbols_overview` | 新規ファイル理解時の最初の一手 |
+| `mcp__serena__rename_symbol` | 安全なリネーム（参照全てを更新） |
+| `mcp__serena__safe_delete_symbol` | 参照を確認しつつ削除 |
+
+grep/find が許容されるのは、文字列リテラル検索やコメント探索など LSP の対象外の場合のみ。「呼び出し元ゼロ」判定や API 影響範囲の確認では **必ず Serena を使う**こと（grep だと定義行とテスト内呼び出しを混同しやすい）。
+
 ## Build Commands
 
 ```bash
