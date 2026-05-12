@@ -244,6 +244,7 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
 
     /// AIで生成したマスクを適用する
     func applyAIMask() async {
+        state.aiMaskErrorMessage = nil
         state.isProcessingAI = true
         defer { state.isProcessingAI = false }
 
@@ -253,6 +254,8 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
             state.maskImage = aiMask
             state.maskUpdateId = UUID()
         } catch {
+            // AI マスク生成失敗を UI に伝える
+            state.aiMaskErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 

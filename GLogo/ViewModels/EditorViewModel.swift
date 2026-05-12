@@ -1070,6 +1070,12 @@ class EditorViewModel: ObservableObject {
     /// 高画質化エラーメッセージ
     @Published private(set) var lastUpscaleErrorMessage: String?
 
+    /// AI 背景除去処理で発生した最新のエラーメッセージ（成功時は nil にリセット）
+    @Published private(set) var lastBackgroundRemovalErrorMessage: String?
+
+    /// AI 背景ぼかし処理で発生した最新のエラーメッセージ（成功時は nil にリセット）
+    @Published private(set) var lastBackgroundBlurErrorMessage: String?
+
     /// Real-ESRGAN モデルが利用可能かどうか
     var isRealESRGANAvailable: Bool {
         imageUpscaleUseCase.isRealESRGANAvailable
@@ -1079,6 +1085,7 @@ class EditorViewModel: ObservableObject {
     /// - Parameter imageElement: 対象の画像要素
     func requestAIBackgroundRemoval(for imageElement: ImageElement) {
         guard !isProcessingAI else { return }
+        lastBackgroundRemovalErrorMessage = nil
         isProcessingAI = true
 
         Task {
@@ -1092,6 +1099,8 @@ class EditorViewModel: ObservableObject {
                 let resultImage = try await backgroundRemovalUseCase.removeBackground(from: originalImage)
                 applyManualBackgroundRemovalResult(resultImage, to: imageElement)
             } catch {
+                // 失敗を UI に伝える。LocalizedError があれば優先採用、無ければシステム文字列
+                lastBackgroundRemovalErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }
         }
     }
@@ -1140,10 +1149,21 @@ class EditorViewModel: ObservableObject {
         lastUpscaleErrorMessage = nil
     }
 
+    /// AI 背景除去エラーメッセージをクリア
+    func clearBackgroundRemovalError() {
+        lastBackgroundRemovalErrorMessage = nil
+    }
+
+    /// AI 背景ぼかしエラーメッセージをクリア
+    func clearBackgroundBlurError() {
+        lastBackgroundBlurErrorMessage = nil
+    }
+
     /// AI背景ぼかしをリクエスト
     /// - Parameter imageElement: 対象の画像要素
     func requestAIBackgroundBlur(for imageElement: ImageElement) {
         guard !isProcessingAI else { return }
+        lastBackgroundBlurErrorMessage = nil
         isProcessingAI = true
 
         Task {
@@ -1163,6 +1183,8 @@ class EditorViewModel: ObservableObject {
                 }
                 applyBackgroundBlurPlan(plan, elementId: imageElement.id)
             } catch {
+                // 失敗を UI に伝える。LocalizedError があれば優先採用、無ければシステム文字列
+                lastBackgroundBlurErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }
         }
     }

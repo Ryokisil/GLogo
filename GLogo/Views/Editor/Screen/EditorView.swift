@@ -195,7 +195,7 @@ struct EditorView: View {
             .onChange(of: viewModel.selectedElement?.id) {
                 // テキスト要素選択時にパネルを自動表示、それ以外で非表示
                 uiState.isTextPanelVisible = viewModel.selectedElement is TextElement
-                if shouldCollapseBottomTool(for:uiState.selectedBottomTool) {
+                if shouldCollapseBottomTool(for: uiState.selectedBottomTool) {
                     uiState.selectedBottomTool = .select
                 }
             }
@@ -327,7 +327,7 @@ struct EditorView: View {
             uiState.isTextPanelVisible = false
             if tool == .adjust || tool == .frame || tool == .magicStudio || tool == .filters || tool == .effects {
                 viewModel.editorMode = .select
-                if shouldCollapseBottomTool(for:tool) {
+                if shouldCollapseBottomTool(for: tool) {
                     uiState.selectedBottomTool = .select
                 }
             }

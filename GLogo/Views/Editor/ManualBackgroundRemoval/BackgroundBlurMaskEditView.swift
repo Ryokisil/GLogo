@@ -132,6 +132,22 @@ struct BackgroundBlurMaskEditView: View {
                             .background(Color.white.opacity(0.9))
                             .cornerRadius(12)
                         }
+
+                        if let aiError = viewModel.state.aiMaskErrorMessage, !aiError.isEmpty,
+                           viewModel.state.isSourceImageAvailable, !viewModel.state.isProcessingAI {
+                            VStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.circle")
+                                    .font(.title3)
+                                    .foregroundColor(.red)
+                                Text(aiError)
+                                    .font(.footnote)
+                                    .multilineTextAlignment(.center)
+                                    .foregroundColor(.primary)
+                            }
+                            .padding(12)
+                            .background(Color.white.opacity(0.9))
+                            .cornerRadius(10)
+                        }
                     }
                     .allowsHitTesting(viewModel.state.isSourceImageAvailable)
                 }
