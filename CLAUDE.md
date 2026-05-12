@@ -14,24 +14,31 @@ GLogo is an iOS image editing application built with Swift 6.0 and SwiftUI (iOS 
 
 ## Tooling for Code Analysis
 
-正確さが要求される作業では **Serena MCP** を積極的に使用すること。LSP ベースのシンボル解析が grep/find より信頼できるため、以下のような場面で必ず Serena を利用する：
+**コード解析・編集は原則 Serena MCP を使うこと**。grep/find は例外的な用途に限定する。理由：grep ベースの検索は定義行とテスト内呼び出しを混同しやすく、見落としによる手戻りが発生する。Serena は LSP ベースで構造的に正確な参照解析を行うため、最初から Serena を使う方が結果的に早い。
 
-- **コードベース確認**: 関数/型の定義場所、参照範囲、影響範囲の特定
-- **リファクタリング**: シンボルのリネーム、安全な削除、依存関係の追跡
-- **新規機能追加**: 既存 API との整合性確認、命名衝突チェック、配置先決定
-- **テスト作成**: 対象シンボルの呼び出し元・依存関係の網羅
+### セッション開始時の必須手順
+1. `mcp__serena__initial_instructions` を呼んで Serena の操作マニュアルを読む
+2. 以降のコード探索・編集は Serena ツールを基本にする
 
-主に使う Serena ツール：
+### 主に使う Serena ツール
 
-| ツール | 用途 |
-|--------|------|
-| `mcp__serena__find_symbol` | 関数/型の定義検索（grep の代わり、構造を保持） |
-| `mcp__serena__find_referencing_symbols` | 参照元の正確な列挙（"未使用"判定にも使う） |
-| `mcp__serena__get_symbols_overview` | 新規ファイル理解時の最初の一手 |
-| `mcp__serena__rename_symbol` | 安全なリネーム（参照全てを更新） |
-| `mcp__serena__safe_delete_symbol` | 参照を確認しつつ削除 |
+| 用途 | ツール |
+|------|--------|
+| 新規ファイル/モジュール理解 | `mcp__serena__get_symbols_overview` |
+| 関数/型の定義検索 | `mcp__serena__find_symbol` |
+| 参照元の列挙（未使用判定・影響範囲確認） | `mcp__serena__find_referencing_symbols` |
+| 安全なリネーム | `mcp__serena__rename_symbol` |
+| 参照確認付き削除 | `mcp__serena__safe_delete_symbol` |
+| シンボル本体の置換 | `mcp__serena__replace_symbol_body` |
+| シンボル前後への挿入 | `mcp__serena__insert_before_symbol` / `insert_after_symbol` |
 
-grep/find が許容されるのは、文字列リテラル検索やコメント探索など LSP の対象外の場合のみ。「呼び出し元ゼロ」判定や API 影響範囲の確認では **必ず Serena を使う**こと（grep だと定義行とテスト内呼び出しを混同しやすい）。
+### grep/find が許容される例外
+LSP の対象外であるため、以下のみ grep を使ってよい：
+- 文字列リテラル / コメント / `// MARK:` の検索
+- ファイル名パターンによる列挙（`find` で .swift ファイル数を数える等）
+- ビルドログ / テスト出力の grep
+
+それ以外の「この関数どこで使われている？」「未使用か確認」「参照範囲を見たい」系は **必ず Serena**。
 
 ## Build Commands
 
