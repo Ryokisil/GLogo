@@ -14,11 +14,9 @@ GLogo is an iOS image editing application built with Swift 6.0 and SwiftUI (iOS 
 
 ## Tooling for Code Analysis
 
-**コード解析・編集は原則 Serena MCP を使うこと**。grep/find は例外的な用途に限定する。理由：grep ベースの検索は定義行とテスト内呼び出しを混同しやすく、見落としによる手戻りが発生する。Serena は LSP ベースで構造的に正確な参照解析を行うため、最初から Serena を使う方が結果的に早い。
+**コード解析・編集の運用は `AGENTS.md` の `Tooling & Code Search` を正とすること**。機能フロー、層境界、呼び出し経路、影響範囲、関連テスト候補の調査は Codegraph を起点とし、実装詳細、副作用、間接接続、永続化契約の確認および対象シンボルの編集は Serena を用いる。grep/find は文字列やログなど、構造解析ではない補助用途に限定する。
 
-### セッション開始時の必須手順
-1. `mcp__serena__initial_instructions` を呼んで Serena の操作マニュアルを読む
-2. 以降のコード探索・編集は Serena ツールを基本にする
+レンダー、永続化、履歴、キャッシュ、非同期処理、または複数層に影響する変更では、Codegraph の調査結果を Serena による実コード確認で照合する。Codegraph の出力のみで実行時挙動を確定せず、必要に応じて SwiftUI/UIKit の更新契機、closure/delegate/protocol 経路、通知・タスク処理、保存互換性、キャッシュ無効化をコードとテストで確認する。
 
 ### 主に使う Serena ツール
 
@@ -38,7 +36,7 @@ LSP の対象外であるため、以下のみ grep を使ってよい：
 - ファイル名パターンによる列挙（`find` で .swift ファイル数を数える等）
 - ビルドログ / テスト出力の grep
 
-それ以外の「この関数どこで使われている？」「未使用か確認」「参照範囲を見たい」系は **必ず Serena**。
+構造的な参照確認では、目的に応じて Codegraph の caller / impact 調査と Serena の参照確認を使い分け、重要な変更では相互に照合する。
 
 ## Build Commands
 
