@@ -51,12 +51,14 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
     ///   - completion: 編集完了時の処理（背景除去後の画像を返す）
     ///   - useCase: 画像処理ユースケース
     ///   - backgroundRemovalUseCase: AI背景除去ユースケース
+    ///   - imageSourceResolver: 編集用画像を解決する UseCase
     /// - Returns: なし
     init(
         imageElement: ImageElement,
         completion: @escaping (UIImage) -> Void,
         useCase: ManualBackgroundRemovalUseCase = ManualBackgroundRemovalUseCase(),
-        backgroundRemovalUseCase: any BackgroundRemovalProcessing = BackgroundRemovalUseCase()
+        backgroundRemovalUseCase: any BackgroundRemovalProcessing = BackgroundRemovalUseCase(),
+        imageSourceResolver: ImageSourceResolving = ImageSourceResolver()
     ) {
         self.completion = completion
         self.useCase = useCase
@@ -66,7 +68,7 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
         let isSourceImageAvailable = (resolvedFullResolutionImage != nil)
         self.fullResolutionImage = resolvedFullResolutionImage ?? Self.makeFallbackImage()
 
-        let editingImage = ImageElement.assetRepository.loadEditingImage(
+        let editingImage = imageSourceResolver.resolveEditingImage(
             identifier: imageElement.originalImageIdentifier,
             fileName: imageElement.imageFileName,
             originalPath: imageElement.originalImagePath,

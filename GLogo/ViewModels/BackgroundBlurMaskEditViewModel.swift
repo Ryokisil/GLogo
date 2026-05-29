@@ -60,6 +60,7 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
     ///   - useCase: 画像処理ユースケース
     ///   - manualBackgroundBlurUseCase: 手動背景ぼかし編集ユースケース
     ///   - backgroundRemovalUseCase: AI背景除去ユースケース
+    ///   - imageSourceResolver: 編集用画像を解決する UseCase
     /// - Returns: なし
     init(
         imageElement: ImageElement,
@@ -68,7 +69,8 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
         completion: @escaping (Data?) -> Void,
         useCase: ManualBackgroundRemovalUseCase = ManualBackgroundRemovalUseCase(),
         manualBackgroundBlurUseCase: ManualBackgroundBlurUseCase = ManualBackgroundBlurUseCase(),
-        backgroundRemovalUseCase: any BackgroundRemovalProcessing = BackgroundRemovalUseCase()
+        backgroundRemovalUseCase: any BackgroundRemovalProcessing = BackgroundRemovalUseCase(),
+        imageSourceResolver: ImageSourceResolving = ImageSourceResolver()
     ) {
         self.originalMaskData = initialMaskData
         self.blurRadius = blurRadius
@@ -82,7 +84,7 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
         let isSourceImageAvailable = (resolvedFullResolutionImage != nil)
         self.fullResolutionImage = resolvedFullResolutionImage ?? Self.makeFallbackImage()
 
-        let editingImage = ImageElement.assetRepository.loadEditingImage(
+        let editingImage = imageSourceResolver.resolveEditingImage(
             identifier: imageElement.originalImageIdentifier,
             fileName: imageElement.imageFileName,
             originalPath: imageElement.originalImagePath,
