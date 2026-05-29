@@ -11,3 +11,4 @@ tools/ml/.venv/
 tools/ml/checkpoints/
 tools/ml/artifacts/
 build/
+CLAUDE.md
