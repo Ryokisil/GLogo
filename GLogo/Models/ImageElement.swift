@@ -154,21 +154,21 @@ class ImageElement: LogoElement {
     /// `ImageElement` 共有依存の読み書きを直列化するストア
     private final class DependencyStore: @unchecked Sendable {
         private let lock = NSLock()
-        private var currentAssetRepository: ImageAssetRepositoryProtocol
+        private var currentImageSourceResolver: ImageSourceResolving
         private var currentPreviewService: ImagePreviewing
 
         init(
-            assetRepository: ImageAssetRepositoryProtocol,
+            imageSourceResolver: ImageSourceResolving,
             previewService: ImagePreviewing
         ) {
-            self.currentAssetRepository = assetRepository
+            self.currentImageSourceResolver = imageSourceResolver
             self.currentPreviewService = previewService
         }
 
-        var assetRepository: ImageAssetRepositoryProtocol {
+        var imageSourceResolver: ImageSourceResolving {
             lock.lock()
             defer { lock.unlock() }
-            return currentAssetRepository
+            return currentImageSourceResolver
         }
 
         var previewService: ImagePreviewing {
@@ -177,9 +177,9 @@ class ImageElement: LogoElement {
             return currentPreviewService
         }
 
-        func updateAssetRepository(_ repository: ImageAssetRepositoryProtocol) {
+        func updateImageSourceResolver(_ resolver: ImageSourceResolving) {
             lock.lock()
-            currentAssetRepository = repository
+            currentImageSourceResolver = resolver
             lock.unlock()
         }
 
@@ -192,14 +192,14 @@ class ImageElement: LogoElement {
 
     /// 共有依存ストア（差し替え時のみ書き込み、通常は読み取り）
     private static let dependencyStore = DependencyStore(
-        assetRepository: ImageAssetRepository.shared,
+        imageSourceResolver: ImageSourceResolver(),
         previewService: ImagePreviewService()
     )
 
-    /// 画像アセット解決リポジトリ（VMから差し替え可能）
-    static var assetRepository: ImageAssetRepositoryProtocol {
-        get { dependencyStore.assetRepository }
-        set { dependencyStore.updateAssetRepository(newValue) }
+    /// 画像ソース解決 UseCase（テスト時に差し替え可能）
+    static var imageSourceResolver: ImageSourceResolving {
+        get { dependencyStore.imageSourceResolver }
+        set { dependencyStore.updateImageSourceResolver(newValue) }
     }
 
     /// 画像ファイル名
@@ -228,25 +228,6 @@ class ImageElement: LogoElement {
         case fileName(String)
         case url(URL)
         case path(String)
-    }
-
-    /// 現在の画像ソースを取得
-    /// - Parameters: なし
-    /// - Returns: 画像ソース
-    private var imageSource: ImageSource? {
-        if let originalImagePath = originalImagePath {
-            return .path(originalImagePath)
-        }
-        if let originalImageURL = originalImageURL {
-            return .url(originalImageURL)
-        }
-        if let imageFileName = imageFileName {
-            return .fileName(imageFileName)
-        }
-        if let imageData = imageData {
-            return .data(imageData)
-        }
-        return nil
     }
 
     /// 画像ソースを設定（他のソースはクリア）
@@ -453,23 +434,12 @@ class ImageElement: LogoElement {
             return cachedOriginalImage
         }
 
-        let loadedImage: UIImage? = {
-            guard let source = imageSource else { return nil }
-            switch source {
-            case .path(let path):
-                return UIImage(contentsOfFile: path)
-            case .url(let url):
-                if url.isFileURL {
-                    return UIImage(contentsOfFile: url.path)
-                }
-                // 非ファイルURLは対象外（将来の拡張時に検討）
-                return nil
-            case .fileName(let fileName):
-                return UIImage(named: fileName)
-            case .data(let data):
-                return UIImage(data: data)
-            }
-        }()
+        let loadedImage = ImageElement.imageSourceResolver.resolveOriginalImage(
+            imageData: imageData,
+            fileName: imageFileName,
+            url: originalImageURL,
+            path: originalImagePath
+        )
 
         // 元画像をキャッシュ
         cachedOriginalImage = loadedImage
@@ -481,7 +451,7 @@ class ImageElement: LogoElement {
         if let proxy = proxyImage {
             return proxy
         }
-        if let resolved = ImageElement.assetRepository.loadEditingImage(
+        if let resolved = ImageElement.imageSourceResolver.resolveEditingImage(
             identifier: originalImageIdentifier,
             fileName: imageFileName,
             originalPath: originalImagePath,
@@ -949,25 +919,14 @@ class ImageElement: LogoElement {
         originalImageIdentifier = originalIdentifier
         self.hasAppliedUpscale = hasAppliedUpscale
 
-        if let source = source {
-            switch source {
-            case .data(let data):
-                if let image = UIImage(data: data) {
-                    updateSizeFromImage(image)
-                }
-            case .fileName(let fileName):
-                if let image = UIImage(named: fileName) {
-                    updateSizeFromImage(image)
-                }
-            case .url(let url):
-                if url.isFileURL, let image = UIImage(contentsOfFile: url.path) {
-                    updateSizeFromImage(image)
-                }
-            case .path(let path):
-                if let image = UIImage(contentsOfFile: path) {
-                    updateSizeFromImage(image)
-                }
-            }
+        if source != nil,
+           let image = ImageElement.imageSourceResolver.resolveOriginalImage(
+               imageData: self.imageData,
+               fileName: imageFileName,
+               url: originalImageURL,
+               path: originalImagePath
+           ) {
+            updateSizeFromImage(image)
         }
 
         clearImageCaches()
@@ -1172,7 +1131,12 @@ class ImageElement: LogoElement {
     override func copy() -> LogoElement {
         let copy: ImageElement
 
-        if let source = imageSource {
+        if let source = resolveImageSource(
+            imageData: imageData,
+            fileName: imageFileName,
+            url: originalImageURL,
+            path: originalImagePath
+        ) {
             switch source {
             case .data(let data):
                 copy = ImageElement(imageData: data)
