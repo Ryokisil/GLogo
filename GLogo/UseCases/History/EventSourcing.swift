@@ -1848,7 +1848,7 @@ struct ImageRevertedToInitialStateEvent: EditorEvent {
         guard let element = project.element(for: elementId, as: ImageElement.self) else {
             return
         }
-        element.revertToInitialState()
+        ImageElementMetadataRevertUseCase().revertToInitialState(element)
     }
 
     /// Revert適用前の状態に戻す

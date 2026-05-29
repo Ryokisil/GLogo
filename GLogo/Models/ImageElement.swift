@@ -1231,33 +1231,40 @@ class ImageElement: LogoElement {
 
         return copy
     }
-    
-    /// 画像とメタデータを初期状態に戻す
-    func revertToInitialState() {
+
+    // MARK: - Revert Support
+
+    /// 画像要素内で保持する調整値を初期状態に戻す
+    /// - Parameters: なし
+    /// - Returns: なし
+    func resetAdjustmentsToInitialState() {
         // フィルター設定をリセット
         resetToOriginal()
-        
-        // メタデータをリバート
-        if let identifier = originalImageIdentifier {
-            let result = ImageMetadataManager.shared.revertMetadata(for: identifier)
-            if case .success = result {
-                // リバート後のメタデータを取得して設定
-                if let metadata = ImageMetadataManager.shared.getMetadata(for: identifier) {
-                    self.metadata = metadata
-                    
-                    // メタデータから画像プロパティを復元
-                    applyMetadataToImageProperties(metadata)
-                }
-            }
-        }
-        
+
         // キャッシュをクリア
+        clearRevertImageCaches()
+    }
+
+    /// 既存呼び出し元向けに調整値リセットを維持する互換口
+    ///
+    /// 新規の初期状態リバート経路では `ImageElementMetadataRevertUseCase` を使用します。
+    /// メタデータ永続化履歴の巻き戻しはこのメソッドでは行いません。
+    /// - Parameters: なし
+    /// - Returns: なし
+    func revertToInitialState() {
+        resetAdjustmentsToInitialState()
+    }
+
+    /// リバート後に再解決すべき画像キャッシュをクリアする
+    /// - Parameters: なし
+    /// - Returns: なし
+    func clearRevertImageCaches() {
         cachedImage = nil
         cachedOriginalImage = nil
     }
     
     /// メタデータから画像プロパティを復元する
-    private func applyMetadataToImageProperties(_ metadata: ImageMetadata) {
+    func applyMetadataToImageProperties(_ metadata: ImageMetadata) {
         // フレーム太さの復元
         if let frameWidthString = metadata.additionalMetadata["frameWidth"],
            let frameWidthValue = Double(frameWidthString) {
@@ -1292,27 +1299,11 @@ class ImageElement: LogoElement {
         }
     }
     
-    /// この画像が過去に編集されたことがあるかを確認
-    var hasEditHistory: Bool {
-        guard let identifier = originalImageIdentifier else { return false }
-        
-        // 編集履歴の確認
-        let history = ImageMetadataManager.shared.getEditHistory(for: identifier)
-        return !history.isEmpty
-    }
-
-    /// リバート対象となる調整値変更があるかを確認
+    /// 初期状態から外れた調整値変更があるかを確認
     /// - Parameters: なし
     /// - Returns: 現在値が初期スナップショットから外れている場合はtrue、そうでなければfalse
-    private var hasRevertableAdjustmentChanges: Bool {
+    var hasAdjustmentChangesFromInitialState: Bool {
         makeCurrentAdjustmentSnapshot() != initialAdjustmentSnapshot
-    }
-
-    /// 現在の状態でリバート実行が有効かどうかを返す
-    /// - Parameters: なし
-    /// - Returns: 編集履歴または調整値変更がある場合はtrue、なければfalse
-    var canRevertToInitialState: Bool {
-        hasEditHistory || hasRevertableAdjustmentChanges
     }
 
     /// ジェスチャー操作中に即時プレビュー経路へ切り替えるべきかを返す

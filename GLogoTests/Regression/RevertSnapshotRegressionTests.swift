@@ -3,15 +3,16 @@
 //  GLogoTests
 //
 //  概要:
-//  ImageElementのRevertが履歴依存で不安定化しないことを検証する回帰テスト。
+//  ImageElementの調整値リセットとRevert可否判定が履歴依存で不安定化しないことを検証する回帰テスト。
 //
 
 import XCTest
 import UIKit
 @testable import GLogo
 
-/// Revertの初期スナップショット運用を検証する回帰テスト
+/// 調整値リセットとRevert可否判定の初期スナップショット運用を検証する回帰テスト
 final class RevertSnapshotRegressionTests: XCTestCase {
+    private let metadataRevertUseCase = ImageElementMetadataRevertUseCase()
 
     // MARK: - Revert Availability
 
@@ -19,18 +20,18 @@ final class RevertSnapshotRegressionTests: XCTestCase {
     func testCanRevertToInitialState_SaturationChangedWithoutMetadataHistory_ReturnsTrue() throws {
         let imageElement = try makeImageElement()
 
-        XCTAssertFalse(imageElement.canRevertToInitialState)
-        XCTAssertFalse(imageElement.hasEditHistory)
+        XCTAssertFalse(metadataRevertUseCase.canRevertToInitialState(imageElement))
+        XCTAssertFalse(metadataRevertUseCase.hasEditHistory(for: imageElement))
 
         imageElement.saturationAdjustment = 0.14
 
-        XCTAssertTrue(imageElement.canRevertToInitialState)
+        XCTAssertTrue(metadataRevertUseCase.canRevertToInitialState(imageElement))
     }
 
     // MARK: - Revert Restoration
 
-    /// Revert実行で調整系パラメータが初期スナップショットへ戻ることを検証
-    func testRevertToInitialState_RestoresAdjustmentSnapshot() throws {
+    /// 調整値リセットで調整系パラメータが初期スナップショットへ戻ることを検証
+    func testResetAdjustmentsToInitialState_RestoresAdjustmentSnapshot() throws {
         let imageElement = try makeImageElement()
 
         imageElement.saturationAdjustment = 0.14
@@ -56,7 +57,7 @@ final class RevertSnapshotRegressionTests: XCTestCase {
         nonDefaultCurve.rgbPoints[1] = CurvePoint(input: 0.5, output: 0.62)
         imageElement.toneCurveData = nonDefaultCurve
 
-        imageElement.revertToInitialState()
+        imageElement.resetAdjustmentsToInitialState()
 
         XCTAssertEqual(imageElement.saturationAdjustment, 1.0, accuracy: 0.0001)
         XCTAssertEqual(imageElement.warmthAdjustment, 0.0, accuracy: 0.0001)
@@ -78,19 +79,19 @@ final class RevertSnapshotRegressionTests: XCTestCase {
         XCTAssertEqual(imageElement.frameStyle, .simple)
         XCTAssertFalse(imageElement.roundedCorners)
         XCTAssertEqual(imageElement.cornerRadius, 10.0, accuracy: 0.0001)
-        XCTAssertFalse(imageElement.canRevertToInitialState)
+        XCTAssertFalse(metadataRevertUseCase.canRevertToInitialState(imageElement))
     }
 
-    /// Revert後に再編集した場合も再度Revert可能になることを検証
-    func testCanRevertToInitialState_AfterRevertAndReedit_ReturnsTrueAgain() throws {
+    /// 調整値リセット後に再編集した場合も再度Revert可能になることを検証
+    func testCanRevertToInitialState_AfterAdjustmentResetAndReedit_ReturnsTrueAgain() throws {
         let imageElement = try makeImageElement()
 
         imageElement.saturationAdjustment = 0.14
-        imageElement.revertToInitialState()
-        XCTAssertFalse(imageElement.canRevertToInitialState)
+        imageElement.resetAdjustmentsToInitialState()
+        XCTAssertFalse(metadataRevertUseCase.canRevertToInitialState(imageElement))
 
         imageElement.warmthAdjustment = 40
-        XCTAssertTrue(imageElement.canRevertToInitialState)
+        XCTAssertTrue(metadataRevertUseCase.canRevertToInitialState(imageElement))
     }
 
     /// 初期スナップショットがCodable往復後も保持されることを検証
@@ -98,14 +99,14 @@ final class RevertSnapshotRegressionTests: XCTestCase {
         let imageElement = try makeImageElement()
         imageElement.saturationAdjustment = 0.8
         imageElement.captureCurrentAdjustmentAsInitialSnapshot()
-        XCTAssertFalse(imageElement.canRevertToInitialState)
+        XCTAssertFalse(metadataRevertUseCase.canRevertToInitialState(imageElement))
 
         let encoded = try JSONEncoder().encode(imageElement)
         let decoded = try JSONDecoder().decode(ImageElement.self, from: encoded)
 
-        XCTAssertFalse(decoded.canRevertToInitialState)
+        XCTAssertFalse(metadataRevertUseCase.canRevertToInitialState(decoded))
         decoded.saturationAdjustment = 0.5
-        XCTAssertTrue(decoded.canRevertToInitialState)
+        XCTAssertTrue(metadataRevertUseCase.canRevertToInitialState(decoded))
     }
 
     /// 高画質化済み状態がCodable往復後も保持されることを検証

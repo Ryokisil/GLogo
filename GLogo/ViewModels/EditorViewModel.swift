@@ -86,6 +86,7 @@ class EditorViewModel: ObservableObject {
     private let imageUpscaleUseCase = ImageUpscaleUseCase()
     private let imageRoleUseCase = ImageRoleUseCase()
     private let manipulationRenderingUseCase = ManipulationRenderingUseCase()
+    private let imageElementMetadataRevertUseCase = ImageElementMetadataRevertUseCase()
     
     /// 要素操作の開始位置
     private var manipulationStartPoint: CGPoint = .zero
@@ -449,7 +450,7 @@ class EditorViewModel: ObservableObject {
         guard let imageElement = selectedElement as? ImageElement else {
             return false
         }
-        return imageElement.canRevertToInitialState
+        return imageElementMetadataRevertUseCase.canRevertToInitialState(imageElement)
     }
 
     /// 手動背景除去の結果を画像要素に反映
