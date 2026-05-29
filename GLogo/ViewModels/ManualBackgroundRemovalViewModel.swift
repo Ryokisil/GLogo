@@ -255,7 +255,7 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
             state.maskUpdateId = UUID()
         } catch {
             // AI マスク生成失敗を UI に伝える
-            state.aiMaskErrorMessage = String(localized: "aiTools.aiMaskGeneration.failed")
+            state.aiMaskErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 

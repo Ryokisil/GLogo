@@ -86,6 +86,7 @@ class EditorViewModel: ObservableObject {
     private let imageUpscaleUseCase = ImageUpscaleUseCase()
     private let imageRoleUseCase = ImageRoleUseCase()
     private let manipulationRenderingUseCase = ManipulationRenderingUseCase()
+    private let imageElementMetadataRevertUseCase = ImageElementMetadataRevertUseCase()
     
     /// 要素操作の開始位置
     private var manipulationStartPoint: CGPoint = .zero
@@ -453,7 +454,7 @@ class EditorViewModel: ObservableObject {
         guard let imageElement = selectedElement as? ImageElement else {
             return false
         }
-        return imageElement.canRevertToInitialState
+        return imageElementMetadataRevertUseCase.canRevertToInitialState(imageElement)
     }
 
     /// 手動背景除去の結果を画像要素に反映
@@ -1105,8 +1106,8 @@ class EditorViewModel: ObservableObject {
                 let resultImage = try await backgroundRemovalUseCase.removeBackground(from: originalImage)
                 applyManualBackgroundRemovalResult(resultImage, to: imageElement)
             } catch {
-                // 内部エラー詳細ではなく、ユーザーが理解しやすい固定文言を表示する。
-                lastBackgroundRemovalErrorMessage = String(localized: "aiTools.backgroundRemoval.failed")
+                // 失敗を UI に伝える。LocalizedError があれば優先採用、無ければシステム文字列
+                lastBackgroundRemovalErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }
         }
     }
@@ -1193,8 +1194,8 @@ class EditorViewModel: ObservableObject {
                 }
                 applyBackgroundBlurPlan(plan, elementId: imageElement.id)
             } catch {
-                // 内部エラー詳細ではなく、ユーザーが理解しやすい固定文言を表示する。
-                lastBackgroundBlurErrorMessage = String(localized: "aiTools.aiMaskGeneration.failed")
+                // 失敗を UI に伝える。LocalizedError があれば優先採用、無ければシステム文字列
+                lastBackgroundBlurErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }
         }
     }
