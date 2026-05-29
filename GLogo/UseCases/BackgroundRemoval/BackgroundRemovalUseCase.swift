@@ -10,7 +10,20 @@ import CoreImage
 import UIKit
 import Vision
 
-struct BackgroundRemovalUseCase {
+/// AI 背景除去処理の抽象インターフェース
+protocol BackgroundRemovalProcessing: Sendable {
+    /// 背景除去済み画像を生成する
+    /// - Parameter image: 背景除去対象の画像
+    /// - Returns: 背景除去済み画像
+    func removeBackground(from image: UIImage) async throws -> UIImage
+
+    /// 前景マスク画像を生成する
+    /// - Parameter image: マスク生成対象の画像
+    /// - Returns: 前景マスク画像
+    func generateMask(from image: UIImage) async throws -> UIImage
+}
+
+struct BackgroundRemovalUseCase: BackgroundRemovalProcessing {
     /// Vision フレームワークを使用した背景除去処理（解像度保持版）
     /// - Parameters:
     ///   - image: 背景除去対象の画像

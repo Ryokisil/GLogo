@@ -42,7 +42,7 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
     private let manualBackgroundBlurUseCase: ManualBackgroundBlurUseCase
 
     /// AI背景除去ユースケース
-    private let backgroundRemovalUseCase: BackgroundRemovalUseCase
+    private let backgroundRemovalUseCase: any BackgroundRemovalProcessing
 
     /// 背景ぼかしプレビューのキャッシュ
     private var cachedBlurPreviewImage: UIImage?
@@ -68,7 +68,7 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
         completion: @escaping (Data?) -> Void,
         useCase: ManualBackgroundRemovalUseCase = ManualBackgroundRemovalUseCase(),
         manualBackgroundBlurUseCase: ManualBackgroundBlurUseCase = ManualBackgroundBlurUseCase(),
-        backgroundRemovalUseCase: BackgroundRemovalUseCase = BackgroundRemovalUseCase()
+        backgroundRemovalUseCase: any BackgroundRemovalProcessing = BackgroundRemovalUseCase()
     ) {
         self.originalMaskData = initialMaskData
         self.blurRadius = blurRadius

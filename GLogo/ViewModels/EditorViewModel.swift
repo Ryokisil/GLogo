@@ -115,8 +115,12 @@ class EditorViewModel: ObservableObject {
     // MARK: - イニシャライザ
     
     /// 新しいプロジェクトでエディタを初期化
-    init(project: LogoProject = LogoProject()) {
+    init(
+        project: LogoProject = LogoProject(),
+        backgroundRemovalUseCase: any BackgroundRemovalProcessing = BackgroundRemovalUseCase()
+    ) {
         self.project = project
+        self.backgroundRemovalUseCase = backgroundRemovalUseCase
         
         // 履歴管理の初期化
         history = EditorHistory(project: project)
@@ -1051,7 +1055,7 @@ class EditorViewModel: ObservableObject {
     // MARK: - 背景ぼかし
 
     /// AI背景ぼかし用のユースケース
-    private let backgroundRemovalUseCase = BackgroundRemovalUseCase()
+    private let backgroundRemovalUseCase: any BackgroundRemovalProcessing
     
     /// 背景ぼかし適用ルールのユースケース
     private let backgroundBlurUseCase = BackgroundBlurUseCase()
@@ -1093,6 +1097,8 @@ class EditorViewModel: ObservableObject {
             defer { isProcessingAI = false }
 
             guard let originalImage = imageElement.originalImage else {
+                // 元画像が未解決のままだとボタン押下が無反応に見えるため、UI 用メッセージを設定
+                lastBackgroundRemovalErrorMessage = String(localized: "aiTools.sourceImageUnavailable")
                 return
             }
 
@@ -1171,6 +1177,8 @@ class EditorViewModel: ObservableObject {
             defer { isProcessingAI = false }
 
             guard let originalImage = imageElement.originalImage else {
+                // 元画像が未解決のままだとボタン押下が無反応に見えるため、UI 用メッセージを設定
+                lastBackgroundBlurErrorMessage = String(localized: "aiTools.sourceImageUnavailable")
                 return
             }
 
@@ -1180,6 +1188,8 @@ class EditorViewModel: ObservableObject {
                     maskImage: maskImage,
                     for: imageElement
                 ) else {
+                    // マスク生成は成功したが、適用プラン構築に失敗した内部状態は無反応にせず通知
+                    lastBackgroundBlurErrorMessage = String(localized: "aiTools.aiMaskGeneration.failed")
                     return
                 }
                 applyBackgroundBlurPlan(plan, elementId: imageElement.id)

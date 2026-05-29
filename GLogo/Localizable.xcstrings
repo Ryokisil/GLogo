@@ -4800,6 +4800,57 @@
         }
       }
     },
+    "aiTools.sourceImageUnavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't load the source image required for AI processing."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI処理に必要な画像を読み込めませんでした。"
+          }
+        }
+      }
+    },
+    "aiTools.backgroundRemoval.failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI background removal failed."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI背景除去に失敗しました。"
+          }
+        }
+      }
+    },
+    "aiTools.aiMaskGeneration.failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI mask generation failed."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AIマスク生成に失敗しました。"
+          }
+        }
+      }
+    },
     "manualRemoval.mode" : {
       "extractionState" : "manual",
       "localizations" : {
