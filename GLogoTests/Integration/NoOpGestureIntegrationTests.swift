@@ -206,6 +206,74 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         )
     }
 
+    /// ダブルタップで回転だけが0度に戻り、Undo/Redo で往復できることを検証
+    /// - Parameters: なし
+    /// - Returns: なし
+    @MainActor
+    func testResetRotation_UsesHistoryAndKeepsLayout() throws {
+        let project = LogoProject(name: "reset-rotation", canvasSize: CGSize(width: 1080, height: 1920))
+        let imageData = try XCTUnwrap(makeSolidImage(color: .systemGreen, size: CGSize(width: 64, height: 64)).pngData())
+        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        imageElement.position = CGPoint(x: 240, y: 360)
+        imageElement.size = CGSize(width: 180, height: 120)
+        imageElement.rotation = 0.75
+        imageElement.saturationAdjustment = 1.4
+        project.addElement(imageElement)
+
+        let editorViewModel = EditorViewModel(project: project)
+        let elementViewModel = ElementViewModel(editorViewModel: editorViewModel)
+
+        editorViewModel.selectElement(imageElement)
+        waitForSelectionPropagation()
+
+        elementViewModel.resetRotation()
+
+        XCTAssertEqual(imageElement.rotation, 0, accuracy: 0.0001, "rotation だけが 0 度に戻るべき")
+        XCTAssertEqual(imageElement.position, CGPoint(x: 240, y: 360), "position は維持されるべき")
+        XCTAssertEqual(imageElement.size, CGSize(width: 180, height: 120), "size は維持されるべき")
+        XCTAssertEqual(imageElement.saturationAdjustment, 1.4, accuracy: 0.0001, "画像調整値は維持されるべき")
+        XCTAssertFalse(editorViewModel.canRedo, "新規イベント後は redo は空であるべき")
+
+        editorViewModel.undo()
+        XCTAssertEqual(imageElement.rotation, 0.75, accuracy: 0.0001, "Undo で元の角度に戻るべき")
+
+        editorViewModel.redo()
+        XCTAssertEqual(imageElement.rotation, 0, accuracy: 0.0001, "Redo で 0 度に戻るべき")
+    }
+
+    /// rotation がほぼ0なら履歴を追加せず、ロック中の要素も変更しないことを検証
+    /// - Parameters: なし
+    /// - Returns: なし
+    @MainActor
+    func testResetRotation_IgnoresZeroAndLockedElement() throws {
+        let project = LogoProject(name: "reset-rotation-noop", canvasSize: CGSize(width: 1080, height: 1920))
+        let imageData = try XCTUnwrap(makeSolidImage(color: .systemRed, size: CGSize(width: 64, height: 64)).pngData())
+        let unlockedElement = ImageElement(imageData: imageData, importOrder: 0)
+        let lockedElement = ImageElement(imageData: imageData, importOrder: 1)
+        lockedElement.rotation = 0.4
+        lockedElement.isLocked = true
+        project.addElement(unlockedElement)
+        project.addElement(lockedElement)
+
+        let editorViewModel = EditorViewModel(project: project)
+        let elementViewModel = ElementViewModel(editorViewModel: editorViewModel)
+
+        editorViewModel.selectElement(unlockedElement)
+        waitForSelectionPropagation()
+
+        elementViewModel.resetRotation()
+        XCTAssertEqual(unlockedElement.rotation, 0, accuracy: 0.0001, "rotation が 0 なら何も起きないべき")
+        XCTAssertFalse(editorViewModel.canUndo, "履歴は追加されないべき")
+
+        editorViewModel.selectElement(lockedElement)
+        waitForSelectionPropagation()
+
+        elementViewModel.resetRotation()
+
+        XCTAssertEqual(lockedElement.rotation, 0.4, accuracy: 0.0001, "ロック要素は変更されるべきではない")
+        XCTAssertFalse(editorViewModel.canUndo, "ロック要素でも履歴は追加されないべき")
+    }
+
     // MARK: - Helpers
 
     /// @Published による選択要素伝播を1ターン待機
