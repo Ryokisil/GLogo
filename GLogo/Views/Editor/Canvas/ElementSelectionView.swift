@@ -114,6 +114,9 @@ struct ElementSelectionView: View {
     /// 回転ジェスチャー
     var onRotateGestureChanged: ((CGFloat) -> Void)?
     var onRotateGestureEnded: (() -> Void)?
+
+    /// ダブルタップで回転を初期化
+    var onResetRotation: (() -> Void)?
     
     /// ドラッグで位置変更（ジェスチャーベース）
     var onMoveChanged: ((CGSize) -> Void)?
@@ -182,6 +185,12 @@ struct ElementSelectionView: View {
                     if distance < 5 {
                         onTapSelect?(value.startLocation)
                     }
+                }
+        )
+        .simultaneousGesture(
+            TapGesture(count: 2)
+                .onEnded {
+                    onResetRotation?()
                 }
         )
     }

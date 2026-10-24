@@ -117,6 +117,9 @@ struct EditorCanvasContainerView: View {
                             ended: true
                         )
                     },
+                    onResetRotation: {
+                        elementViewModel.resetRotation()
+                    },
                     onMoveChanged: { translation in
                         elementViewModel.applyGestureTransform(
                             kind: .move,

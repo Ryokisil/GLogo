@@ -55,7 +55,7 @@ final class ImageSourceResolverTests: XCTestCase {
     /// 編集用画像解決がリポジトリへ委譲されることを検証
     func test_resolveEditingImage_usesRepository() throws {
         let proxyImage = makeSolidImage(size: CGSize(width: 12, height: 12), color: .green)
-        let repository = ImageAssetRepositorySpy(result: proxyImage)
+        let repository = RecordingImageAssetRepository(result: proxyImage)
         let resolver = ImageSourceResolver(assetRepository: repository)
 
         let resolved = try XCTUnwrap(
@@ -76,10 +76,10 @@ final class ImageSourceResolverTests: XCTestCase {
         XCTAssertEqual(resolved.size, proxyImage.size)
     }
 
-    /// リポジトリが解決できない場合に元画像へフォールバックすることを検証
+    /// リポジトリから編集用画像が返らない場合に元画像を使うことを検証
     func test_resolveEditingImage_fallsBackToOriginal() throws {
         let originalImage = makeSolidImage(size: CGSize(width: 20, height: 10), color: .purple)
-        let repository = ImageAssetRepositorySpy(result: nil)
+        let repository = RecordingImageAssetRepository(result: nil)
         let resolver = ImageSourceResolver(assetRepository: repository)
 
         let resolved = try XCTUnwrap(
@@ -101,7 +101,7 @@ final class ImageSourceResolverTests: XCTestCase {
     func test_originalImage_usesResolverCache() throws {
         let originalResolver = ImageElement.imageSourceResolver
         let expectedImage = makeSolidImage(size: CGSize(width: 18, height: 18), color: .orange)
-        let resolver = ImageSourceResolverSpy(originalImage: expectedImage)
+        let resolver = CountingImageSourceResolver(originalImage: expectedImage)
         ImageElement.imageSourceResolver = resolver
         defer { ImageElement.imageSourceResolver = originalResolver }
 
@@ -113,9 +113,9 @@ final class ImageSourceResolverTests: XCTestCase {
         XCTAssertEqual(second.size, expectedImage.size)
         XCTAssertEqual(resolver.originalResolveCallCount, 1)
     }
+}
 
-    // MARK: - Helpers
-
+private extension ImageSourceResolverTests {
     /// 単色画像を生成する
     /// - Parameters:
     ///   - size: 画像サイズ
@@ -132,17 +132,14 @@ final class ImageSourceResolverTests: XCTestCase {
     }
 }
 
-private final class ImageAssetRepositorySpy: ImageAssetRepositoryProtocol {
+/// 呼び出し内容を記録するテスト用 ImageAssetRepository
+private final class RecordingImageAssetRepository: ImageAssetRepositoryProtocol {
     let result: UIImage?
     private(set) var didLoadEditingImage = false
     private(set) var receivedIdentifier: String?
     private(set) var receivedFileName: String?
     private(set) var receivedOriginalPath: String?
 
-    /// スパイを初期化する
-    /// - Parameters:
-    ///   - result: リポジトリから返す画像
-    /// - Returns: なし
     init(result: UIImage?) {
         self.result = result
     }
@@ -163,14 +160,11 @@ private final class ImageAssetRepositorySpy: ImageAssetRepositoryProtocol {
     }
 }
 
-private final class ImageSourceResolverSpy: ImageSourceResolving {
+/// 元画像解決の呼び出し回数を記録するテスト用 Resolver
+private final class CountingImageSourceResolver: ImageSourceResolving {
     let originalImage: UIImage
     private(set) var originalResolveCallCount = 0
 
-    /// スパイを初期化する
-    /// - Parameters:
-    ///   - originalImage: 元画像解決時に返す画像
-    /// - Returns: なし
     init(originalImage: UIImage) {
         self.originalImage = originalImage
     }

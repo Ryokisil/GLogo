@@ -57,6 +57,11 @@
 			path = images;
 			sourceTree = "<group>";
 		};
+		53D0C0012F84000000D0C001 /* docs */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = docs;
+			sourceTree = "<group>";
+		};
 		53FC07A62D7200B40049A129 /* GLogo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -116,6 +121,7 @@
 				53CAFAE02E6D1300001E7CA4 /* Fonts */,
 				5374D5962DC4CD8C003F5F23 /* images */,
 				5374D5932DC4BFE5003F5F23 /* README.md */,
+				53D0C0012F84000000D0C001 /* docs */,
 				53D0F0022F2F100100A1B2C3 /* GLogo/Resources/MLModels/realesr-general-x4v3.mlmodelc */,
 				53FC07A62D7200B40049A129 /* GLogo */,
 				53FC07B72D7200B50049A129 /* GLogoTests */,

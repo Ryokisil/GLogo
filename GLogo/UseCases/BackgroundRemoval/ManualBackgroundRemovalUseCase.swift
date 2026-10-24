@@ -71,16 +71,17 @@ struct ManualBackgroundRemovalUseCase {
 
     /// マスクを画像に適用
     /// - Parameters:
-    ///   - mask: 前景マスク（白=表示、黒=透明）
+    ///   - mask: 画像の表示方向に対応する前景マスク（白=表示、黒=透明）
     ///   - image: 背景除去対象の画像
     /// - Returns: 背景除去後の画像（生成に失敗した場合はnil）
     func applyMask(_ mask: UIImage, to image: UIImage) -> UIImage? {
-        guard let cgImage = image.cgImage,
-              let maskCIImage = CIImage(image: mask) else {
+        // ブラシ座標は UIImage の表示方向が基準。生の CGImage に合成してから
+        // orientation を戻すと、マスクまで回転・反転されて消去位置がずれる。
+        guard let originalImage = DisplayImageCoordinates.ciImage(from: image),
+              let maskCIImage = DisplayImageCoordinates.ciImage(from: mask) else {
             return nil
         }
 
-        let originalImage = CIImage(cgImage: cgImage)
         let targetExtent = originalImage.extent
         let scaleX = targetExtent.width / maskCIImage.extent.width
         let scaleY = targetExtent.height / maskCIImage.extent.height
@@ -101,6 +102,8 @@ struct ManualBackgroundRemovalUseCase {
             return nil
         }
 
-        return UIImage(cgImage: resultCGImage, scale: image.scale, orientation: image.imageOrientation)
+        // 向きはピクセルへ反映済み。PNG 化や再編集でも同じ座標を維持する。
+        return UIImage(cgImage: resultCGImage, scale: image.scale, orientation: .up)
     }
+
 }

@@ -13,8 +13,8 @@ import CoreML
 import Foundation
 import UIKit
 
-/// Core ML ベースの高画質化実行器
-final class CoreMLUpscaler {
+/// モデル／インターフェースのキャッシュと同期推論を同じ actor 内で直列化する。
+actor CoreMLUpscaler {
     private let configuration: RealESRGANPipelineConfiguration
     private let context = CIContext()
     private let memoryPolicy = UpscaleMemoryPolicy()
@@ -65,10 +65,9 @@ final class CoreMLUpscaler {
                 tileSize: tileSize,
                 modelScaleFactor: modelScale,
                 outputScaleFactor: processingScale,
-                renderer: { [weak self] tileImage in
-                    guard let self else {
-                        throw ImageUpscaleError.predictionFailed(reason: "Core ML 実行器が解放されました。")
-                    }
+                // クロージャはローカルな processor が同期実行するため循環参照にならない。
+                // actor に隔離された self を維持して、各タイルも同じ実行領域で推論する。
+                renderer: { tileImage in
                     return try self.runPrediction(
                         tileImage,
                         model: model,

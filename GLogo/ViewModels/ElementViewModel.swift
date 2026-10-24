@@ -257,6 +257,21 @@ class ElementViewModel: ObservableObject {
         updateElement(to: element)
     }
 
+    /// 回転を0度へ戻す
+    func resetRotation() {
+        guard let element = element, !element.isLocked else { return }
+
+        let currentRotation = element.rotation
+        guard abs(currentRotation) > 0.001 else { return }
+
+        let event = ElementRotatedEvent(
+            elementId: element.id,
+            oldRotation: currentRotation,
+            newRotation: 0
+        )
+        editorViewModel?.applyEvent(event)
+    }
+
     /// ジェスチャーによる変形（移動・拡大縮小・回転）
     func applyGestureTransform(
         kind: ElementGestureTransformKind,

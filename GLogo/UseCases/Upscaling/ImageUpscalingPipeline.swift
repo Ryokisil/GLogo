@@ -9,8 +9,9 @@
 
 import Foundation
 
-/// 高画質化パイプラインの共通インターフェース
-protocol ImageUpscalingPipeline {
+/// MainActor と画像処理側で安全に共有できる高画質化パイプライン。
+/// 実装がキャッシュなどの可変状態を持つ場合は、actor 等で保護する。
+protocol ImageUpscalingPipeline: Sendable {
     /// パイプラインが担当する高画質化方式
     var method: ImageUpscaleMethod { get }
 

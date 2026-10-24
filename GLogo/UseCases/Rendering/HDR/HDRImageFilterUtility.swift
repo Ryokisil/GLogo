@@ -45,14 +45,12 @@ class HDRImageFilterUtility {
     ///   - radius: ぼかし半径
     /// - Returns: 背景がぼかされた合成画像
     static func applyBackgroundBlur(to image: UIImage, maskData: Data, radius: CGFloat) -> UIImage? {
-        guard let cgImage = image.cgImage,
+        // マスクは表示座標で保存されるため、画像の向きを合成前に反映する。
+        guard let ciImage = DisplayImageCoordinates.ciImage(from: image),
               let maskUIImage = UIImage(data: maskData),
-              let maskCGImage = maskUIImage.cgImage else {
+              let maskCIImage = DisplayImageCoordinates.ciImage(from: maskUIImage) else {
             return image
         }
-
-        let ciImage = CIImage(cgImage: cgImage)
-        let maskCIImage = CIImage(cgImage: maskCGImage)
 
         // CIImageレベルのぼかし合成はImageFilterUtilityを再利用
         guard let resultCIImage = ImageFilterUtility.applyBackgroundBlur(to: ciImage, mask: maskCIImage, radius: radius) else {
@@ -60,7 +58,7 @@ class HDRImageFilterUtility {
         }
 
         // P3 CIContextでUIImageに変換
-        return convertToUIImage(resultCIImage, scale: image.scale, orientation: image.imageOrientation)
+        return convertToUIImage(resultCIImage, scale: image.scale, orientation: .up)
     }
 
     // MARK: - ティントオーバーレイ

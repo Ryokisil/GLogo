@@ -8,6 +8,8 @@
 
 import XCTest
 import UIKit
+import ImageIO
+import UniformTypeIdentifiers
 @testable import GLogo
 
 /// 保存合成処理の不変条件を検証する回帰テスト
@@ -292,6 +294,76 @@ final class SavePipelineRegressionTests: XCTestCase {
 
         XCTAssertEqual(output.size.width, 3000, accuracy: 0.001, "出力幅はベース画像の実ピクセル幅であるべき")
         XCTAssertEqual(output.size.height, 2000, accuracy: 0.001, "出力高さはベース画像の実ピクセル高さであるべき")
+    }
+
+    /// EXIF orientation の全形式で editor と同じ向き・画素配置になることを担保する
+    func testMakeCompositeImage_allOrientationsMatchDisplay() throws {
+        let orientations: [CGImagePropertyOrientation] = [
+            .up,
+            .upMirrored,
+            .down,
+            .downMirrored,
+            .leftMirrored,
+            .right,
+            .rightMirrored,
+            .left
+        ]
+
+        for orientation in orientations {
+            let imageData = try makeOrientedJPEGData(orientation: orientation)
+            let sourceImage = try XCTUnwrap(UIImage(data: imageData))
+            let project = LogoProject(name: "Orientation\(orientation.rawValue)", canvasSize: sourceImage.size)
+            let base = ImageElement(imageData: imageData, importOrder: 0)
+            base.position = .zero
+            base.size = sourceImage.size
+            base.zIndex = ElementPriority.image.rawValue
+            base.imageRole = .base
+            project.addElement(base)
+
+            let service = ImageProcessingService()
+            let output = try XCTUnwrap(service.makeCompositeImage(baseElement: base, project: project))
+            let expected = renderForDisplay(sourceImage)
+            let message = "EXIF orientation \(orientation.rawValue)"
+
+            XCTAssertEqual(output.size.width, expected.size.width, accuracy: 0.001, "\(message): 表示方向の幅を維持するべき")
+            XCTAssertEqual(output.size.height, expected.size.height, accuracy: 0.001, "\(message): 表示方向の高さを維持するべき")
+            XCTAssertEqual(output.imageOrientation, .up, "\(message): 合成結果は .up に正規化されるべき")
+
+            guard output.size == expected.size else { continue }
+            try assertSampledAppearanceEqual(output, expected, message: message)
+        }
+    }
+
+    /// orientation 付き画像がエンコード後も editor と同じ見た目・解像度になることを担保する
+    func testMakeCompositeImage_orientationMetadataSurvivesEncoding() throws {
+        let imageData = try makeOrientedJPEGData(orientation: .left)
+        let sourceImage = try XCTUnwrap(UIImage(data: imageData))
+        let project = LogoProject(name: "OrientationEncodingRegression", canvasSize: sourceImage.size)
+        let base = ImageElement(imageData: imageData, importOrder: 0)
+        base.position = .zero
+        base.size = sourceImage.size
+        base.zIndex = ElementPriority.image.rawValue
+        base.imageRole = .base
+        project.addElement(base)
+
+        let service = ImageProcessingService()
+        let output = try XCTUnwrap(service.makeCompositeImage(baseElement: base, project: project))
+        let encodedData = try XCTUnwrap(output.pngData())
+        let savedImage = try XCTUnwrap(UIImage(data: encodedData))
+        let expected = renderForDisplay(sourceImage)
+
+        XCTAssertEqual(savedImage.imageOrientation, .up)
+        XCTAssertEqual(savedImage.size.width, expected.size.width, accuracy: 0.001)
+        XCTAssertEqual(savedImage.size.height, expected.size.height, accuracy: 0.001)
+        XCTAssertEqual(
+            savedImage.size.width * savedImage.size.height,
+            sourceImage.size.width * sourceImage.size.height,
+            accuracy: 0.001,
+            "エンコード後も表示方向での元画素数を維持するべき"
+        )
+
+        guard savedImage.size == expected.size else { return }
+        try assertSampledAppearanceEqual(savedImage, expected, message: "EXIF orientation 8 の保存後")
     }
 
     /// ベース画像を非等比リサイズしていても、オーバーレイ位置が editor 上の見た目どおり変換されることを担保する
@@ -628,6 +700,95 @@ final class SavePipelineRegressionTests: XCTestCase {
         }
     }
 
+    /// 向きの判別用に四隅の色が異なるJPEGデータを生成する
+    private func makeOrientedJPEGData(orientation: CGImagePropertyOrientation) throws -> Data {
+        let size = CGSize(width: 120, height: 80)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 60, height: 40))
+            UIColor.green.setFill()
+            context.fill(CGRect(x: 60, y: 0, width: 60, height: 40))
+            UIColor.blue.setFill()
+            context.fill(CGRect(x: 0, y: 40, width: 60, height: 40))
+            UIColor.yellow.setFill()
+            context.fill(CGRect(x: 60, y: 40, width: 60, height: 40))
+        }
+        let cgImage = try XCTUnwrap(image.cgImage)
+        let data = NSMutableData()
+        let destination = try XCTUnwrap(
+            CGImageDestinationCreateWithData(
+                data,
+                UTType.jpeg.identifier as CFString,
+                1,
+                nil
+            )
+        )
+        let properties = [
+            kCGImagePropertyOrientation: orientation.rawValue,
+            kCGImageDestinationLossyCompressionQuality: 1.0
+        ] as CFDictionary
+        CGImageDestinationAddImage(destination, cgImage, properties)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        return data as Data
+    }
+
+    /// UIImage が editor で表示される向きへ描画した参照画像を生成する
+    private func renderForDisplay(_ image: UIImage) -> UIImage {
+        let pixelSize = CGSize(
+            width: image.size.width * image.scale,
+            height: image.size.height * image.scale
+        )
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: pixelSize, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: pixelSize))
+        }
+    }
+
+    /// 四隅の代表画素を許容誤差付きで比較する
+    private func assertSampledAppearanceEqual(
+        _ actual: UIImage,
+        _ expected: UIImage,
+        message: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let normalizedPoints = [
+            CGPoint(x: 0.25, y: 0.25),
+            CGPoint(x: 0.75, y: 0.25),
+            CGPoint(x: 0.25, y: 0.75),
+            CGPoint(x: 0.75, y: 0.75)
+        ]
+
+        for normalizedPoint in normalizedPoints {
+            let actualPoint = CGPoint(
+                x: (actual.size.width - 1) * normalizedPoint.x,
+                y: (actual.size.height - 1) * normalizedPoint.y
+            )
+            let expectedPoint = CGPoint(
+                x: (expected.size.width - 1) * normalizedPoint.x,
+                y: (expected.size.height - 1) * normalizedPoint.y
+            )
+            let actualPixel = try sampledRGBA(from: actual, at: actualPoint)
+            let expectedPixel = try sampledRGBA(from: expected, at: expectedPoint)
+
+            for component in actualPixel.indices {
+                XCTAssertEqual(
+                    CGFloat(actualPixel[component]),
+                    CGFloat(expectedPixel[component]),
+                    accuracy: 4,
+                    "\(message): 画素配置が editor 表示と一致するべき",
+                    file: file,
+                    line: line
+                )
+            }
+        }
+    }
+
     /// 透明な画像を生成する
     private func makeTransparentImage(size: CGSize) -> UIImage {
         let format = UIGraphicsImageRendererFormat()
@@ -641,6 +802,18 @@ final class SavePipelineRegressionTests: XCTestCase {
 
     /// 指定座標の画素色を16進表現で返す
     private func sampledColorHex(from image: UIImage, at point: CGPoint) throws -> String {
+        let pixel = try sampledRGBA(from: image, at: point)
+        let color = UIColor(
+            red: CGFloat(pixel[0]) / 255.0,
+            green: CGFloat(pixel[1]) / 255.0,
+            blue: CGFloat(pixel[2]) / 255.0,
+            alpha: CGFloat(pixel[3]) / 255.0
+        )
+        return color.rgbaHexString
+    }
+
+    /// 指定座標のRGBA画素値を返す
+    private func sampledRGBA(from image: UIImage, at point: CGPoint) throws -> [UInt8] {
         let cgImage = try XCTUnwrap(image.cgImage)
         let x = Int(point.x)
         let y = Int(point.y)
@@ -660,13 +833,7 @@ final class SavePipelineRegressionTests: XCTestCase {
             )
         )
         context.draw(cropped, in: CGRect(x: 0, y: 0, width: 1, height: 1))
-        let color = UIColor(
-            red: CGFloat(pixel[0]) / 255.0,
-            green: CGFloat(pixel[1]) / 255.0,
-            blue: CGFloat(pixel[2]) / 255.0,
-            alpha: CGFloat(pixel[3]) / 255.0
-        )
-        return color.rgbaHexString
+        return pixel
     }
 
     /// editor 上のキャンバス座標を、書き出し画像上の座標へ変換する

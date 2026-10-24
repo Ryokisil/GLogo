@@ -11,7 +11,7 @@
 import Foundation
 
 /// アプリ内言語設定
-///
+
 /// `@AppStorage(AppLanguage.storageKey)` で永続化し、
 /// `resolvedLocale` を SwiftUI 環境に注入して言語を切り替えます。
 enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
@@ -25,7 +25,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
 
     /// 表示用の言語名
-    ///
+    
     /// `.system` はローカライズキーを解決し、
     /// 個別言語は常にその言語の自称表記で返します。
     var displayName: String {
@@ -40,7 +40,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     static let storageKey = "appLanguage"
 
     /// 選択に応じた `Locale` を返す
-    ///
+    
     /// - `.system`: iOS がアプリに適用した言語を使用
     /// - `.english` / `.japanese`: 指定言語の Locale を直接返す
     var resolvedLocale: Locale {
@@ -54,14 +54,14 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// `@AppStorage` の raw 値から `AppLanguage` を復元する
-    ///
+
     /// 不正な値が保存されている場合は `.system` にフォールバックします。
     static func from(rawValue: String) -> AppLanguage {
         AppLanguage(rawValue: rawValue) ?? .system
     }
 
     /// アプリが実際に使用中の言語をネイティブ表記で返す
-    ///
+
     /// `Bundle.main.preferredLocalizations` を参照するため、
     /// iOS のアプリ別言語設定やフォールバックを正しく反映します。
     static var currentAppLanguageLabel: String {

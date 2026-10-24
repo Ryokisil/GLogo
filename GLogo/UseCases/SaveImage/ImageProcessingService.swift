@@ -32,7 +32,7 @@ struct ImageProcessingService: ImageProcessing {
             return nil
         }
 
-        let basePixelSize = pixelSize(of: baseImage)
+        let basePixelSize = baseImage.orientedPixelSize
         guard basePixelSize.width > 0, basePixelSize.height > 0,
               baseElement.size.width > 0, baseElement.size.height > 0 else {
             Self.logger.warning("合成保存に失敗: ベース画像サイズが無効")
@@ -141,15 +141,4 @@ struct ImageProcessingService: ImageProcessing {
         )
     }
 
-    /// UIImage の実ピクセルサイズを返す
-    private func pixelSize(of image: UIImage) -> CGSize {
-        if let cgImage = image.cgImage {
-            return CGSize(width: cgImage.width, height: cgImage.height)
-        }
-
-        return CGSize(
-            width: image.size.width * image.scale,
-            height: image.size.height * image.scale
-        )
-    }
 }
