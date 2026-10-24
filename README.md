@@ -98,3 +98,4 @@ README は「現在の正解（現行仕様）」のみを記載します。
 過去の実装経緯・調査メモ・詳細技術ノートは以下へ分離しています。
 - `docs/technical-notes-legacy.md`
 - `docs/nfr-operations.md`
+- [設計比較・責務分離の調査と改善方針](docs/architecture/README.md)（現状の調査結果と未実装の分割候補）

@@ -10,7 +10,7 @@
 import Foundation
 
 /// 高画質化ユースケース
-struct ImageUpscaleUseCase {
+struct ImageUpscaleUseCase: Sendable {
     private let lanczosPipeline: any ImageUpscalingPipeline
     private let realESRGANPipeline: any ImageUpscalingPipeline
 

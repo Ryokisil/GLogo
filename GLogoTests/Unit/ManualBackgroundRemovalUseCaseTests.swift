@@ -241,6 +241,65 @@ class ManualBackgroundRemovalUseCaseTests: XCTestCase {
 
     // MARK: - ヘルパーメソッド
 
+    /// 中央・正方形では検出できない回転／鏡像のずれを、表示座標で検証する。
+    func testApplyMaskPreservesDisplayCoordinatesForEveryOrientationAndScale() throws {
+        let orientations: [UIImage.Orientation] = [
+            .up, .down, .left, .right, .upMirrored, .downMirrored, .leftMirrored, .rightMirrored
+        ]
+        for rawSize in [CGSize(width: 120, height: 80), CGSize(width: 80, height: 120)] {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            format.preferredRange = .standard
+            let source = UIGraphicsImageRenderer(size: rawSize, format: format).image { ctx in
+                UIColor.red.setFill()
+                ctx.fill(CGRect(origin: .zero, size: rawSize))
+                UIColor.blue.setFill()
+                ctx.fill(CGRect(x: 0, y: 0, width: rawSize.width / 2, height: rawSize.height / 2))
+            }
+            for orientation in orientations {
+                for scale: CGFloat in [1, 2, 3] {
+                    let image = UIImage(cgImage: try XCTUnwrap(source.cgImage), scale: scale, orientation: orientation)
+                    let point = CGPoint(x: image.size.width * 0.7, y: image.size.height * 0.25)
+                    let mask = useCase.drawBrush(on: useCase.createInitialMask(for: image), at: point,
+                                                 size: min(image.size.width, image.size.height) * 0.2, mode: .erase)
+                    let result = try XCTUnwrap(useCase.applyMask(mask, to: image))
+                    let label = "raw=\(rawSize), orientation=\(orientation.rawValue), scale=\(scale)"
+                    XCTAssertEqual(result.size, image.size, label)
+                    XCTAssertEqual(result.scale, image.scale, label)
+                    XCTAssertLessThan(displayPixel(in: result, at: point)[3], 10, label)
+                    // 消去位置以外の四隅は、元の表示色と不透明度を維持する。
+                    for x in [0.1, 0.9] {
+                        for y in [0.1, 0.9] {
+                            let sample = CGPoint(x: image.size.width * x, y: image.size.height * y)
+                            let actual = displayPixel(in: result, at: sample)
+                            let expected = displayPixel(in: image, at: sample)
+                            for channel in 0..<4 {
+                                XCTAssertEqual(Int(actual[channel]), Int(expected[channel]), accuracy: 3, label)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// UIImage.draw に表示方向の解釈を任せ、1ピクセルの描画結果を読む。
+    /// 元の CGImage の座標や並びを期待値に流用しない。
+    private func displayPixel(in image: UIImage, at point: CGPoint) -> [UInt8] {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.preferredRange = .standard
+        let pixel = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1), format: format).image { _ in
+            image.draw(in: CGRect(origin: CGPoint(x: -point.x, y: -point.y), size: image.size))
+        }
+        var bytes = [UInt8](repeating: 0, count: 4)
+        let context = CGContext(data: &bytes, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                space: CGColorSpaceCreateDeviceRGB(),
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        context!.draw(pixel.cgImage!, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return bytes
+    }
+
     /// 指定座標のピクセルカラーを取得
     private func getPixelColor(from image: UIImage, at point: CGPoint) -> UIColor? {
         guard let cgImage = image.cgImage else { return nil }

@@ -51,6 +51,31 @@ final class ImageUpscaleRestrictionIntegrationTests: XCTestCase {
         XCTAssertNil(viewModel.lastUpscaleErrorMessage)
     }
 
+    /// MainActor から実際のパイプラインへ渡し、完了時の状態と連打ガードを検証する。
+    @MainActor
+    func testRequestImageUpscale_CompletesAndRejectsOverlappingRequest() async throws {
+        let viewModel = EditorViewModel()
+        let element = try makeImageElement(color: .red)
+        viewModel.addElement(element)
+        let finished = expectation(description: "高画質化の完了")
+        let subscription = viewModel.$isProcessingUpscale
+            .dropFirst()
+            .filter { !$0 }
+            .sink { _ in finished.fulfill() }
+        defer { subscription.cancel() }
+
+        viewModel.requestImageUpscale(for: element, method: .lanczos, scaleFactor: .x2)
+        XCTAssertTrue(viewModel.isProcessingUpscale)
+        viewModel.requestImageUpscale(for: element, method: .lanczos, scaleFactor: .x4)
+
+        await fulfillment(of: [finished], timeout: 5)
+        XCTAssertFalse(viewModel.isProcessingUpscale)
+        XCTAssertNil(viewModel.lastUpscaleErrorMessage)
+        let updated = try XCTUnwrap(viewModel.project.elements.first as? ImageElement)
+        XCTAssertTrue(updated.hasAppliedUpscale)
+        XCTAssertEqual(try XCTUnwrap(updated.originalImage).size, CGSize(width: 128, height: 128))
+    }
+
     // MARK: - Helpers
 
     /// テスト用の画像要素を生成

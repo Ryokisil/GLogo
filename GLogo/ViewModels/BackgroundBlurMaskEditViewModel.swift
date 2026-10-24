@@ -107,7 +107,7 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
         // 初期マスクの設定
         let initialMask: UIImage
         if let maskData = initialMaskData, let mask = UIImage(data: maskData) {
-            initialMask = mask
+            initialMask = manualBackgroundBlurUseCase.makeEditingMask(from: mask, for: originalImage)
         } else {
             initialMask = useCase.createInitialMask(for: originalImage)
         }

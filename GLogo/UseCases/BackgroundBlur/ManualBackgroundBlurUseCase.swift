@@ -10,6 +10,11 @@ import UIKit
 
 /// 手動背景ぼかし編集用ユースケース
 struct ManualBackgroundBlurUseCase {
+    /// 保存済みの原寸マスクを、ブラシ座標と同じ編集用サイズ・倍率へ合わせる。
+    func makeEditingMask(from mask: UIImage, for editingImage: UIImage) -> UIImage {
+        resizeMask(mask, toMatch: editingImage)
+    }
+
     /// マスクから背景ぼかしプレビュー画像を生成する
     /// - Parameters:
     ///   - originalImage: ぼかし対象の元画像
