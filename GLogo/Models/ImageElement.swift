@@ -1,78 +1,9 @@
-
-//  ImageElement.swift
-//  概要:
-//  このファイルは画像要素を表すモデルクラスを定義しています。
-//  LogoElementを継承し、画像データの管理と表示に関するプロパティを提供します。
-//  フィッティングモード（Fill、Aspect Fit、Aspect Fill、Centerなど）や
-//  彩度、明度、コントラスト調整、カラーフィルタ、フレーム表示などの
-//  画像処理機能もサポートしています。
+// 画像要素のデータ（画像ソースの参照・編集値・保存形式・複製）を表すモデル。
+// 描画・画像取得・キャッシュ保持は段階的に Model 外へ移行中（docs/architecture/Models/ImageElement.md）。
 
 import Foundation
 import UIKit
 import CoreImage
-
-/// 画像の役割定義
-enum ImageRole: String, Codable, CaseIterable {
-    case base = "base"           // ベース画像（保存時の基準画像）
-    case overlay = "overlay"     // オーバーレイ画像（ベース画像の上に重ねる画像）
-    
-    /// 表示用の名称
-    var displayName: String {
-        switch self {
-        case .base:
-            return "ベース画像"
-        case .overlay:
-            return "オーバーレイ画像"
-        }
-    }
-}
-
-/// 画像フレームのプリセット種別
-enum ImageFrameStyle: String, Codable, CaseIterable {
-    case simple
-    case double
-    case cornerAccent
-    case polaroid
-    case film
-    case neon
-    case badge
-    case stamp
-    case softWhite
-    case glassWhite
-    case editorialWhite
-
-    /// 永続化データからフレーム種別を復元する
-    /// - Parameters:
-    ///   - decoder: デコーダー
-    /// - Returns: なし
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let rawValue = try container.decode(String.self)
-
-        if rawValue == "softOverlay" {
-            self = .simple
-            return
-        }
-
-        guard let style = ImageFrameStyle(rawValue: rawValue) else {
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Unknown ImageFrameStyle rawValue: \(rawValue)"
-            )
-        }
-
-        self = style
-    }
-
-    /// フレーム種別を永続化向けにエンコードする
-    /// - Parameters:
-    ///   - encoder: エンコーダー
-    /// - Returns: なし
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
-    }
-}
 
 /// 画像要素クラス
 class ImageElement: LogoElement {
@@ -454,32 +385,6 @@ class ImageElement: LogoElement {
         return applyFilters(to: originalImage)
     }
     
-    /// 非同期で画像を取得（彩度調整用）
-    @MainActor
-    func getImageAsync() async -> UIImage? {
-        if let cachedImage = cachedImage {
-            return cachedImage
-        }
-        
-        guard let originalImage = self.originalImage else {
-            return nil
-        }
-
-        // 非同期でフィルターをフル品質適用
-        let params = currentFilterParams()
-        let mode = currentRenderMode()
-        let processedImage = await previewService.applyFiltersAsync(
-            to: originalImage,
-            params: params,
-            quality: .full,
-            mode: mode
-        )
-        
-        // 編集後の画像をキャッシュ
-        cachedImage = processedImage
-        return processedImage
-    }
-
     /// フル品質のフィルター適用結果を非同期で生成する
     ///
     /// キャッシュ書き込みを伴わないため、呼び出し側で世代管理後に採用可否を判定できる。
@@ -813,13 +718,6 @@ class ImageElement: LogoElement {
         self.init(imageData: imageData, isDynamicSizing: true, importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
     }
     
-    /// 編集操作を記録
-    func recordEdit(operation: ImageEditOperation) {
-        editHistory.append(operation)
-        // キャッシュをクリアして再描画を促す
-        renderCache.invalidate(.rendered)
-    }
-    
     /// 元の画像に戻す
     func resetToOriginal() {
         applyAdjustmentSnapshot(initialAdjustmentSnapshot)
@@ -902,11 +800,6 @@ class ImageElement: LogoElement {
         size = ImageSizeCalculator.fittedSize(imageSize: imageSize, canvasSize: canvasSize)
     }
     
-    private func getCanvasSize() -> CGSize {
-        // デフォルトは4Kサイズ
-        return CGSize(width: 3840, height: 2160)
-    }
-
     /// 画像キャッシュをクリアする
     private func clearImageCaches() {
         renderCache.invalidate(.all)
@@ -1154,58 +1047,11 @@ class ImageElement: LogoElement {
         renderCache.invalidate(.revert)
     }
     
-    /// メタデータから画像プロパティを復元する
-    func applyMetadataToImageProperties(_ metadata: ImageMetadata) {
-        // フレーム太さの復元
-        if let frameWidthString = metadata.additionalMetadata["frameWidth"],
-           let frameWidthValue = Double(frameWidthString) {
-            self.frameWidth = CGFloat(frameWidthValue)
-        }
-
-        if let frameStyleString = metadata.additionalMetadata["frameStyle"],
-           let decodedFrameStyle = ImageFrameStyle(rawValue: frameStyleString) {
-            self.frameStyle = decodedFrameStyle
-        }
-        
-        // 角丸の復元
-        if let roundedCornersString = metadata.additionalMetadata["roundedCorners"] {
-            self.roundedCorners = roundedCornersString == "true"
-        }
-        
-        // 角丸半径の復元
-        if let cornerRadiusString = metadata.additionalMetadata["cornerRadius"],
-           let cornerRadiusValue = Double(cornerRadiusString) {
-            self.cornerRadius = CGFloat(cornerRadiusValue)
-        }
-        
-        // フレーム表示の復元
-        if let showFrameString = metadata.additionalMetadata["showFrame"] {
-            self.showFrame = showFrameString == "true"
-        }
-        
-        // フレーム色の復元
-        if let frameColorString = metadata.additionalMetadata["frameColor"],
-           let frameColor = UIColor(rgbaHex: frameColorString) ?? UIColor(hex: frameColorString) {
-            self.frameColor = frameColor
-        }
-    }
-    
     /// 初期状態から外れた調整値変更があるかを確認
     /// - Parameters: なし
     /// - Returns: 現在値が初期スナップショットから外れている場合はtrue、そうでなければfalse
     var hasAdjustmentChangesFromInitialState: Bool {
         makeCurrentAdjustmentSnapshot() != initialAdjustmentSnapshot
-    }
-
-    /// ジェスチャー操作中に即時プレビュー経路へ切り替えるべきかを返す
-    /// - Parameters: なし
-    /// - Returns: 即時プレビュー経路を許可する場合は true
-    ///
-    /// 移動・拡縮・回転は操作頻度が高く、編集中の追従性が体感品質へ直結する。
-    /// そのため manipulation 中の軽量描画可否は編集差分とは切り離し、常に preview 経路を許可する。
-    /// 高解像度画像に対して実際に切り替えるかどうかは ManipulationRenderingUseCase 側で判定する。
-    var shouldUseInstantPreviewForManipulation: Bool {
-        true
     }
 
     /// 現在の調整値スナップショットを生成
@@ -1325,113 +1171,5 @@ class ImageElement: LogoElement {
     private func makeUIColor(from rgba: RGBAColor?) -> UIColor? {
         guard let rgba else { return nil }
         return UIColor(red: rgba.red, green: rgba.green, blue: rgba.blue, alpha: rgba.alpha)
-    }
-}
-
-extension ImageElement {
-    func resizeToFit(maxSize: CGFloat) {
-        guard let image = self.image else { return }
-        
-        let imageSize = image.size
-        if imageSize.width > imageSize.height {
-            let aspectRatio = imageSize.height / imageSize.width
-            size = CGSize(width: maxSize, height: maxSize * aspectRatio)
-        } else {
-            let aspectRatio = imageSize.width / imageSize.height
-            size = CGSize(width: maxSize * aspectRatio, height: maxSize)
-        }
-    }
-}
-
-/// 画像編集操作を表す構造体
-struct ImageEditOperation: Codable {
-    enum OperationType: String, Codable {
-        case adjustSaturation
-        case adjustBrightness
-        case adjustContrast
-        case adjustHighlights
-        case adjustShadows
-        case applyTint
-        case changeFrame
-        case changeCornerRadius
-    }
-    
-    let type: OperationType
-    let timestamp: Date
-    let parameters: [String: Double]
-    
-    init(type: OperationType, parameters: [String: Double] = [:]) {
-        self.type = type
-        self.timestamp = Date()
-        self.parameters = parameters
-    }
-}
-
-// MARK: - メタデータ関連の実装
-
-/// 画像メタデータを表す構造体
-struct ImageMetadata: Codable {
-    // 基本メタデータ
-    var creationDate: Date?
-    var modificationDate: Date?
-    var author: String?
-    var description: String?
-    var copyright: String?
-    var keywords: [String]
-    var title: String?
-    
-    // EXIF情報
-    var cameraMake: String?
-    var cameraModel: String?
-    var focalLength: Double?
-    var aperture: Double?
-    var shutterSpeed: Double?
-    var iso: Int?
-    var flash: Bool?
-    var longitude: Double?
-    var latitude: Double?
-    var altitude: Double?
-    
-    // その他のメタデータ（汎用的なDictionary形式で保存）
-    var additionalMetadata: [String: String]
-    
-    init(
-        creationDate: Date? = nil,
-        modificationDate: Date? = nil,
-        author: String? = nil,
-        description: String? = nil,
-        copyright: String? = nil,
-        keywords: [String] = [],
-        title: String? = nil,
-        cameraMake: String? = nil,
-        cameraModel: String? = nil,
-        focalLength: Double? = nil,
-        aperture: Double? = nil,
-        shutterSpeed: Double? = nil,
-        iso: Int? = nil,
-        flash: Bool? = nil,
-        longitude: Double? = nil,
-        latitude: Double? = nil,
-        altitude: Double? = nil,
-        additionalMetadata: [String: String] = [:]
-    ) {
-        self.creationDate = creationDate
-        self.modificationDate = modificationDate
-        self.author = author
-        self.description = description
-        self.copyright = copyright
-        self.keywords = keywords
-        self.title = title
-        self.cameraMake = cameraMake
-        self.cameraModel = cameraModel
-        self.focalLength = focalLength
-        self.aperture = aperture
-        self.shutterSpeed = shutterSpeed
-        self.iso = iso
-        self.flash = flash
-        self.longitude = longitude
-        self.latitude = latitude
-        self.altitude = altitude
-        self.additionalMetadata = additionalMetadata
     }
 }

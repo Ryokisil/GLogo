@@ -6,7 +6,7 @@
 //  ImageElement の初期状態リバート時に必要なメタデータ復元を調整します。
 //
 
-import Foundation
+import UIKit
 
 /// 画像要素の初期状態リバートとメタデータ復元を調整するユースケース
 struct ImageElementMetadataRevertUseCase {
@@ -66,7 +66,43 @@ struct ImageElementMetadataRevertUseCase {
         }
 
         imageElement.metadata = metadata
-        imageElement.applyMetadataToImageProperties(metadata)
+        applyFrameProperties(from: metadata, to: imageElement)
         return result
+    }
+
+    /// メタデータの追加情報に記録されたフレーム・角丸の値を画像要素へ戻す。
+    /// 文字列の解釈規則は、追加情報へ書き込む `ImageMetadataManager` の記録形式に合わせる。
+    /// - Parameters:
+    ///   - metadata: 巻き戻し後のメタデータ
+    ///   - imageElement: 反映先の画像要素
+    /// - Returns: なし
+    private func applyFrameProperties(from metadata: ImageMetadata, to imageElement: ImageElement) {
+        if let frameWidthString = metadata.additionalMetadata["frameWidth"],
+           let frameWidthValue = Double(frameWidthString) {
+            imageElement.frameWidth = CGFloat(frameWidthValue)
+        }
+
+        if let frameStyleString = metadata.additionalMetadata["frameStyle"],
+           let decodedFrameStyle = ImageFrameStyle(rawValue: frameStyleString) {
+            imageElement.frameStyle = decodedFrameStyle
+        }
+
+        if let roundedCornersString = metadata.additionalMetadata["roundedCorners"] {
+            imageElement.roundedCorners = roundedCornersString == "true"
+        }
+
+        if let cornerRadiusString = metadata.additionalMetadata["cornerRadius"],
+           let cornerRadiusValue = Double(cornerRadiusString) {
+            imageElement.cornerRadius = CGFloat(cornerRadiusValue)
+        }
+
+        if let showFrameString = metadata.additionalMetadata["showFrame"] {
+            imageElement.showFrame = showFrameString == "true"
+        }
+
+        if let frameColorString = metadata.additionalMetadata["frameColor"],
+           let frameColor = UIColor(rgbaHex: frameColorString) ?? UIColor(hex: frameColorString) {
+            imageElement.frameColor = frameColor
+        }
     }
 }

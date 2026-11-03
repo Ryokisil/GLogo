@@ -47,11 +47,7 @@ final class ImagePreviewDependencyTests: XCTestCase {
         XCTAssertNil(first.cachedImage, "世代照合前の結果はModelへ書き込まない")
         let secondRendered = await second.renderFullQualityImageAsync()
         XCTAssertTrue(secondRendered === secondService.output)
-        let cached = await first.getImageAsync()
-        XCTAssertTrue(cached === firstService.output)
-        XCTAssertTrue(first.cachedImage === firstService.output)
-        _ = await first.getImageAsync()
-        XCTAssertEqual(firstService.state.asyncCalls, 2)
+        XCTAssertEqual(firstService.state.asyncCalls, 1)
         XCTAssertEqual(secondService.state.asyncCalls, 1)
         XCTAssertEqual(firstService.state.quality, .full)
     }

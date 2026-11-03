@@ -59,12 +59,6 @@ class ElementViewModel: ObservableObject {
         return !imageElement.hasAppliedUpscale
     }
 
-    /// 選択中画像要素の表示用プレビュー画像
-    var renderedPreviewImage: UIImage? {
-        guard let imageElement else { return nil }
-        return imageElement.image
-    }
-
     /// Canvas と共有する変形状態。
     let transform: ElementTransformViewModel
 

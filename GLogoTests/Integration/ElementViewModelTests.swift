@@ -125,7 +125,6 @@ final class ElementViewModelTests: XCTestCase {
         XCTAssertTrue(panel.canRequestUpscale)
         editor.selectElement(text)
         XCTAssertNil(panel.imageElement)
-        XCTAssertNil(panel.renderedPreviewImage)
         XCTAssertFalse(panel.canRequestUpscale)
         XCTAssertTrue(panel.textEditing.textElement === text)
         editor.selectElement(image)

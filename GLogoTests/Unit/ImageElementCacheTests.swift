@@ -21,7 +21,7 @@ final class ImageElementCacheTests: XCTestCase {
         }
     }
 
-    func test_editingAndRecord_clearOnlyRendered() {
+    func test_editing_clearsOnlyRendered() {
         withFixture { element, source, preview in
             warmCaches(element)
             element.startEditing()
@@ -30,8 +30,6 @@ final class ImageElementCacheTests: XCTestCase {
             XCTAssertEqual(preview.renderCalls, 1)
             element.endEditing()
             XCTAssertTrue(element.image === preview.rendered)
-            element.recordEdit(operation: ImageEditOperation(type: .adjustSaturation))
-            XCTAssertNil(element.cachedImage)
             XCTAssertTrue(element.getInstantPreview() === source.proxy)
             XCTAssertEqual(source.originalCalls, 1)
             XCTAssertEqual(source.proxyCalls, 1)

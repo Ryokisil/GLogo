@@ -298,3 +298,33 @@ Serenaの参照検索で `ImageFilterParams` の生成元を確認し、合成�
 ### 次の範囲
 
 段階3の第5回まで完了しました。次は描画要求の組み立てとキャッシュ保持をModelから移し、`image` の読み取りで同期描画が走る構造を解消します。`ImageAdjustmentValues` を履歴イベント・Revertスナップショットへ適用する整理（保存形式は維持）、初期化Factory、履歴周辺の境界整理も残件です。
+
+
+## 段階3の進め方：責務の一覧（2026-11-03）
+
+段階3は明確な完了条件を置かず、ImageElement が抱える責務を一覧にして「Modelに残すもの／外へ出すもの」を一つずつ分離します。高リスクのもの（描画・キャッシュ）は後に回し、軽いものから完了させます。
+
+| 区分 | 責務 | 状態 |
+| --- | --- | --- |
+| Modelに残す | 画像ソースの参照と優先順位、編集値（調整・フレーム・フィルター）、役割・順序・メタデータ、`editRevision`、Revertの初期スナップショット、Codableと旧形式互換、`copy()`・`renderCopy()` | 維持 |
+| 外へ出す① | 読み取り時の描画：`image` が同期でフル品質描画し、編集中は即時プレビューへ切り替える | 未着手（高リスク） |
+| 外へ出す② | キャンバス描画：`draw(in:)` が表示画像を選んで描画する | 未着手（高リスク） |
+| 外へ出す③ | 画像取得：`originalImage`・編集用プロキシを読み取り時に読み込みキャッシュする | 未着手（高リスク） |
+| 外へ出す④ | キャッシュの持ち主：`renderCache`・`cachedImage`・無効化。履歴イベントから57か所で無効化を呼ぶ | 未着手（高リスク）。`editRevision` による自動失効を検討 |
+| 外へ出す⑤ | 編集中の状態：`isCurrentlyEditing`・`startEditing`／`endEditing` | 未着手（①と一緒に扱う） |
+| 外へ出す⑥ | 初期化時の読み込み：7つの初期化入口が画像を読み込みサイズを決める | 未着手（中リスク）。初期化Factory |
+| 外へ出す⑦ | メタデータからフレーム値を戻す規則 | **第6回で完了** |
+
+## 段階3・第6回：使われていない処理の削除と型の分離（2026-11-03）
+
+- 削除：`getCanvasSize`・`resizeToFit`（呼び出し元なし）、`getImageAsync`・`recordEdit`・`shouldUseInstantPreviewForManipulation`（テストからのみ）、`ElementViewModel.renderedPreviewImage`。テストはこれらのAPI自体の確認だけを外し、各テストの本来の目的（束縛した描画サービスの利用、編集開始時のキャッシュ範囲など）は維持しました。常に `true` を返すことだけを確認していたテスト1件は削除しました。
+- `captureCurrentAdjustmentAsInitialSnapshot` はテストからのみ使われますが、Revert回帰テストの初期状態を作る手段のため残しました。
+- `editHistory` は保存データの読み込み互換のため残しました。アプリから追記する経路はなくなっています。
+- 同居していた `ImageRole`・`ImageFrameStyle`・`ImageEditOperation`・`ImageMetadata` を Models の個別ファイルへ移しました。
+- ⑦の `applyMetadataToImageProperties` を唯一の呼び出し元 [ImageElementMetadataRevertUseCase](../../../GLogo/UseCases/Metadata/ImageElementMetadataRevertUseCase.swift) の非公開メソッドへ移しました。解釈規則は変えていません。
+
+### 検証と変更後レビュー
+
+- **Critical／Warning**: 指摘なし。挙動・保存形式・履歴の変更はありません。
+- **Info**: `ImageElement.swift` は **1,437 → 1,211行**。
+- **Verification**: GLogoTests 361件中358件成功。失敗1件は既知の `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用。変更したファイルからのビルド警告なし。iPhone 17 Pro／iOS 26.1 Simulator。UI・実機は未実施です。
