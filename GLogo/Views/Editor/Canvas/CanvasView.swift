@@ -1,6 +1,5 @@
-//
+
 //  CanvasView.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルは画像編集用のキャンバスを実装するUIKitビューです。
@@ -497,19 +496,19 @@ struct CanvasViewRepresentable: UIViewRepresentable {
                 // 4K+画像の操作中品質低下判定と設定
                 if let canvasView = canvasView {
                     canvasView.isReducingQualityDuringManipulation = self?.parent.viewModel
-                        .prepareImageRenderingForManipulation(
+                        .transform.prepareImageRenderingForManipulation(
                             in: canvasView.project,
                             highResolutionThreshold: canvasView.highResolutionThreshold
                         ) ?? false
                     canvasView.setNeedsDisplay()
                 }
                 
-                self?.parent.viewModel.startManipulation(type, at: point)
+                self?.parent.viewModel.transform.startManipulation(type, at: point)
             }
             
             // 操作中のコールバック
             canvasView.onManipulationChanged = { [viewModel = parent.viewModel] point in
-                viewModel.continueManipulation(at: point)
+                viewModel.transform.continueManipulation(at: point)
             }
             
             // 操作終了時のコールバック
@@ -517,11 +516,11 @@ struct CanvasViewRepresentable: UIViewRepresentable {
                 // 4K+画像の操作中品質低下を解除
                 if let canvasView = canvasView {
                     canvasView.isReducingQualityDuringManipulation = false
-                    self?.parent.viewModel.finishImageRenderingAfterManipulation(in: canvasView.project)
+                    self?.parent.viewModel.transform.finishImageRenderingAfterManipulation(in: canvasView.project)
                     canvasView.setNeedsDisplay()
                 }
                 
-                self?.parent.viewModel.endManipulation()
+                self?.parent.viewModel.transform.endManipulation()
             }
         
             // 要素作成時のコールバック

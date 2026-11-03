@@ -76,6 +76,11 @@ enum ImageFrameStyle: String, Codable, CaseIterable {
 
 /// 画像要素クラス
 class ImageElement: LogoElement {
+    /// 加工の入力・結果に関わる属性の書き込み世代。キャッシュ・選択・配置は含めない。
+    /// 同値の再代入も失効境界とし、Data 比較や画像ハッシュ計算を毎回行わない。
+    /// 実行時の競合判定用で、Codable・Undo・コピーで以前の番号を復元しない。
+    private(set) var editRevision: UInt = 0
+
     /// RGBA成分を保持する簡易カラー表現
     private struct RGBAColor: Codable, Equatable {
         let red: CGFloat
@@ -151,74 +156,29 @@ class ImageElement: LogoElement {
         )
     }
 
-    /// `ImageElement` 共有依存の読み書きを直列化するストア
-    private final class DependencyStore: @unchecked Sendable {
-        private let lock = NSLock()
-        private var currentImageSourceResolver: ImageSourceResolving
-        private var currentPreviewService: ImagePreviewing
+    /// 元画像・プロキシ取得の実行時依存。要素ごとに固定し、永続化しない。
+    private let sourceResolver: any ImageSourceResolving
 
-        init(
-            imageSourceResolver: ImageSourceResolving,
-            previewService: ImagePreviewing
-        ) {
-            self.currentImageSourceResolver = imageSourceResolver
-            self.currentPreviewService = previewService
-        }
-
-        var imageSourceResolver: ImageSourceResolving {
-            lock.lock()
-            defer { lock.unlock() }
-            return currentImageSourceResolver
-        }
-
-        var previewService: ImagePreviewing {
-            lock.lock()
-            defer { lock.unlock() }
-            return currentPreviewService
-        }
-
-        func updateImageSourceResolver(_ resolver: ImageSourceResolving) {
-            lock.lock()
-            currentImageSourceResolver = resolver
-            lock.unlock()
-        }
-
-        func updatePreviewService(_ service: ImagePreviewing) {
-            lock.lock()
-            currentPreviewService = service
-            lock.unlock()
-        }
-    }
-
-    /// 共有依存ストア（差し替え時のみ書き込み、通常は読み取り）
-    private static let dependencyStore = DependencyStore(
-        imageSourceResolver: ImageSourceResolver(),
-        previewService: ImagePreviewService()
-    )
-
-    /// 画像ソース解決 UseCase（テスト時に差し替え可能）
-    static var imageSourceResolver: ImageSourceResolving {
-        get { dependencyStore.imageSourceResolver }
-        set { dependencyStore.updateImageSourceResolver(newValue) }
-    }
+    /// 描画とサムネイルで共有する生成時の依存。保存データには含めない。
+    let previewService: any ImagePreviewing
 
     /// 画像ファイル名
-    var imageFileName: String?
+    var imageFileName: String? { didSet { editRevision &+= 1 } }
     
     /// 画像データ（直接保存する場合）
-    var imageData: Data?
+    var imageData: Data? { didSet { editRevision &+= 1 } }
     
     /// 元画像のURL
-    var originalImageURL: URL?
+    var originalImageURL: URL? { didSet { editRevision &+= 1 } }
     
     /// 元画像のパス
-    var originalImagePath: String?
+    var originalImagePath: String? { didSet { editRevision &+= 1 } }
     
     /// 元画像の識別子（UUIDなど）
-    var originalImageIdentifier: String?
+    var originalImageIdentifier: String? { didSet { editRevision &+= 1 } }
 
     /// 高画質化を適用済みかどうか
-    var hasAppliedUpscale: Bool = false
+    var hasAppliedUpscale: Bool = false { didSet { editRevision &+= 1 } }
 
     // MARK: - 画像ソース管理
 
@@ -303,14 +263,14 @@ class ImageElement: LogoElement {
     /// 画像メタデータ
     var metadata: ImageMetadata?
     
-    /// キャッシュされた画像
-    var cachedImage: UIImage?
+    /// 画像要素ごとに所有する実行時キャッシュ。Codableやコピーには含めない。
+    private var renderCache = ImageRenderCache()
 
-    /// キャッシュされた元画像
-    private var cachedOriginalImage: UIImage?
-
-    /// 編集用の低解像度プロキシ画像（高解像度時のみ生成・注入）
-    private var proxyImage: UIImage?
+    /// 履歴と描画完了処理から利用する既存の読み書き口。
+    var cachedImage: UIImage? {
+        get { renderCache.renderedImage }
+        set { renderCache.renderedImage = newValue }
+    }
     
     /// プロキシ生成時の長辺目安（約2MP相当）
     private let proxyTargetLongSide: CGFloat = 1920
@@ -318,107 +278,98 @@ class ImageElement: LogoElement {
     /// 高解像度判定の閾値（MP）
     private let highResThresholdMP: CGFloat = 18.0
 
-    /// プレビュー用低解像度画像キャッシュ
-    private var previewImage: UIImage?
-    
-    /// プレビュー・フィルタサービス（差し替え可能）
-    static var previewService: ImagePreviewing {
-        get { dependencyStore.previewService }
-        set { dependencyStore.updatePreviewService(newValue) }
-    }
-    
     /// 編集中かどうかのフラグ（プレビュー/高品質の切り替え用）
     private var isCurrentlyEditing: Bool = false
     
     /// 色調補正（彩度調整）
-    var saturationAdjustment: CGFloat = 1.0
+    var saturationAdjustment: CGFloat = 1.0 { didSet { editRevision &+= 1 } }
     
     /// 色調補正（明度調整）
-    var brightnessAdjustment: CGFloat = 0.0
+    var brightnessAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
     
     /// 色調補正（コントラスト調整）
-    var contrastAdjustment: CGFloat = 1.0
+    var contrastAdjustment: CGFloat = 1.0 { didSet { editRevision &+= 1 } }
     
     /// 色調補正（ハイライト調整）
-    var highlightsAdjustment: CGFloat = 0.0
+    var highlightsAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
     
     /// 色調補正（シャドウ調整）
-    var shadowsAdjustment: CGFloat = 0.0
+    var shadowsAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 色調補正（黒レベル調整）
-    var blacksAdjustment: CGFloat = 0.0
+    var blacksAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 色調補正（白レベル調整）
-    var whitesAdjustment: CGFloat = 0.0
+    var whitesAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 色調補正（色温度調整）
-    var warmthAdjustment: CGFloat = 0.0
+    var warmthAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 色調補正（ヴィブランス調整）
-    var vibranceAdjustment: CGFloat = 0.0
+    var vibranceAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
     
     /// 色相調整（度数）
-    var hueAdjustment: CGFloat = 0.0
+    var hueAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
     
     /// シャープネス調整
-    var sharpnessAdjustment: CGFloat = 0.0
+    var sharpnessAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
     
     /// ガウシアンブラー半径
-    var gaussianBlurRadius: CGFloat = 0.0
+    var gaussianBlurRadius: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// ビネット強度
-    var vignetteAdjustment: CGFloat = 0.0
+    var vignetteAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// ブルーム強度
-    var bloomAdjustment: CGFloat = 0.0
+    var bloomAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// グレイン強度
-    var grainAdjustment: CGFloat = 0.0
+    var grainAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// フェード強度
-    var fadeAdjustment: CGFloat = 0.0
+    var fadeAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 色収差強度
-    var chromaticAberrationAdjustment: CGFloat = 0.0
+    var chromaticAberrationAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 背景ぼかし半径（前景マスク使用時）
-    var backgroundBlurRadius: CGFloat = 0.0
+    var backgroundBlurRadius: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 背景ぼかし用マスクデータ（PNG形式）
-    var backgroundBlurMaskData: Data?
+    var backgroundBlurMaskData: Data? { didSet { editRevision &+= 1 } }
 
     /// トーンカーブデータ
-    var toneCurveData: ToneCurveData = ToneCurveData()
+    var toneCurveData: ToneCurveData = ToneCurveData() { didSet { editRevision &+= 1 } }
 
     /// カラーフィルター
-    var tintColor: UIColor?
+    var tintColor: UIColor? { didSet { editRevision &+= 1 } }
     
     /// カラーフィルターの強度
-    var tintIntensity: CGFloat = 0.0
+    var tintIntensity: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 適用中のフィルターレシピ（nil = フィルター未適用）
-    var appliedFilterRecipe: FilterRecipe?
+    var appliedFilterRecipe: FilterRecipe? { didSet { editRevision &+= 1 } }
 
     /// 適用中のフィルタープリセットID
-    var appliedFilterPresetId: String?
+    var appliedFilterPresetId: String? { didSet { editRevision &+= 1 } }
 
     /// 画像フレーム表示
-    var showFrame: Bool = false
+    var showFrame: Bool = false { didSet { editRevision &+= 1 } }
     
     /// フレームの色
-    var frameColor: UIColor = .white
+    var frameColor: UIColor = .white { didSet { editRevision &+= 1 } }
     
     /// フレームの太さ
-    var frameWidth: CGFloat = 4.0
+    var frameWidth: CGFloat = 4.0 { didSet { editRevision &+= 1 } }
 
     /// フレームのスタイル
-    var frameStyle: ImageFrameStyle = .simple
+    var frameStyle: ImageFrameStyle = .simple { didSet { editRevision &+= 1 } }
     
     /// 画像の境界を丸くするか
-    var roundedCorners: Bool = false
+    var roundedCorners: Bool = false { didSet { editRevision &+= 1 } }
     
     /// 角丸の半径
-    var cornerRadius: CGFloat = 10.0
+    var cornerRadius: CGFloat = 10.0 { didSet { editRevision &+= 1 } }
 
     /// リバート基準として扱う初期スナップショット
     private var initialAdjustmentSnapshot: RevertAdjustmentSnapshot = .default
@@ -430,11 +381,11 @@ class ImageElement: LogoElement {
     
     /// 元画像を取得
     var originalImage: UIImage? {
-        if let cachedOriginalImage = cachedOriginalImage {
+        if let cachedOriginalImage = renderCache.originalImage {
             return cachedOriginalImage
         }
 
-        let loadedImage = ImageElement.imageSourceResolver.resolveOriginalImage(
+        let loadedImage = sourceResolver.resolveOriginalImage(
             imageData: imageData,
             fileName: imageFileName,
             url: originalImageURL,
@@ -442,16 +393,16 @@ class ImageElement: LogoElement {
         )
 
         // 元画像をキャッシュ
-        cachedOriginalImage = loadedImage
+        renderCache.originalImage = loadedImage
         return loadedImage
     }
 
     /// 編集用プロキシ画像（外部リポジトリで生成・解決）
     private var editingImage: UIImage? {
-        if let proxy = proxyImage {
+        if let proxy = renderCache.proxyImage {
             return proxy
         }
-        if let resolved = ImageElement.imageSourceResolver.resolveEditingImage(
+        if let resolved = sourceResolver.resolveEditingImage(
             identifier: originalImageIdentifier,
             fileName: imageFileName,
             originalPath: originalImagePath,
@@ -459,7 +410,7 @@ class ImageElement: LogoElement {
             proxyTargetLongSide: proxyTargetLongSide,
             highResThresholdMP: highResThresholdMP
         ) {
-            proxyImage = resolved
+            renderCache.proxyImage = resolved
             return resolved
         }
         return originalImage
@@ -517,7 +468,7 @@ class ImageElement: LogoElement {
         // 非同期でフィルターをフル品質適用
         let params = currentFilterParams()
         let mode = currentRenderMode()
-        let processedImage = await ImageElement.previewService.applyFiltersAsync(
+        let processedImage = await previewService.applyFiltersAsync(
             to: originalImage,
             params: params,
             quality: .full,
@@ -636,6 +587,8 @@ class ImageElement: LogoElement {
     
     /// カスタムデコーダー
     required init(from decoder: Decoder) throws {
+        sourceResolver = decoder.userInfo[.imageSourceResolver] as? any ImageSourceResolving ?? ImageSourceResolver()
+        previewService = decoder.userInfo[.imagePreviewService] as? any ImagePreviewing ?? ImagePreviewService.shared
         let container = try decoder.container(keyedBy: ImageCodingKeys.self)
         
         // インポート順番管理用のプロパティをデコード（後方互換性のためデフォルト値を提供）
@@ -701,7 +654,12 @@ class ImageElement: LogoElement {
     /// - Parameters:
     ///   - importOrder: インポート順序（1番目はベース画像として扱う）
     /// - Returns: なし
-    private init(importOrder: Int) {
+    private init(
+        importOrder: Int, sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
+        previewService: any ImagePreviewing = ImagePreviewService.shared
+    ) {
+        self.sourceResolver = sourceResolver
+        self.previewService = previewService
         self.originalImportOrder = importOrder
         
         super.init(name: "Image")
@@ -725,19 +683,18 @@ class ImageElement: LogoElement {
     ///   - metadata: 画像メタデータ（nilの場合は抽出を試みる）
     ///   - importOrder: インポート順序
     /// - Returns: なし
-    convenience init(imageData: Data, metadata: ImageMetadata?, importOrder: Int = 0) {
-        self.init(importOrder: importOrder)
+    convenience init(
+        imageData: Data, metadata: ImageMetadata?, importOrder: Int = 0,
+        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
+        previewService: any ImagePreviewing = ImagePreviewService.shared
+    ) {
+        self.init(importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
         setImageSource(.data(imageData))
-        self.metadata = metadata
-        
-        // 画像のサイズに合わせて要素のサイズを調整
-        if let image = UIImage(data: imageData) {
-            updateSizeFromImage(image)
-            
-            // メタデータがない場合は画像から抽出を試みる
-            if metadata == nil {
-                self.metadata = extractMetadataFromImageData(imageData)
-            }
+
+        let content = ImageInitializationLoader().load(imageData: imageData, metadata: metadata)
+        self.metadata = content.metadata
+        if let imageSize = content.imageSize {
+            updateSize(for: imageSize)
         }
     }
     
@@ -746,13 +703,16 @@ class ImageElement: LogoElement {
     ///   - fileName: 画像ファイル名
     ///   - importOrder: インポート順序
     /// - Returns: なし
-    convenience init(fileName: String, importOrder: Int = 0) {
-        self.init(importOrder: importOrder)
+    convenience init(
+        fileName: String, importOrder: Int = 0,
+        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
+        previewService: any ImagePreviewing = ImagePreviewService.shared
+    ) {
+        self.init(importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
         setImageSource(.fileName(fileName))
         
-        // 画像のサイズに合わせて要素のサイズを調整（必要なら外部でプロキシ生成）
-        if let image = UIImage(named: fileName) {
-            updateSizeFromImage(image)
+        if let imageSize = ImageInitializationLoader().imageSize(fileName: fileName) {
+            updateSize(for: imageSize)
         }
     }
     
@@ -761,23 +721,20 @@ class ImageElement: LogoElement {
     ///   - url: 画像URL
     ///   - importOrder: インポート順序
     /// - Returns: なし
-    convenience init(url: URL, importOrder: Int = 0) {
-        self.init(importOrder: importOrder)
+    convenience init(
+        url: URL, importOrder: Int = 0,
+        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
+        previewService: any ImagePreviewing = ImagePreviewService.shared
+    ) {
+        self.init(importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
         setImageSource(.url(url))
         
-        do {
-            // URLから画像データを読み込む
-            let data = try Data(contentsOf: url)
-            imageData = data
-            
-            // 画像サイズを調整（必要なら外部でプロキシ生成）
-            if let image = UIImage(data: data) {
-                updateSizeFromImage(image)
+        if let content = ImageInitializationLoader().load(url: url) {
+            imageData = content.imageData
+            if let imageSize = content.imageSize {
+                updateSize(for: imageSize)
             }
-            
-            // メタデータを抽出
-            metadata = extractMetadataFromImageData(data)
-        } catch {
+            metadata = content.metadata
         }
     }
     
@@ -786,13 +743,16 @@ class ImageElement: LogoElement {
     ///   - path: 画像パス
     ///   - importOrder: インポート順序
     /// - Returns: なし
-    convenience init(path: String, importOrder: Int = 0) {
-        self.init(importOrder: importOrder)
+    convenience init(
+        path: String, importOrder: Int = 0,
+        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
+        previewService: any ImagePreviewing = ImagePreviewService.shared
+    ) {
+        self.init(importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
         setImageSource(.path(path))
         
-        // 画像をロードしてサイズを調整（必要なら外部でプロキシ生成）
-        if let image = UIImage(contentsOfFile: path) {
-            updateSizeFromImage(image)
+        if let imageSize = ImageInitializationLoader().imageSize(path: path) {
+            updateSize(for: imageSize)
         }
     }
     
@@ -802,21 +762,21 @@ class ImageElement: LogoElement {
     ///   - isDynamicSizing: サイズを画像に合わせて自動調整するかどうか
     ///   - importOrder: インポート順序
     /// - Returns: なし
-    convenience init(imageData: Data, isDynamicSizing: Bool = true, importOrder: Int = 0) {
-        self.init(importOrder: importOrder)
+    convenience init(
+        imageData: Data, isDynamicSizing: Bool = true, importOrder: Int = 0,
+        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
+        previewService: any ImagePreviewing = ImagePreviewService.shared
+    ) {
+        self.init(importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
         setImageSource(.data(imageData))
         
-        // isDynamicSizingフラグによってサイズ調整の実行を制御
-        if let image = UIImage(data: imageData) {
-            
+        if let imageSize = ImageInitializationLoader().imageSize(imageData: imageData) {
             if isDynamicSizing {
-                // 新規画像のインポート時はサイズを調整
-                updateSizeFromImage(image)
+                updateSize(for: imageSize)
             } else {
                 // クロップ済み画像は元のサイズを維持
-                size = image.size
+                size = imageSize
             }
-        } else {
         }
     }
     
@@ -826,15 +786,17 @@ class ImageElement: LogoElement {
     ///   - canvasSize: キャンバスサイズ
     ///   - importOrder: インポート順序
     /// - Returns: なし
-    convenience init(imageData: Data, canvasSize: CGSize = CGSize(width: 3840, height: 2160), importOrder: Int = 0) {
-        self.init(importOrder: importOrder)
+    convenience init(
+        imageData: Data, canvasSize: CGSize = CGSize(width: 3840, height: 2160), importOrder: Int = 0,
+        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
+        previewService: any ImagePreviewing = ImagePreviewService.shared
+    ) {
+        self.init(importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
         setImageSource(.data(imageData))
         self.canvasSize = canvasSize
         
-        // 画像のサイズに合わせて要素のサイズを調整（必要なら外部でプロキシ生成）
-        if let image = UIImage(data: imageData) {
-            updateSizeFromImage(image)
-        } else {
+        if let imageSize = ImageInitializationLoader().imageSize(imageData: imageData) {
+            updateSize(for: imageSize)
         }
     }
     
@@ -843,15 +805,19 @@ class ImageElement: LogoElement {
     ///   - imageData: 画像データ
     ///   - importOrder: インポート順序
     /// - Returns: なし
-    convenience init(imageData: Data, importOrder: Int = 0) {
-        self.init(imageData: imageData, isDynamicSizing: true, importOrder: importOrder)
+    convenience init(
+        imageData: Data, importOrder: Int = 0,
+        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
+        previewService: any ImagePreviewing = ImagePreviewService.shared
+    ) {
+        self.init(imageData: imageData, isDynamicSizing: true, importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
     }
     
     /// 編集操作を記録
     func recordEdit(operation: ImageEditOperation) {
         editHistory.append(operation)
         // キャッシュをクリアして再描画を促す
-        cachedImage = nil
+        renderCache.invalidate(.rendered)
     }
     
     /// 元の画像に戻す
@@ -860,8 +826,7 @@ class ImageElement: LogoElement {
         editHistory.removeAll()
 
         // キャッシュをクリアして再描画を促す
-        cachedImage = nil
-        previewImage = nil  // プレビューもリセット
+        renderCache.invalidate(.adjustments)
     }
 
     /// 画像ソースを差し替える
@@ -881,8 +846,8 @@ class ImageElement: LogoElement {
         originalImageIdentifier = originalIdentifier ?? UUID().uuidString
         self.hasAppliedUpscale = hasAppliedUpscale
 
-        if let image = UIImage(data: imageData) {
-            updateSizeFromImage(image)
+        if let imageSize = ImageInitializationLoader().imageSize(imageData: imageData) {
+            updateSize(for: imageSize)
         }
 
         if resetAdjustments {
@@ -920,41 +885,21 @@ class ImageElement: LogoElement {
         self.hasAppliedUpscale = hasAppliedUpscale
 
         if source != nil,
-           let image = ImageElement.imageSourceResolver.resolveOriginalImage(
+           let image = sourceResolver.resolveOriginalImage(
                imageData: self.imageData,
                fileName: imageFileName,
                url: originalImageURL,
                path: originalImagePath
            ) {
-            updateSizeFromImage(image)
+            updateSize(for: image.size)
         }
 
         clearImageCaches()
     }
     
     /// 画像のサイズに基づいて要素のサイズを更新
-    private func updateSizeFromImage(_ image: UIImage) {
-        // キャンバスの15%程度を最大サイズとして使用
-        let maxSize: CGFloat = min(canvasSize.width, canvasSize.height) * 0.15
-        
-        let imageSize = image.size
-        
-        // アスペクト比を保持しながらサイズを設定
-        var newSize: CGSize
-        
-        if imageSize.width > imageSize.height {
-            let aspectRatio = imageSize.height / imageSize.width
-            newSize = CGSize(width: maxSize, height: maxSize * aspectRatio)
-        } else {
-            let aspectRatio = imageSize.width / imageSize.height
-            newSize = CGSize(width: maxSize * aspectRatio, height: maxSize)
-        }
-        
-        size = CGSize(
-            width: max(1, newSize.width),
-            height: max(1, newSize.height)
-        )
-        
+    private func updateSize(for imageSize: CGSize) {
+        size = ImageSizeCalculator.fittedSize(imageSize: imageSize, canvasSize: canvasSize)
     }
     
     private func getCanvasSize() -> CGSize {
@@ -964,31 +909,25 @@ class ImageElement: LogoElement {
 
     /// 画像キャッシュをクリアする
     private func clearImageCaches() {
-        cachedImage = nil
-        cachedOriginalImage = nil
-        previewImage = nil
-        proxyImage = nil
-        ImageElement.previewService.resetCache()
+        renderCache.invalidate(.all)
+        previewService.resetCache()
     }
 
     /// レンダリング済み画像のキャッシュを無効化
     ///
     /// 画像調整の値だけが更新された場合に、表示の再描画を確実に行うために使用します。
     func invalidateRenderedImageCache() {
-        cachedImage = nil
+        renderCache.invalidate(.rendered)
     }
 
     /// メモリ警告時に画像キャッシュを解放する
     func handleMemoryWarning() {
-        cachedImage = nil
-        cachedOriginalImage = nil
-        previewImage = nil
-        proxyImage = nil
+        renderCache.invalidate(.all)
     }
     
     /// プレビュー用低解像度画像を生成
     private func generatePreviewImage() -> UIImage? {
-        ImageElement.previewService.generatePreviewImage(
+        previewService.generatePreviewImage(
             editingImage: editingImage,
             originalImage: originalImage,
             mode: currentRenderMode()
@@ -997,14 +936,14 @@ class ImageElement: LogoElement {
 
     /// 即座プレビュー用の画像を取得（低解像度、高速処理）
     func getInstantPreview() -> UIImage? {
-        if previewImage == nil {
-            previewImage = generatePreviewImage()
+        if renderCache.previewBaseImage == nil {
+            renderCache.previewBaseImage = generatePreviewImage()
         }
 
-        guard let preview = previewImage else { return nil }
+        guard let preview = renderCache.previewBaseImage else { return nil }
 
         let params = currentFilterParams()
-        return ImageElement.previewService.instantPreview(
+        return previewService.instantPreview(
             baseImage: preview,
             params: params,
             quality: .preview,
@@ -1015,7 +954,7 @@ class ImageElement: LogoElement {
     /// 編集開始をマーク
     func startEditing() {
         isCurrentlyEditing = true
-        cachedImage = nil
+        renderCache.invalidate(.rendered)
     }
 
     /// 編集終了をマーク
@@ -1025,7 +964,7 @@ class ImageElement: LogoElement {
     
     /// 画像にフィルターを適用
     private func applyFilters(to image: UIImage, quality: ToneCurveFilter.Quality = .full) -> UIImage? {
-        ImageElement.previewService.applyFilters(
+        previewService.applyFilters(
             to: image,
             params: currentFilterParams(),
             quality: quality,
@@ -1036,7 +975,7 @@ class ImageElement: LogoElement {
     /// 画像にフィルターを非同期で適用（彩度調整特化）
     @MainActor
     private func applyFiltersAsync(to image: UIImage, quality: ToneCurveFilter.Quality = .full) async -> UIImage? {
-        await ImageElement.previewService.applyFiltersAsync(
+        await previewService.applyFiltersAsync(
             to: image,
             params: currentFilterParams(),
             quality: quality,
@@ -1139,18 +1078,38 @@ class ImageElement: LogoElement {
         ) {
             switch source {
             case .data(let data):
-                copy = ImageElement(imageData: data)
+                copy = ImageElement(imageData: data, sourceResolver: sourceResolver, previewService: previewService)
             case .fileName(let fileName):
-                copy = ImageElement(fileName: fileName)
+                copy = ImageElement(fileName: fileName, sourceResolver: sourceResolver, previewService: previewService)
             case .url(let url):
-                copy = ImageElement(url: url)
+                copy = ImageElement(url: url, sourceResolver: sourceResolver, previewService: previewService)
             case .path(let path):
-                copy = ImageElement(path: path)
+                copy = ImageElement(path: path, sourceResolver: sourceResolver, previewService: previewService)
             }
         } else {
-            copy = ImageElement(fileName: "")
+            copy = ImageElement(fileName: "", sourceResolver: sourceResolver, previewService: previewService)
         }
-        
+
+        copyAppearance(to: copy)
+        return copy
+    }
+
+    /// 保存専用の独立した描画状態を作る。UI 用複製と異なり元画像をその場で固定する。
+    /// UIImage は再圧縮せず共有し、調整値・キャッシュ・編集フラグは共有しない。
+    /// 元のファイル参照を持ち越さないため、後続のソース差し替えや削除にも影響されない。
+    func renderCopy() -> ImageElement {
+        let copy = ImageElement(importOrder: originalImportOrder, sourceResolver: sourceResolver, previewService: previewService)
+        copyAppearance(to: copy)
+        copy.id = id
+        copy.name = name
+        copy.zIndex = zIndex
+        copy.imageRole = imageRole
+        copy.renderCache.originalImage = originalImage
+        return copy
+    }
+
+    /// UI 用複製と保存用複製で、描画属性のコピー漏れを防ぐ。
+    private func copyAppearance(to copy: ImageElement) {
         copy.position = position
         copy.size = size
         copy.rotation = rotation
@@ -1192,8 +1151,6 @@ class ImageElement: LogoElement {
         copy.cornerRadius = cornerRadius
         copy.hasAppliedUpscale = hasAppliedUpscale
         copy.initialAdjustmentSnapshot = initialAdjustmentSnapshot
-
-        return copy
     }
 
     // MARK: - Revert Support
@@ -1223,8 +1180,7 @@ class ImageElement: LogoElement {
     /// - Parameters: なし
     /// - Returns: なし
     func clearRevertImageCaches() {
-        cachedImage = nil
-        cachedOriginalImage = nil
+        renderCache.invalidate(.revert)
     }
     
     /// メタデータから画像プロパティを復元する

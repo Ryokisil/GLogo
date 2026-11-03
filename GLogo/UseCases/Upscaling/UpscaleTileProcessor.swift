@@ -26,6 +26,7 @@ struct UpscaleTileProcessor {
     ///   - image: 処理対象の元画像
     /// - Returns: 合成済みの高画質化画像
     func process(image: CGImage) throws -> CGImage {
+        try Task.checkCancellation()
         let sourceWidth = image.width
         let sourceHeight = image.height
         let outputWidth = Int((CGFloat(sourceWidth) * outputScaleFactor).rounded())
@@ -47,6 +48,8 @@ struct UpscaleTileProcessor {
 
         for y in stride(from: 0, to: sourceHeight, by: tileSize) {
             for x in stride(from: 0, to: sourceWidth, by: tileSize) {
+                // 実行中の1タイルを強制中断せず、次の推論と合成を始める前に終了する。
+                try Task.checkCancellation()
                 let cropRect = CGRect(
                     x: x,
                     y: y,
@@ -55,7 +58,9 @@ struct UpscaleTileProcessor {
                 )
 
                 let paddedTile = try makePaddedTile(from: image, cropRect: cropRect)
+                try Task.checkCancellation()
                 let upscaledTile = try renderer(paddedTile)
+                try Task.checkCancellation()
                 let effectiveOutputRect = makeOutputRect(
                     for: cropRect,
                     outputHeight: CGFloat(outputHeight)
@@ -71,6 +76,7 @@ struct UpscaleTileProcessor {
             }
         }
 
+        try Task.checkCancellation()
         guard let outputImage = outputContext.makeImage() else {
             throw ImageUpscaleError.imageGenerationFailed
         }

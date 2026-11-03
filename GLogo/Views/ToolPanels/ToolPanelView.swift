@@ -61,9 +61,9 @@ struct ToolPanelView: View {
                     Group {
                         switch elementType {
                         case .text:
-                            TextEditorPanel(viewModel: elementViewModel)
+                            TextEditorPanel(viewModel: elementViewModel.textEditing)
                         case .shape:
-                            ShapeEditorPanel(viewModel: elementViewModel)
+                            ShapeEditorPanel(viewModel: elementViewModel.shapeEditing)
                         case .image:
                             ImageEditorPanel(viewModel: elementViewModel)
                         }
@@ -183,12 +183,18 @@ struct ToolPanelView: View {
 /// ImageEditorPanel - 画像要素の編集用パネル
 struct ImageEditorPanel: View {
     @ObservedObject var viewModel: ElementViewModel
+    @ObservedObject private var imageAdjustment: ImageAdjustmentViewModel
+
+    init(viewModel: ElementViewModel) {
+        self.viewModel = viewModel
+        imageAdjustment = viewModel.imageAdjustment
+    }
     
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 // 画像プレビュー
-                if let imageElement = viewModel.imageElement, let image = imageElement.image {
+                if let imageElement = imageAdjustment.imageElement, let image = imageElement.image {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("imageEditor.preview")
                             .font(.headline)
@@ -206,7 +212,7 @@ struct ImageEditorPanel: View {
                 }
                 
                 // 色調補正
-                if let imageElement = viewModel.imageElement {
+                if let imageElement = imageAdjustment.imageElement {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("imageEditor.colorCorrection")
                             .font(.headline)
@@ -215,12 +221,12 @@ struct ImageEditorPanel: View {
                             Text("imageEditor.saturation")
                             Slider(value: Binding(
                                 get: { imageElement.saturationAdjustment },
-                                set: { viewModel.updateImageAdjustment(.saturation, value: $0) }
+                                set: { imageAdjustment.updateImageAdjustment(.saturation, value: $0) }
                             ), in: 0...2, step: 0.01, onEditingChanged: { isEditing in
                                 if isEditing {
-                                    viewModel.beginImageAdjustmentEditing(.saturation)
+                                    imageAdjustment.beginImageAdjustmentEditing(.saturation)
                                 } else {
-                                    viewModel.commitImageAdjustmentEditing(.saturation)
+                                    imageAdjustment.commitImageAdjustmentEditing(.saturation)
                                 }
                             })
                             Text("\(imageElement.saturationAdjustment, specifier: "%.2f")")
@@ -231,12 +237,12 @@ struct ImageEditorPanel: View {
                             Text("imageEditor.brightness")
                             Slider(value: Binding(
                                 get: { imageElement.brightnessAdjustment },
-                                set: { viewModel.updateImageAdjustment(.brightness, value: $0) }
+                                set: { imageAdjustment.updateImageAdjustment(.brightness, value: $0) }
                             ), in: -0.5...0.5, step: 0.01, onEditingChanged: { isEditing in
                                 if isEditing {
-                                    viewModel.beginImageAdjustmentEditing(.brightness)
+                                    imageAdjustment.beginImageAdjustmentEditing(.brightness)
                                 } else {
-                                    viewModel.commitImageAdjustmentEditing(.brightness)
+                                    imageAdjustment.commitImageAdjustmentEditing(.brightness)
                                 }
                             })
                             Text("\(imageElement.brightnessAdjustment, specifier: "%.2f")")
@@ -247,12 +253,12 @@ struct ImageEditorPanel: View {
                             Text("imageEditor.contrast")
                             Slider(value: Binding(
                                 get: { imageElement.contrastAdjustment },
-                                set: { viewModel.updateImageAdjustment(.contrast, value: $0) }
+                                set: { imageAdjustment.updateImageAdjustment(.contrast, value: $0) }
                             ), in: 0.5...1.5, step: 0.01, onEditingChanged: { isEditing in
                                 if isEditing {
-                                    viewModel.beginImageAdjustmentEditing(.contrast)
+                                    imageAdjustment.beginImageAdjustmentEditing(.contrast)
                                 } else {
-                                    viewModel.commitImageAdjustmentEditing(.contrast)
+                                    imageAdjustment.commitImageAdjustmentEditing(.contrast)
                                 }
                             })
                             Text("\(imageElement.contrastAdjustment, specifier: "%.2f")")
@@ -263,12 +269,12 @@ struct ImageEditorPanel: View {
                             Text("imageEditor.highlights")
                             Slider(value: Binding(
                                 get: { imageElement.highlightsAdjustment },
-                                set: { viewModel.updateImageAdjustment(.highlights, value: $0) }
+                                set: { imageAdjustment.updateImageAdjustment(.highlights, value: $0) }
                             ), in: -1...1, step: 0.01, onEditingChanged: { isEditing in
                                 if isEditing {
-                                    viewModel.beginImageAdjustmentEditing(.highlights)
+                                    imageAdjustment.beginImageAdjustmentEditing(.highlights)
                                 } else {
-                                    viewModel.commitImageAdjustmentEditing(.highlights)
+                                    imageAdjustment.commitImageAdjustmentEditing(.highlights)
                                 }
                             })
                             Text("\(imageElement.highlightsAdjustment, specifier: "%.2f")")
@@ -279,12 +285,12 @@ struct ImageEditorPanel: View {
                             Text("imageEditor.shadows")
                             Slider(value: Binding(
                                 get: { imageElement.shadowsAdjustment },
-                                set: { viewModel.updateImageAdjustment(.shadows, value: $0) }
+                                set: { imageAdjustment.updateImageAdjustment(.shadows, value: $0) }
                             ), in: -1...1, step: 0.01, onEditingChanged: { isEditing in
                                 if isEditing {
-                                    viewModel.beginImageAdjustmentEditing(.shadows)
+                                    imageAdjustment.beginImageAdjustmentEditing(.shadows)
                                 } else {
-                                    viewModel.commitImageAdjustmentEditing(.shadows)
+                                    imageAdjustment.commitImageAdjustmentEditing(.shadows)
                                 }
                             })
                             Text("\(imageElement.shadowsAdjustment, specifier: "%.2f")")
@@ -295,12 +301,12 @@ struct ImageEditorPanel: View {
                             Text("imageEditor.hue")
                             Slider(value: Binding(
                                 get: { imageElement.hueAdjustment },
-                                set: { viewModel.updateImageAdjustment(.hue, value: $0) }
+                                set: { imageAdjustment.updateImageAdjustment(.hue, value: $0) }
                             ), in: -180...180, step: 1, onEditingChanged: { isEditing in
                                 if isEditing {
-                                    viewModel.beginImageAdjustmentEditing(.hue)
+                                    imageAdjustment.beginImageAdjustmentEditing(.hue)
                                 } else {
-                                    viewModel.commitImageAdjustmentEditing(.hue)
+                                    imageAdjustment.commitImageAdjustmentEditing(.hue)
                                 }
                             })
                             Text("\(Int(imageElement.hueAdjustment))°")
@@ -311,12 +317,12 @@ struct ImageEditorPanel: View {
                             Text("imageEditor.sharpness")
                             Slider(value: Binding(
                                 get: { imageElement.sharpnessAdjustment },
-                                set: { viewModel.updateImageAdjustment(.sharpness, value: $0) }
+                                set: { imageAdjustment.updateImageAdjustment(.sharpness, value: $0) }
                             ), in: 0...2, step: 0.01, onEditingChanged: { isEditing in
                                 if isEditing {
-                                    viewModel.beginImageAdjustmentEditing(.sharpness)
+                                    imageAdjustment.beginImageAdjustmentEditing(.sharpness)
                                 } else {
-                                    viewModel.commitImageAdjustmentEditing(.sharpness)
+                                    imageAdjustment.commitImageAdjustmentEditing(.sharpness)
                                 }
                             })
                             Text("\(imageElement.sharpnessAdjustment, specifier: "%.2f")")
@@ -327,12 +333,12 @@ struct ImageEditorPanel: View {
                             Text("imageEditor.blur")
                             Slider(value: Binding(
                                 get: { imageElement.gaussianBlurRadius },
-                                set: { viewModel.updateImageAdjustment(.gaussianBlur, value: $0) }
+                                set: { imageAdjustment.updateImageAdjustment(.gaussianBlur, value: $0) }
                             ), in: 0...10, step: 0.1, onEditingChanged: { isEditing in
                                 if isEditing {
-                                    viewModel.beginImageAdjustmentEditing(.gaussianBlur)
+                                    imageAdjustment.beginImageAdjustmentEditing(.gaussianBlur)
                                 } else {
-                                    viewModel.commitImageAdjustmentEditing(.gaussianBlur)
+                                    imageAdjustment.commitImageAdjustmentEditing(.gaussianBlur)
                                 }
                             })
                             Text("\(imageElement.gaussianBlurRadius, specifier: "%.1f")")
@@ -342,83 +348,7 @@ struct ImageEditorPanel: View {
                     
                     Divider()
                     
-                    // フレーム設定
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("imageEditor.frame")
-                                .font(.headline)
-                            
-                            Spacer()
-                            
-                            Toggle("", isOn: Binding(
-                                get: { imageElement.showFrame },
-                                set: { viewModel.updateShowFrame($0) }
-                            ))
-                            .labelsHidden()
-                        }
-                        
-                        if imageElement.showFrame {
-                            // フレームの色
-                            ColorPicker("common.color", selection: Binding(
-                                get: { Color(imageElement.frameColor) },
-                                set: { viewModel.updateFrameColor(UIColor($0)) }
-                            ))
-                            
-                            // フレームの太さ
-                            HStack {
-                                Text("imageEditor.frame.width")
-                                Slider(value: Binding(
-                                    get: { imageElement.frameWidth },
-                                    set: { viewModel.updateImageAdjustment(.frameWidth, value: $0) }
-                                ), in: 1...20, step: 0.5, onEditingChanged: { isEditing in
-                                    if isEditing {
-                                        viewModel.beginImageAdjustmentEditing(.frameWidth)
-                                    } else {
-                                        viewModel.commitImageAdjustmentEditing(.frameWidth)
-                                    }
-                                })
-                                Text("\(imageElement.frameWidth, specifier: "%.1f")")
-                                    .frame(width: 40, alignment: .trailing)
-                            }
-                        }
-                    }
-
-                    Divider()
-
-                    // 角丸設定
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("imageEditor.cornerRadius")
-                                .font(.headline)
-                            
-                            Spacer()
-                            
-                            Toggle("", isOn: Binding(
-                                get: { imageElement.roundedCorners },
-                                set: { viewModel.updateRoundedCorners($0, radius: imageElement.cornerRadius) }
-                            ))
-                            .labelsHidden()
-                        }
-                        
-                        if imageElement.roundedCorners {
-                            // 角丸の半径
-                            HStack {
-                                Text("imageEditor.cornerRadius.radius")
-                                Slider(value: Binding(
-                                    get: { imageElement.cornerRadius },
-                                    set: { viewModel.updateImageAdjustment(.cornerRadius, value: $0) }
-                                ), in: 1...50, step: 1, onEditingChanged: { isEditing in
-                                    if isEditing {
-                                        viewModel.beginImageAdjustmentEditing(.cornerRadius)
-                                    } else {
-                                        viewModel.commitImageAdjustmentEditing(.cornerRadius)
-                                    }
-                                })
-                                Text("\(Int(imageElement.cornerRadius))")
-                                    .frame(width: 30, alignment: .trailing)
-                            }
-                        }
-                    }
+                    ImageFrameControlsView(viewModel: viewModel.imageFrame)
 
                     Divider()
 
@@ -433,7 +363,7 @@ struct ImageEditorPanel: View {
                             Toggle("", isOn: Binding(
                                 get: { imageElement.tintColor != nil },
                                 set: {
-                                    viewModel.updateTintColor(
+                                    imageAdjustment.updateTintColor(
                                         $0 ? (imageElement.tintColor ?? .blue) : nil,
                                         intensity: $0 ? (imageElement.tintIntensity > 0 ? imageElement.tintIntensity : 0.5) : 0
                                     )
@@ -446,7 +376,7 @@ struct ImageEditorPanel: View {
                             // ティント色
                             ColorPicker("common.color", selection: Binding(
                                 get: { Color(imageElement.tintColor ?? .blue) },
-                                set: { viewModel.updateTintColor(UIColor($0), intensity: imageElement.tintIntensity) }
+                                set: { imageAdjustment.updateTintColor(UIColor($0), intensity: imageElement.tintIntensity) }
                             ))
 
                             // ティント強度
@@ -454,12 +384,12 @@ struct ImageEditorPanel: View {
                                 Text("imageEditor.colorOverlay.intensity")
                                 Slider(value: Binding(
                                     get: { imageElement.tintIntensity },
-                                    set: { viewModel.updateImageAdjustment(.tintIntensity, value: $0) }
+                                    set: { imageAdjustment.updateImageAdjustment(.tintIntensity, value: $0) }
                                 ), in: 0...1, step: 0.01, onEditingChanged: { isEditing in
                                     if isEditing {
-                                        viewModel.beginImageAdjustmentEditing(.tintIntensity)
+                                        imageAdjustment.beginImageAdjustmentEditing(.tintIntensity)
                                     } else {
-                                        viewModel.commitImageAdjustmentEditing(.tintIntensity)
+                                        imageAdjustment.commitImageAdjustmentEditing(.tintIntensity)
                                     }
                                 })
                                 Text("\(imageElement.tintIntensity, specifier: "%.2f")")
@@ -491,12 +421,12 @@ struct ImageEditorPanel: View {
                                 Text("imageEditor.backgroundBlur.intensity")
                                 Slider(value: Binding(
                                     get: { imageElement.backgroundBlurRadius },
-                                    set: { viewModel.updateImageAdjustment(.backgroundBlurRadius, value: $0) }
+                                    set: { imageAdjustment.updateImageAdjustment(.backgroundBlurRadius, value: $0) }
                                 ), in: 0...50, step: 1, onEditingChanged: { isEditing in
                                     if isEditing {
-                                        viewModel.beginImageAdjustmentEditing(.backgroundBlurRadius)
+                                        imageAdjustment.beginImageAdjustmentEditing(.backgroundBlurRadius)
                                     } else {
-                                        viewModel.commitImageAdjustmentEditing(.backgroundBlurRadius)
+                                        imageAdjustment.commitImageAdjustmentEditing(.backgroundBlurRadius)
                                     }
                                 })
                                 Text("\(Int(imageElement.backgroundBlurRadius))")
@@ -591,6 +521,94 @@ struct ImageEditorPanel: View {
                 }
             }
             .padding()
+        }
+    }
+}
+
+/// 従来の画像編集パネルでもフレーム状態を直接購読する。
+private struct ImageFrameControlsView: View {
+    @ObservedObject var viewModel: ImageFrameViewModel
+
+    var body: some View {
+        if let imageElement = viewModel.imageElement {
+            // フレーム設定
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("imageEditor.frame")
+                        .font(.headline)
+
+                    Spacer()
+
+                    Toggle("", isOn: Binding(
+                        get: { imageElement.showFrame },
+                        set: { viewModel.updateShowFrame($0) }
+                    ))
+                    .labelsHidden()
+                }
+
+                if imageElement.showFrame {
+                    // フレームの色
+                    ColorPicker("common.color", selection: Binding(
+                        get: { Color(imageElement.frameColor) },
+                        set: { viewModel.updateFrameColor(UIColor($0)) }
+                    ))
+
+                    // フレームの太さ
+                    HStack {
+                        Text("imageEditor.frame.width")
+                        Slider(value: Binding(
+                            get: { imageElement.frameWidth },
+                            set: { viewModel.updateAdjustment(.frameWidth, value: $0) }
+                        ), in: 1...20, step: 0.5, onEditingChanged: { isEditing in
+                            if isEditing {
+                                viewModel.beginAdjustmentEditing(.frameWidth)
+                            } else {
+                                viewModel.commitAdjustmentEditing(.frameWidth)
+                            }
+                        })
+                        Text("\(imageElement.frameWidth, specifier: "%.1f")")
+                            .frame(width: 40, alignment: .trailing)
+                    }
+                }
+            }
+
+            Divider()
+
+            // 角丸設定
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("imageEditor.cornerRadius")
+                        .font(.headline)
+
+                    Spacer()
+
+                    Toggle("", isOn: Binding(
+                        get: { imageElement.roundedCorners },
+                        set: { viewModel.updateRoundedCorners($0, radius: imageElement.cornerRadius) }
+                    ))
+                    .labelsHidden()
+                }
+
+                if imageElement.roundedCorners {
+                    // 角丸の半径
+                    HStack {
+                        Text("imageEditor.cornerRadius.radius")
+                        Slider(value: Binding(
+                            get: { imageElement.cornerRadius },
+                            set: { viewModel.updateAdjustment(.cornerRadius, value: $0) }
+                        ), in: 1...50, step: 1, onEditingChanged: { isEditing in
+                            if isEditing {
+                                viewModel.beginAdjustmentEditing(.cornerRadius)
+                            } else {
+                                viewModel.commitAdjustmentEditing(.cornerRadius)
+                            }
+                        })
+                        Text("\(Int(imageElement.cornerRadius))")
+                            .frame(width: 30, alignment: .trailing)
+                    }
+                }
+            }
+
         }
     }
 }

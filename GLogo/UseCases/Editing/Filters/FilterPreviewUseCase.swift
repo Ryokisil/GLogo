@@ -35,6 +35,7 @@ enum FilterPreviewUseCase {
     ///   - backgroundBlurMaskData: 背景ぼかしマスク
     ///   - preset: 適用するフィルタープリセット
     ///   - targetSize: サムネイルサイズ
+    ///   - previewService: 選択画像と同じ描画依存。単独利用時は既定の共有サービス
     /// - Returns: プレビュー画像。生成に失敗した場合は nil
     static func generatePreview(
         sourceImage: UIImage,
@@ -56,7 +57,8 @@ enum FilterPreviewUseCase {
         backgroundBlurRadius: CGFloat,
         backgroundBlurMaskData: Data?,
         preset: FilterPreset,
-        targetSize: CGSize
+        targetSize: CGSize,
+        previewService: any ImagePreviewing = ImagePreviewService.shared
     ) async -> UIImage? {
         let preparedImage = resizedImage(sourceImage, targetSize: targetSize)
         let params = makePreviewParams(
@@ -81,7 +83,7 @@ enum FilterPreviewUseCase {
         )
         let renderMode = ImageRenderMode.fromPresetId(preset.id)
 
-        return await ImageElement.previewService.applyFiltersAsync(
+        return await previewService.applyFiltersAsync(
             to: preparedImage,
             params: params,
             quality: .preview,

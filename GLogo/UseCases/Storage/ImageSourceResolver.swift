@@ -101,3 +101,9 @@ final class ImageSourceResolver: ImageSourceResolving {
         return originalImageProvider()
     }
 }
+
+
+extension CodingUserInfoKey {
+    /// プロジェクト復元時の取得先。子Decoderにも渡されるが、保存データには含まれない。
+    static let imageSourceResolver = CodingUserInfoKey(rawValue: "GLogo.imageSourceResolver")!
+}

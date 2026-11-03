@@ -63,6 +63,20 @@ struct BackgroundSettings: Codable {
     
     /// 背景画像のファイル名
     var imageFileName: String?
+
+    // 保存用コピーだけが保持する実行時資源。Codable の保存形式には含めない。
+    private var frozenImage: UIImage?
+    private var hasFrozenImage = false
+
+    /// 背景画像も要求時の内容で固定し、保存待ち中の同名アセット更新を持ち越さない。
+    func renderCopy() -> BackgroundSettings {
+        var copy = self
+        if type == .image {
+            copy.frozenImage = hasFrozenImage ? frozenImage : resolveBackgroundImage()
+            copy.hasFrozenImage = true
+        }
+        return copy
+    }
     
     /// エンコード用のコーディングキー
     enum CodingKeys: String, CodingKey {
@@ -245,16 +259,8 @@ struct BackgroundSettings: Codable {
     
     /// 背景画像を描画
     private func drawBackgroundImage(in context: CGContext, rect: CGRect) {
-        // ファイル名がない場合は終了
         guard let imageFileName = imageFileName else { return }
-        
-        // まずAssetManagerからの読み込みを試みる
-        var image: UIImage? = AssetManager.shared.loadImage(named: imageFileName, type: .background)
-        
-        // AssetManagerで見つからなかった場合、UIImageから直接読み込む
-        if image == nil {
-            image = UIImage(named: imageFileName)
-        }
+        let image = hasFrozenImage ? frozenImage : resolveBackgroundImage()
         
         // 画像が見つからない場合は終了
         guard let cgImage = image?.cgImage else {
@@ -270,5 +276,11 @@ struct BackgroundSettings: Codable {
         context.draw(cgImage, in: rect)
         
         context.restoreGState()
+    }
+
+    private func resolveBackgroundImage() -> UIImage? {
+        guard let imageFileName else { return nil }
+        return AssetManager.shared.loadImage(named: imageFileName, type: .background)
+            ?? UIImage(named: imageFileName)
     }
 }

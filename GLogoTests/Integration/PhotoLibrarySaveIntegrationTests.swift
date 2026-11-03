@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import Photos
 @testable import GLogo
 import UIKit
 
@@ -23,24 +24,26 @@ final class PhotoLibrarySaveTests: XCTestCase {
     /// - クラッシュや例外が発生する
     @MainActor
     func testSaveFailsWhenNoImageElements() async {
-        let viewModel = EditorViewModel()
+        // 要素なしの契約をOSの権限状態から切り離し、無人実行でダイアログを待たない。
+        let viewModel = EditorViewModel(photoLibrarySaver: SaveImageCoordinator(writer: NoImagePhotoWriter()))
 
         // テキスト要素のみ追加（画像要素は追加しない）
         let textElement = TextElement(text: "テスト")
         viewModel.addElement(textElement)
 
         // 保存処理を実行
-        await withCheckedContinuation { continuation in
-            viewModel.saveToPhotoLibrary { result in
-                guard case .failure(let failure) = result else {
-                    XCTFail("画像要素がない場合は保存が失敗すべき")
-                    continuation.resume()
-                    return
-                }
-                XCTAssertEqual(failure, .noImageElements, "画像要素がない場合は noImageElements で失敗すべき")
-                continuation.resume()
+        let completed = expectation(description: "画像なしの保存が終了")
+        viewModel.saveToPhotoLibrary { result in
+            defer { completed.fulfill() }
+            guard case .failure(let failure) = result else {
+                XCTFail("画像要素がない場合は保存が失敗すべき")
+                return
             }
+            XCTAssertEqual(failure, .noImageElements, "画像要素がない場合は noImageElements で失敗すべき")
         }
+        await fulfillment(of: [completed], timeout: 3)
+        XCTAssertFalse(viewModel.isSavingImage)
+        XCTAssertEqual(viewModel.lastPhotoLibrarySaveFailure, .noImageElements)
     }
 
     /// フィルター適用済み画像の保存確認テスト
@@ -244,5 +247,19 @@ final class PhotoLibrarySaveTests: XCTestCase {
                 cgContext.strokePath()
             }
         }
+    }
+}
+
+/// 画像なしの検証では権限要求も書き込みも発生しないことを保証する。
+private struct NoImagePhotoWriter: PhotoLibraryWriting {
+    func authorizationStatus(for accessLevel: PHAccessLevel) -> PHAuthorizationStatus { .authorized }
+
+    func requestAuthorization(for accessLevel: PHAccessLevel, handler: @escaping @Sendable (PHAuthorizationStatus) -> Void) {
+        XCTFail("許可済みのWriterに権限要求を行わない")
+        handler(.authorized)
+    }
+
+    func performSave(of image: UIImage, format: SaveImageFormat) async throws {
+        XCTFail("画像がない場合は書き込みを行わない")
     }
 }

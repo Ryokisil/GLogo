@@ -2,8 +2,7 @@
 //  ImagePreviewService.swift
 //  GLogo
 //
-//  プレビュー生成・フィルタ適用・キャッシュ管理を担当するサービス。
-//  モデル(ImageElement)からは委譲し、ViewModel経由で利用する前提。
+//  SDR／HDRの描画サービスを束ね、既定の共有依存と注入可能な描画入口を提供する。
 //
 
 import UIKit
@@ -124,8 +123,9 @@ struct ImageFilterParams {
     }
 }
 
-/// プレビュー・フィルタ適用を提供するプロトコル
-protocol ImagePreviewing {
+/// 同期描画と非同期描画から共有できる、プレビュー・フィルタ適用の契約。
+/// 可変状態の同期は実装側が担い、参照同一性はキャッシュ解放の重複排除に使う。
+protocol ImagePreviewing: AnyObject, Sendable {
     /// プレビュー用のベース画像を返す（編集用プロキシがあれば優先）
     /// - Parameters:
     ///   - editingImage: 編集用プロキシ画像
@@ -186,8 +186,12 @@ protocol ImagePreviewing {
     func resetCache()
 }
 
-/// 既定のプレビュー・フィルタサービス（SDR実装へのファサード）
+/// SDR／HDRサービスを切り替えるファサード。
 final class ImagePreviewService: ImagePreviewing {
+    /// 要素数に応じてパイプラインとキャッシュを増やさないための既定サービス。
+    /// 依存は不変なSendable参照として保持し、全要素向けの差し替え口は設けない。
+    static let shared = ImagePreviewService()
+
     private let sdrService: ImagePreviewing
     private let hdrService: ImagePreviewing
 
@@ -305,4 +309,9 @@ final class ImagePreviewService: ImagePreviewing {
         sdrService.resetCache()
         hdrService.resetCache()
     }
+}
+
+extension CodingUserInfoKey {
+    /// 子Decoderへ渡す実行時の描画依存。永続化する画像属性ではない。
+    static let imagePreviewService = CodingUserInfoKey(rawValue: "GLogo.imagePreviewService")!
 }

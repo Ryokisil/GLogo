@@ -37,8 +37,11 @@ struct ImageUpscaleUseCase: Sendable {
     ///   - request: 実行対象のリクエスト
     /// - Returns: 高画質化結果
     func upscale(_ request: ImageUpscaleRequest) async throws -> ImageUpscaleResult {
+        try Task.checkCancellation()
         let pipeline = try resolvePipeline(for: request.method)
-        return try await pipeline.upscale(request)
+        let result = try await pipeline.upscale(request)
+        try Task.checkCancellation()
+        return result
     }
 
     /// 指定した内部方式に応じた実行パイプラインを解決する

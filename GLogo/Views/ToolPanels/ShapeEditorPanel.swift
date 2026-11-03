@@ -6,15 +6,15 @@
 //  このファイルは図形要素の編集用パネルを実装するSwiftUIビューです。
 //  図形タイプの選択、サイズ、色、塗りつぶし設定、枠線設定、角丸の半径、
 //  多角形の辺の数など、図形関連プロパティを編集するためのUIコントロールを提供します。
-//  ElementViewModelと連携して、ユーザーの編集操作をモデルに反映します。
+//  ShapeEditingViewModelと連携して、ユーザーの編集操作をモデルに反映します。
 //
 
 import SwiftUI
 
 /// 図形要素編集パネル
 struct ShapeEditorPanel: View {
-    /// 要素編集ビューモデル
-    @ObservedObject var viewModel: ElementViewModel
+    /// 図形編集ビューモデル
+    @ObservedObject var viewModel: ShapeEditingViewModel
     
     /// 図形要素のショートカット参照
     private var shapeElement: ShapeElement? {
@@ -261,7 +261,7 @@ struct ShapeEditorPanel: View {
 //        let elementViewModel = ElementViewModel(editorViewModel: editorViewModel)
 //        
 //        // プレビューを返す
-//        ShapeEditorPanel(viewModel: elementViewModel)
+//        ShapeEditorPanel(viewModel: elementViewModel.shapeEditing)
 //            .frame(width: 300)
 //            .previewLayout(.sizeThatFits)
 //    }

@@ -66,7 +66,7 @@ private extension ImageFrameStyle {
 }
 
 struct FramePanelView: View {
-    @ObservedObject var viewModel: ElementViewModel
+    @ObservedObject var viewModel: ImageFrameViewModel
     let onClose: () -> Void
     private let maxPanelHeight: CGFloat = 240
 
@@ -212,6 +212,7 @@ struct FramePanelView: View {
                 Spacer()
 
                 Text("\(imageElement.frameWidth, specifier: "%.1f")")
+                    .accessibilityIdentifier("editor.framePanel.widthValue")
                     .font(.caption.monospacedDigit())
                     .foregroundColor(.secondary)
             }
@@ -219,19 +220,20 @@ struct FramePanelView: View {
             Slider(
                 value: Binding(
                     get: { imageElement.frameWidth },
-                    set: { viewModel.updateImageAdjustment(.frameWidth, value: $0) }
+                    set: { viewModel.updateAdjustment(.frameWidth, value: $0) }
                 ),
                 in: 2...28,
                 step: 0.5,
                 onEditingChanged: { isEditing in
                     if isEditing {
-                        viewModel.beginImageAdjustmentEditing(.frameWidth)
+                        viewModel.beginAdjustmentEditing(.frameWidth)
                     } else {
-                        viewModel.commitImageAdjustmentEditing(.frameWidth)
+                        viewModel.commitAdjustmentEditing(.frameWidth)
                     }
                 }
             )
             .disabled(!imageElement.showFrame)
+            .accessibilityIdentifier("editor.framePanel.widthSlider")
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -343,15 +345,15 @@ struct FramePanelView: View {
                 Slider(
                     value: Binding(
                         get: { imageElement.cornerRadius },
-                        set: { viewModel.updateImageAdjustment(.cornerRadius, value: $0) }
+                        set: { viewModel.updateAdjustment(.cornerRadius, value: $0) }
                     ),
                     in: 4...80,
                     step: 1,
                     onEditingChanged: { isEditing in
                         if isEditing {
-                            viewModel.beginImageAdjustmentEditing(.cornerRadius)
+                            viewModel.beginAdjustmentEditing(.cornerRadius)
                         } else {
-                            viewModel.commitImageAdjustmentEditing(.cornerRadius)
+                            viewModel.commitAdjustmentEditing(.cornerRadius)
                         }
                     }
                 )

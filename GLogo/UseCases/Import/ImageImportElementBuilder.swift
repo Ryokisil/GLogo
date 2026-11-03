@@ -7,15 +7,26 @@ import UIKit
 
 // MARK: - Image Element Builder
 struct ImageImportElementBuilder {
+    private let sourceResolver: any ImageSourceResolving
+    private let previewService: any ImagePreviewing
+
+    init(
+        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
+        previewService: any ImagePreviewing = ImagePreviewService.shared
+    ) {
+        self.sourceResolver = sourceResolver
+        self.previewService = previewService
+    }
+
     func build(from source: ImageImportSource, context: ImageImportContext) -> ImageElement? {
         guard let imageData = source.resolveImageData() else { return nil }
 
         let importOrder = context.existingImageCount + 1
         let imageElement: ImageElement
         if let canvasSize = context.canvasSize {
-            imageElement = ImageElement(imageData: imageData, canvasSize: canvasSize, importOrder: importOrder)
+            imageElement = ImageElement(imageData: imageData, canvasSize: canvasSize, importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
         } else {
-            imageElement = ImageElement(imageData: imageData, importOrder: importOrder)
+            imageElement = ImageElement(imageData: imageData, importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
         }
 
         imageElement.originalImageIdentifier = context.assetIdentifier ?? UUID().uuidString

@@ -160,7 +160,7 @@ private enum AdjustControlCategory: String, CaseIterable, Identifiable {
 }
 
 struct AdjustBasicPanelView: View {
-    @ObservedObject var viewModel: ElementViewModel
+    @ObservedObject var viewModel: ImageAdjustmentViewModel
     let onClose: () -> Void
 
     @State private var selectedControl: AdjustBasicControl = .contrast

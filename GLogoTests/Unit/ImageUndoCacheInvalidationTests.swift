@@ -357,14 +357,14 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
 
         editorViewModel.selectElement(first)
         flushMainRunLoop()
-        elementViewModel.beginImageAdjustmentEditing(.brightness)
+        elementViewModel.imageAdjustment.beginImageAdjustmentEditing(.brightness)
 
         editorViewModel.selectElement(second)
         flushMainRunLoop()
 
-        elementViewModel.beginImageAdjustmentEditing(.brightness)
-        elementViewModel.updateImageAdjustment(.brightness, value: 0.25)
-        elementViewModel.commitImageAdjustmentEditing(.brightness)
+        elementViewModel.imageAdjustment.beginImageAdjustmentEditing(.brightness)
+        elementViewModel.imageAdjustment.updateImageAdjustment(.brightness, value: 0.25)
+        elementViewModel.imageAdjustment.commitImageAdjustmentEditing(.brightness)
 
         XCTAssertEqual(second.brightnessAdjustment, 0.25, accuracy: 0.0001)
 
@@ -391,13 +391,13 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
             }
             .store(in: &cancellables)
 
-        elementViewModel.beginImageAdjustmentEditing(.brightness)
-        elementViewModel.updateImageAdjustment(.brightness, value: 0.2)
+        elementViewModel.imageAdjustment.beginImageAdjustmentEditing(.brightness)
+        elementViewModel.imageAdjustment.updateImageAdjustment(.brightness, value: 0.2)
         flushMainRunLoop()
 
         // commitによる通知を独立して検証するため、update時の通知カウントをリセット
         publishCount = 0
-        elementViewModel.commitImageAdjustmentEditing(.brightness)
+        elementViewModel.imageAdjustment.commitImageAdjustmentEditing(.brightness)
         flushMainRunLoop()
 
         XCTAssertGreaterThanOrEqual(publishCount, 1)

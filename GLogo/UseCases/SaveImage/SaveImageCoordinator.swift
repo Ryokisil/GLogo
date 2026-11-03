@@ -18,21 +18,27 @@ enum PhotoLibrarySaveFailure: Error, Sendable, Equatable {
 /// 写真ライブラリ保存結果
 typealias PhotoLibrarySaveResult = Result<Void, PhotoLibrarySaveFailure>
 
-struct SaveImageCoordinator: Sendable {
+/// 保存要求の境界。完了は MainActor 上で一度だけ通知する。
+protocol PhotoLibrarySaving {
+    @MainActor
+    func save(
+        project: LogoProject,
+        completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
+    )
+
+    @MainActor
+    func saveComposite(
+        project: LogoProject,
+        completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
+    )
+}
+
+struct SaveImageCoordinator: PhotoLibrarySaving, Sendable {
     private static let logger = Logger(subsystem: "com.silvia.GLogo", category: "Save")
     private let policy: SaveImagePolicy
     private let selectionService: any ImageSelecting
     private let processingService: any ImageProcessing
     private let writer: any PhotoLibraryWriting
-
-    /// detached タスクへ安全に渡す参照ラッパー
-    private final class DetachedProjectBox: @unchecked Sendable {
-        let project: LogoProject
-
-        init(project: LogoProject) {
-            self.project = project
-        }
-    }
 
     init(
         policy: SaveImagePolicy = SaveImagePolicy(),
@@ -52,13 +58,14 @@ struct SaveImageCoordinator: Sendable {
         project: LogoProject,
         completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     ) {
-        let mode = policy.resolveMode(elements: project.elements)
-        let projectBox = DetachedProjectBox(project: project)
+        // 権限待ちより前に固定し、モード判定と描画が同じ時点の状態を見るようにする。
+        let snapshot = SaveProjectSnapshot(project: project)
+        let mode = policy.resolveMode(elements: snapshot.project.elements)
 
         authorizeIfNeeded { authorizationResult in
             switch authorizationResult {
             case .success:
-                performSave(projectBox: projectBox, mode: mode, completion: completion)
+                performSave(snapshot: snapshot, mode: mode, completion: completion)
             case .failure(let failure):
                 completion(.failure(failure))
             }
@@ -71,12 +78,12 @@ struct SaveImageCoordinator: Sendable {
         project: LogoProject,
         completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     ) {
-        let projectBox = DetachedProjectBox(project: project)
+        let snapshot = SaveProjectSnapshot(project: project)
 
         authorizeIfNeeded { authorizationResult in
             switch authorizationResult {
             case .success:
-                performSave(projectBox: projectBox, mode: .composite, completion: completion)
+                performSave(snapshot: snapshot, mode: .composite, completion: completion)
             case .failure(let failure):
                 completion(.failure(failure))
             }
@@ -114,12 +121,12 @@ struct SaveImageCoordinator: Sendable {
     /// モード別に保存フローを実行（要素選定 → フィルター/合成 → 保存）
     /// バックグラウンドスレッドで実行し、メインスレッドのブロックを防止する
     private func performSave(
-        projectBox: DetachedProjectBox,
+        snapshot: SaveProjectSnapshot,
         mode: SaveImageMode,
         completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     ) {
         Task.detached(priority: .userInitiated) {
-            let project = projectBox.project
+            let project = snapshot.project
             let imageElements = project.elements.compactMap { $0 as? ImageElement }
             if imageElements.isEmpty {
                 await completion(.failure(.noImageElements))

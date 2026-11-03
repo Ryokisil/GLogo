@@ -30,6 +30,9 @@ protocol EditorEvent: Codable {
 
 /// エディタの履歴を管理するクラス
 class EditorHistory {
+    /// 履歴の移動をまたぐ非同期要求を失効させる。Undo／Redo しても巻き戻さない。
+    private(set) var restorationRevision: UInt = 0
+
     /// 実行済みイベントのスタック
     private(set) var eventStack: [EditorEvent] = []
     
@@ -50,6 +53,7 @@ class EditorHistory {
     
     /// プロジェクト参照を更新
     func setProject(_ project: LogoProject) {
+        restorationRevision &+= 1
         self.project = project
     }
     
@@ -80,6 +84,7 @@ class EditorHistory {
         guard let project = project, let lastEvent = eventStack.popLast() else {
             return false
         }
+        restorationRevision &+= 1
         
         // ここでプロジェクトの要素数をチェック
         let beforeCount = project.elements.count
@@ -104,6 +109,7 @@ class EditorHistory {
         guard let project = project, let lastUndoneEvent = undoneEventStack.popLast() else {
             return false
         }
+        restorationRevision &+= 1
         
         // 取り消したイベントを再適用
         lastUndoneEvent.apply(to: project)
@@ -126,6 +132,7 @@ class EditorHistory {
     
     /// 履歴をクリア
     func clearHistory() {
+        restorationRevision &+= 1
         eventStack.removeAll()
         undoneEventStack.removeAll()
     }

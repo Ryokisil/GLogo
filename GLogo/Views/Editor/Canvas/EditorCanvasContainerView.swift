@@ -82,7 +82,7 @@ struct EditorCanvasContainerView: View {
                     onManipulationChanged: nil,
                     onManipulationEnded: nil,
                     onMagnifyChanged: { scale in
-                        elementViewModel.applyGestureTransform(
+                        elementViewModel.transform.applyGestureTransform(
                             kind: .magnify,
                             translation: nil,
                             scale: scale,
@@ -91,7 +91,7 @@ struct EditorCanvasContainerView: View {
                         )
                     },
                     onMagnifyEnded: {
-                        elementViewModel.applyGestureTransform(
+                        elementViewModel.transform.applyGestureTransform(
                             kind: .magnify,
                             translation: nil,
                             scale: nil,
@@ -100,7 +100,7 @@ struct EditorCanvasContainerView: View {
                         )
                     },
                     onRotateGestureChanged: { angle in
-                        elementViewModel.applyGestureTransform(
+                        elementViewModel.transform.applyGestureTransform(
                             kind: .rotate,
                             translation: nil,
                             scale: nil,
@@ -109,7 +109,7 @@ struct EditorCanvasContainerView: View {
                         )
                     },
                     onRotateGestureEnded: {
-                        elementViewModel.applyGestureTransform(
+                        elementViewModel.transform.applyGestureTransform(
                             kind: .rotate,
                             translation: nil,
                             scale: nil,
@@ -118,10 +118,10 @@ struct EditorCanvasContainerView: View {
                         )
                     },
                     onResetRotation: {
-                        elementViewModel.resetRotation()
+                        elementViewModel.transform.resetRotation()
                     },
                     onMoveChanged: { translation in
-                        elementViewModel.applyGestureTransform(
+                        elementViewModel.transform.applyGestureTransform(
                             kind: .move,
                             translation: translation,
                             scale: nil,
@@ -130,7 +130,7 @@ struct EditorCanvasContainerView: View {
                         )
                     },
                     onMoveEnded: {
-                        elementViewModel.applyGestureTransform(
+                        elementViewModel.transform.applyGestureTransform(
                             kind: .move,
                             translation: nil,
                             scale: nil,

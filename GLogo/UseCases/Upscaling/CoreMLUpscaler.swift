@@ -35,6 +35,7 @@ actor CoreMLUpscaler {
     ///   - request: 実行対象の高画質化リクエスト
     /// - Returns: 高画質化結果
     func upscale(_ request: ImageUpscaleRequest) async throws -> ImageUpscaleResult {
+        try Task.checkCancellation()
         let model = try loadModel()
         let interface = try resolveInterface(for: model)
         let inputCGImage = try makeNormalizedCGImage(from: request.sourceImage)
@@ -49,6 +50,7 @@ actor CoreMLUpscaler {
             throw ImageUpscaleError.sourceImageTooLarge
         }
 
+        try Task.checkCancellation()
         let workingImage = try makeWorkingInputImage(
             from: inputCGImage,
             sourcePixelSize: sourcePixelSize,
@@ -94,6 +96,7 @@ actor CoreMLUpscaler {
             }
         }
 
+        try Task.checkCancellation()
         let appliedScaleFactor = ImageUpscaleScaleFactor(
             rawValue: Int(actualScale.rounded())
         ) ?? request.scaleFactor
@@ -199,6 +202,7 @@ actor CoreMLUpscaler {
         model: MLModel,
         interface: CoreMLImageModelInterface
     ) throws -> CGImage {
+        try Task.checkCancellation()
         let pixelBuffer = try makePixelBuffer(
             from: image,
             width: image.width,
@@ -212,6 +216,7 @@ actor CoreMLUpscaler {
             ]
         )
 
+        try Task.checkCancellation()
         let prediction: MLFeatureProvider
         do {
             prediction = try model.prediction(from: inputProvider)
@@ -219,6 +224,7 @@ actor CoreMLUpscaler {
             throw ImageUpscaleError.predictionFailed(reason: error.localizedDescription)
         }
 
+        try Task.checkCancellation()
         guard let outputValue = prediction.featureValue(for: interface.outputName) else {
             throw ImageUpscaleError.invalidModelInterface
         }

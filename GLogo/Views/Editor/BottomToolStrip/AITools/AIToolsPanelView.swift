@@ -34,17 +34,25 @@ private enum AIToolsTab: String, CaseIterable, Identifiable {
 /// エディタ下部のAI Toolsパネルを表示するビューです。
 struct AIToolsPanelView: View {
     @ObservedObject var viewModel: ElementViewModel
+    @ObservedObject private var imageAdjustment: ImageAdjustmentViewModel
     let onClose: () -> Void
     let onOpenManualBackgroundRemoval: () -> Void
 
     @State private var selectedTab: AIToolsTab = .backgroundRemoval
 
+    init(viewModel: ElementViewModel, onClose: @escaping () -> Void, onOpenManualBackgroundRemoval: @escaping () -> Void) {
+        self.viewModel = viewModel
+        imageAdjustment = viewModel.imageAdjustment
+        self.onClose = onClose
+        self.onOpenManualBackgroundRemoval = onOpenManualBackgroundRemoval
+    }
+
     private var hasSelectedImage: Bool {
-        viewModel.imageElement != nil
+        imageAdjustment.imageElement != nil
     }
 
     private var hasBlurMask: Bool {
-        viewModel.imageElement?.backgroundBlurMaskData != nil
+        imageAdjustment.imageElement?.backgroundBlurMaskData != nil
     }
 
     private var isProcessingAnyAITask: Bool {
@@ -191,9 +199,9 @@ struct AIToolsPanelView: View {
 
     private var backgroundBlurContent: some View {
         let radiusBinding = Binding(
-            get: { viewModel.imageElement?.backgroundBlurRadius ?? 0 },
+            get: { imageAdjustment.imageElement?.backgroundBlurRadius ?? 0 },
             set: { newValue in
-                viewModel.updateImageAdjustment(.backgroundBlurRadius, value: newValue)
+                imageAdjustment.updateImageAdjustment(.backgroundBlurRadius, value: newValue)
             }
         )
 
@@ -216,9 +224,9 @@ struct AIToolsPanelView: View {
                     step: 1,
                     onEditingChanged: { isEditing in
                         if isEditing {
-                            viewModel.beginImageAdjustmentEditing(.backgroundBlurRadius)
+                            imageAdjustment.beginImageAdjustmentEditing(.backgroundBlurRadius)
                         } else {
-                            viewModel.commitImageAdjustmentEditing(.backgroundBlurRadius)
+                            imageAdjustment.commitImageAdjustmentEditing(.backgroundBlurRadius)
                         }
                     }
                 )
@@ -335,7 +343,7 @@ struct AIToolsPanelView: View {
     /// - Parameters: なし
     /// - Returns: リセット可能な場合は`true`
     private func canResetCurrentTab() -> Bool {
-        guard let imageElement = viewModel.imageElement else { return false }
+        guard let imageElement = imageAdjustment.imageElement else { return false }
         switch selectedTab {
         case .backgroundRemoval:
             // 残存エラーメッセージがあるときだけリセット可能とする
@@ -351,16 +359,16 @@ struct AIToolsPanelView: View {
 
     /// 現在選択中のタブ状態を既定値へ戻します。
     private func resetCurrentTab() {
-        guard let imageElement = viewModel.imageElement else { return }
+        guard let imageElement = imageAdjustment.imageElement else { return }
         switch selectedTab {
         case .backgroundRemoval:
             viewModel.clearBackgroundRemovalError()
         case .backgroundBlur:
             // 履歴イベントのノイズを避けるため、変更がある場合のみ更新します。
             if imageElement.backgroundBlurRadius != 0 {
-                viewModel.beginImageAdjustmentEditing(.backgroundBlurRadius)
-                viewModel.updateImageAdjustment(.backgroundBlurRadius, value: 0)
-                viewModel.commitImageAdjustmentEditing(.backgroundBlurRadius)
+                imageAdjustment.beginImageAdjustmentEditing(.backgroundBlurRadius)
+                imageAdjustment.updateImageAdjustment(.backgroundBlurRadius, value: 0)
+                imageAdjustment.commitImageAdjustmentEditing(.backgroundBlurRadius)
             }
             // ぼかしマスクが存在する場合のみ削除します。
             if imageElement.backgroundBlurMaskData != nil {

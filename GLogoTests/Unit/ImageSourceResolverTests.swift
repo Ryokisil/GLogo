@@ -99,13 +99,10 @@ final class ImageSourceResolverTests: XCTestCase {
 
     /// ImageElement が設定済み resolver 経由で元画像を取得し、結果をキャッシュすることを検証
     func test_originalImage_usesResolverCache() throws {
-        let originalResolver = ImageElement.imageSourceResolver
         let expectedImage = makeSolidImage(size: CGSize(width: 18, height: 18), color: .orange)
         let resolver = CountingImageSourceResolver(originalImage: expectedImage)
-        ImageElement.imageSourceResolver = resolver
-        defer { ImageElement.imageSourceResolver = originalResolver }
 
-        let element = ImageElement(imageData: Data(), importOrder: 0)
+        let element = ImageElement(imageData: Data(), importOrder: 0, sourceResolver: resolver)
         let first = try XCTUnwrap(element.originalImage)
         let second = try XCTUnwrap(element.originalImage)
 

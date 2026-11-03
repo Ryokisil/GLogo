@@ -17,7 +17,7 @@ private enum HDRFilterSection: Hashable {
 }
 
 struct FiltersPanelHDRView: View {
-    @ObservedObject var viewModel: ElementViewModel
+    @ObservedObject var viewModel: FilterPanelViewModel
 
     /// セクション選択（デフォルト = All）
     @State private var selectedSection: HDRFilterSection = .all

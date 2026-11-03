@@ -34,14 +34,14 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         XCTAssertFalse(editorViewModel.isProjectModified, "初期状態では未変更であるべき")
 
         // タップ誤検知相当（translationがゼロ）
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .move,
             translation: .zero,
             scale: nil,
             rotation: nil,
             ended: false
         )
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .move,
             translation: nil,
             scale: nil,
@@ -113,7 +113,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         editorViewModel.selectElement(imageElement)
         waitForSelectionPropagation()
 
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .rotate,
             translation: nil,
             scale: nil,
@@ -123,7 +123,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
 
         XCTAssertEqual(imageElement.rotation, 0.25, accuracy: 0.0001, "最初の回転差分はそのまま反映されるべき")
 
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .magnify,
             translation: nil,
             scale: 1.05,
@@ -132,7 +132,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         )
 
         // ピンチ終了など、回転以外のジェスチャー終了イベントが先に飛ぶケースを模擬する。
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .magnify,
             translation: nil,
             scale: nil,
@@ -141,7 +141,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         )
 
         // RotationGesture が累積角度を返し続ける前提では、次の onChanged でも 0.5rad のまま反映されるべき。
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .rotate,
             translation: nil,
             scale: nil,
@@ -177,7 +177,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         editorViewModel.selectElement(firstElement)
         waitForSelectionPropagation()
 
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .rotate,
             translation: nil,
             scale: nil,
@@ -190,7 +190,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         editorViewModel.selectElement(secondElement)
         waitForSelectionPropagation()
 
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .rotate,
             translation: nil,
             scale: nil,
@@ -226,7 +226,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         editorViewModel.selectElement(imageElement)
         waitForSelectionPropagation()
 
-        elementViewModel.resetRotation()
+        elementViewModel.transform.resetRotation()
 
         XCTAssertEqual(imageElement.rotation, 0, accuracy: 0.0001, "rotation だけが 0 度に戻るべき")
         XCTAssertEqual(imageElement.position, CGPoint(x: 240, y: 360), "position は維持されるべき")
@@ -261,14 +261,14 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         editorViewModel.selectElement(unlockedElement)
         waitForSelectionPropagation()
 
-        elementViewModel.resetRotation()
+        elementViewModel.transform.resetRotation()
         XCTAssertEqual(unlockedElement.rotation, 0, accuracy: 0.0001, "rotation が 0 なら何も起きないべき")
         XCTAssertFalse(editorViewModel.canUndo, "履歴は追加されないべき")
 
         editorViewModel.selectElement(lockedElement)
         waitForSelectionPropagation()
 
-        elementViewModel.resetRotation()
+        elementViewModel.transform.resetRotation()
 
         XCTAssertEqual(lockedElement.rotation, 0.4, accuracy: 0.0001, "ロック要素は変更されるべきではない")
         XCTAssertFalse(editorViewModel.canUndo, "ロック要素でも履歴は追加されないべき")

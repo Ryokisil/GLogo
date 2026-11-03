@@ -29,6 +29,7 @@ struct BackgroundRemovalUseCase: BackgroundRemovalProcessing {
     ///   - image: 背景除去対象の画像
     /// - Returns: 背景除去後の画像
     func removeBackground(from image: UIImage) async throws -> UIImage {
+        try Task.checkCancellation()
         guard let cgImage = image.cgImage else {
             throw NSError(
                 domain: "ImageCropError",
@@ -43,7 +44,9 @@ struct BackgroundRemovalUseCase: BackgroundRemovalProcessing {
             let handler = VNImageRequestHandler(cgImage: cgImage)
 
             do {
+                try Task.checkCancellation()
                 try handler.perform([request])
+                try Task.checkCancellation()
 
                 guard let result = request.results?.first else {
                     continuation.resume(throwing: NSError(
@@ -56,6 +59,7 @@ struct BackgroundRemovalUseCase: BackgroundRemovalProcessing {
 
                 // AI分析結果から低解像度マスクを取得（精度はそのまま保持）
                 let lowResMask = try result.generateScaledMaskForImage(forInstances: result.allInstances, from: handler)
+                try Task.checkCancellation()
                 let lowResMaskImage = CIImage(cvPixelBuffer: lowResMask)
 
                 // 元画像の実解像度を取得
@@ -99,6 +103,7 @@ struct BackgroundRemovalUseCase: BackgroundRemovalProcessing {
                 }
 
                 // CIImage → UIImage変換（フル解像度）
+                try Task.checkCancellation()
                 let context = CIContext()
                 guard let resultCGImage = context.createCGImage(outputImage, from: outputImage.extent) else {
                     continuation.resume(throwing: NSError(
@@ -111,6 +116,7 @@ struct BackgroundRemovalUseCase: BackgroundRemovalProcessing {
 
                 // 元画像のスケールを保持して最終UIImageを作成
                 let resultImage = UIImage(cgImage: resultCGImage, scale: originalScale, orientation: image.imageOrientation)
+                try Task.checkCancellation()
                 continuation.resume(returning: resultImage)
             } catch {
                 continuation.resume(throwing: error)
@@ -123,6 +129,7 @@ struct BackgroundRemovalUseCase: BackgroundRemovalProcessing {
     ///   - image: マスク生成対象の画像
     /// - Returns: 前景マスク画像（白=前景、黒=背景）
     func generateMask(from image: UIImage) async throws -> UIImage {
+        try Task.checkCancellation()
         guard let cgImage = image.cgImage else {
             throw NSError(
                 domain: "ImageCropError",
@@ -137,7 +144,9 @@ struct BackgroundRemovalUseCase: BackgroundRemovalProcessing {
             let handler = VNImageRequestHandler(cgImage: cgImage)
 
             do {
+                try Task.checkCancellation()
                 try handler.perform([request])
+                try Task.checkCancellation()
 
                 guard let result = request.results?.first else {
                     continuation.resume(throwing: NSError(
@@ -149,6 +158,7 @@ struct BackgroundRemovalUseCase: BackgroundRemovalProcessing {
                 }
 
                 let lowResMask = try result.generateScaledMaskForImage(forInstances: result.allInstances, from: handler)
+                try Task.checkCancellation()
                 let lowResMaskImage = CIImage(cvPixelBuffer: lowResMask)
 
                 let originalSize = image.size
@@ -162,6 +172,7 @@ struct BackgroundRemovalUseCase: BackgroundRemovalProcessing {
                 let featheredMask = createFeatheredMask(from: highResMaskImage)
                     .cropped(to: CGRect(origin: .zero, size: pixelSize))
 
+                try Task.checkCancellation()
                 let context = CIContext()
                 guard let resultCGImage = context.createCGImage(featheredMask, from: featheredMask.extent) else {
                     continuation.resume(throwing: NSError(
@@ -177,6 +188,7 @@ struct BackgroundRemovalUseCase: BackgroundRemovalProcessing {
                     scale: originalScale,
                     orientation: image.imageOrientation
                 )
+                try Task.checkCancellation()
                 continuation.resume(returning: maskImage)
             } catch {
                 continuation.resume(throwing: error)

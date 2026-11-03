@@ -21,7 +21,7 @@ final class SaturationBoundaryIntegrationTests: XCTestCase {
     /// - Returns: なし
     override func setUp() {
         super.setUp()
-        ImageElement.previewService.resetCache()
+        ImagePreviewService.shared.resetCache()
     }
 
     // MARK: - Upper Bound

@@ -8,8 +8,15 @@
 
 import Foundation
 
+/// 再描画予約を置換・取消できる能力。呼び出しは MainActor に限定する。
+@MainActor
+protocol RenderScheduling: AnyObject {
+    func schedule(_ block: @escaping () -> Void)
+    func cancel()
+}
+
 /// 最新値だけを実行するシンプルなデバウンス＋latest-onlyスケジューラ。
-final class RenderScheduler {
+final class RenderScheduler: RenderScheduling {
     private var workItem: DispatchWorkItem?
     private let queue: DispatchQueue
     private let debounce: TimeInterval

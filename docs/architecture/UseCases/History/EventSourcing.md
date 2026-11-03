@@ -1,6 +1,6 @@
 # 編集履歴と画面Eventの境界
 
-この文書は、`EventSourcing.swift`が担う編集履歴と、ViewModel分割後も守る適用・取り消しの契約を記録します。調査日: 2026-10-18。改善案は未実装です。
+この文書は、`EventSourcing.swift`が担う編集履歴と、ViewModel分割後も守る適用・取り消しの契約を記録します。調査日: 2026-10-18。2026-10-29 に非同期結果の照合に使う履歴移動の世代を追記しました。イベント群の再構成は未実装です。
 
 - 対象: [EventSourcing.swift](../../../../GLogo/UseCases/History/EventSourcing.swift)
 - 全体方針: [比較と責務分離方針](../../README.md)
@@ -14,6 +14,12 @@
 - 履歴は既定で最大100件です。Undoは`revert`、Redoは`apply`を呼びます。
 - `EditorViewModel`は履歴操作後に選択・変更フラグ・画面通知を調整します。
 - 一つのファイルに履歴管理本体と多数の編集イベント型があります。
+
+## 非同期要求と履歴移動
+
+`restorationRevision` は成功した Undo／Redo、`setProject`、`clearHistory` で増加し、以前の値へ戻しません。対象のない Undo／Redo と通常の `recordAndApply` では増加しません。別の要素の通常編集は保留中の AI を失効させず、履歴を移動した場合は対象画像の値が同じでも失効させる方針です。
+
+[ImageEditTokenTests](../../../../GLogoTests/Unit/ImageEditTokenTests.swift) と [AIResultValidityIntegrationTests](../../../../GLogoTests/Integration/AIResultValidityIntegrationTests.swift) で世代の更新と古い完了結果の破棄を検証しています。既存の Revert・Undo・画像キャッシュの回帰テストも引き続き有効で、今回の関連67件の検証に含めました。履歴イベントの保存形式は変更していません。
 
 ## HandsPOSのEventとの違い
 
@@ -53,4 +59,4 @@ GLogoで確認した中心機構は上限付きのUndo／Redoです。`EditorEve
 - [FrameColorHistoryIntegrationTests](../../../../GLogoTests/Integration/FrameColorHistoryIntegrationTests.swift): 枠色編集と履歴。
 - [NoOpGestureIntegrationTests](../../../../GLogoTests/Integration/NoOpGestureIntegrationTests.swift): 無変更操作の回帰確認先。
 
-機能分割後は、一操作一履歴、無変更時の履歴、Undo後の新操作によるRedo破棄、選択変更と非同期完了を含めて確認します。既存テストが新しい属性や経路を実際に検証しているかも、回帰テストのレビューで確認します。今回の記録ではテストを実行していません。
+機能分割後は、一操作一履歴、無変更時の履歴、Undo後の新操作によるRedo破棄、選択変更と非同期完了を含めて確認します。既存テストが新しい属性や経路を実際に検証しているかも、回帰テストのレビューで確認します。2026-10-18 の調査時点ではテストを実行していません。後続の履歴世代追加に対する検証は上記に記録しています。

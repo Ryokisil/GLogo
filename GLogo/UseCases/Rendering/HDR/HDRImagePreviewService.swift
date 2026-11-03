@@ -108,19 +108,14 @@ final class HDRImagePreviewService: ImagePreviewing, @unchecked Sendable {
         quality: ToneCurveFilter.Quality,
         mode: ImageRenderMode
     ) async -> UIImage? {
-        await withCheckedContinuation { continuation in
-            Self.asyncRenderQueue.addOperation { [self] in
-                asyncPipelineLock.lock()
-                defer { asyncPipelineLock.unlock() }
-                let result = Self.applyFiltersCore(
-                    pipeline: asyncFilterPipeline,
-                    image: image,
-                    params: params,
-                    quality: quality,
-                    mode: mode
-                )
-                continuation.resume(returning: result)
-            }
+        await ImageRenderOperation.run(on: Self.asyncRenderQueue, lock: asyncPipelineLock) { [self] in
+            Self.applyFiltersCore(
+                pipeline: asyncFilterPipeline,
+                image: image,
+                params: params,
+                quality: quality,
+                mode: mode
+            )
         }
     }
 

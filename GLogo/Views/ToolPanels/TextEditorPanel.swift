@@ -6,7 +6,7 @@
 //  このファイルはテキスト要素の編集用パネルを実装するSwiftUIビューです。
 //  テキスト内容、フォント、サイズ、色、整列、行間、文字間隔、エフェクトなどの
 //  テキスト関連プロパティを編集するためのUIコントロールを提供します。
-//  ElementViewModelと連携して、ユーザーの編集操作をモデルに反映します。
+//  TextEditingViewModelと連携して、ユーザーの編集操作をモデルに反映します。
 //
 
 import SwiftUI
@@ -14,7 +14,7 @@ import SwiftUI
 /// テキスト要素編集パネル
 struct TextEditorPanel: View {
     /// 要素編集ビューモデル
-    @ObservedObject var viewModel: ElementViewModel
+    @ObservedObject var viewModel: TextEditingViewModel
     
     /// テキスト要素のショートカット参照
     private var textElement: TextElement? {
@@ -42,7 +42,7 @@ struct TextEditorPanel: View {
     @State private var originalFontName: String = ""
     
     /// 初期化
-    init(viewModel: ElementViewModel) {
+    init(viewModel: TextEditingViewModel) {
         self.viewModel = viewModel
         _textContent = State(initialValue: viewModel.textElement?.text ?? "")
     }

@@ -59,6 +59,7 @@ struct RealESRGANPipeline: ImageUpscalingPipeline {
     ///   - request: 実行対象のリクエスト
     /// - Returns: 高画質化結果
     func upscale(_ request: ImageUpscaleRequest) async throws -> ImageUpscaleResult {
+        try Task.checkCancellation()
         guard isAvailable else {
             throw ImageUpscaleError.modelNotFound(name: configuration.compiledModelName)
         }

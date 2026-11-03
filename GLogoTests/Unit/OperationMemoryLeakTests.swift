@@ -24,9 +24,9 @@ final class OperationMemoryLeakTests: XCTestCase {
             viewModel.addElement(element)
             viewModel.selectElement(element)
 
-            viewModel.startManipulation(.move, at: CGPoint(x: 0, y: 0))
-            viewModel.continueManipulation(at: CGPoint(x: 100, y: 100))
-            viewModel.endManipulation()
+            viewModel.transform.startManipulation(.move, at: CGPoint(x: 0, y: 0))
+            viewModel.transform.continueManipulation(at: CGPoint(x: 100, y: 100))
+            viewModel.transform.endManipulation()
         }
 
         XCTAssertNil(weakViewModel, "操作処理中にメモリリークが発生しています")

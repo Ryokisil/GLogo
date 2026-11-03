@@ -239,19 +239,22 @@ struct EditorView: View {
             .navigationDestination(isPresented: $isNavigatingToManualRemoval) {
                 if let imageElement = viewModel.selectedImageElement {
                     ManualBackgroundRemovalView(imageElement: imageElement) { editedImage in
-                        viewModel.applyManualBackgroundRemovalResult(editedImage, to: imageElement)
+                        viewModel.aiTools.applyManualBackgroundRemovalResult(editedImage, to: imageElement)
                     }
                 }
             }
             // 背景ぼかしマスク編集画面への遷移
-            .navigationDestination(isPresented: $viewModel.isNavigatingToBackgroundBlurMaskEdit) {
-                if let imageElement = viewModel.backgroundBlurMaskEditTarget {
+            .navigationDestination(isPresented: Binding(
+                get: { viewModel.aiTools.isNavigatingToBackgroundBlurMaskEdit },
+                set: { viewModel.aiTools.isNavigatingToBackgroundBlurMaskEdit = $0 }
+            )) {
+                if let imageElement = viewModel.aiTools.backgroundBlurMaskEditTarget {
                     BackgroundBlurMaskEditView(
                         imageElement: imageElement,
                         initialMaskData: imageElement.backgroundBlurMaskData,
                         blurRadius: imageElement.backgroundBlurRadius
                     ) { maskData in
-                        viewModel.applyBackgroundBlurMaskResult(maskData, to: imageElement)
+                        viewModel.aiTools.applyBackgroundBlurMaskResult(maskData, to: imageElement)
                     }
                 }
             }

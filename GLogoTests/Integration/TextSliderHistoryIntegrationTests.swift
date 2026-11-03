@@ -47,14 +47,14 @@ final class TextSliderHistoryIntegrationTests: XCTestCase {
         let (_, textElement, editorViewModel, elementViewModel) = makeTextEditingContext()
         let initialHistoryCount = editorViewModel.getHistoryDescriptions().count
 
-        elementViewModel.beginTextFontSizeEditing()
-        elementViewModel.previewTextFontSize(44)
-        elementViewModel.previewTextFontSize(60)
+        elementViewModel.textEditing.beginTextFontSizeEditing()
+        elementViewModel.textEditing.previewTextFontSize(44)
+        elementViewModel.textEditing.previewTextFontSize(60)
 
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount)
         XCTAssertEqual(textElement.fontSize, 60, accuracy: 0.0001)
 
-        elementViewModel.commitTextFontSizeEditing()
+        elementViewModel.textEditing.commitTextFontSizeEditing()
 
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount + 1)
         XCTAssertEqual(textElement.fontSize, 60, accuracy: 0.0001)
@@ -71,14 +71,14 @@ final class TextSliderHistoryIntegrationTests: XCTestCase {
         let (_, textElement, editorViewModel, elementViewModel) = makeTextEditingContext()
         let initialHistoryCount = editorViewModel.getHistoryDescriptions().count
 
-        elementViewModel.beginTextLineSpacingEditing()
-        elementViewModel.previewTextLineSpacing(2.0)
-        elementViewModel.previewTextLineSpacing(3.5)
+        elementViewModel.textEditing.beginTextLineSpacingEditing()
+        elementViewModel.textEditing.previewTextLineSpacing(2.0)
+        elementViewModel.textEditing.previewTextLineSpacing(3.5)
 
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount)
         XCTAssertEqual(textElement.lineSpacing, 3.5, accuracy: 0.0001)
 
-        elementViewModel.commitTextLineSpacingEditing()
+        elementViewModel.textEditing.commitTextLineSpacingEditing()
 
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount + 1)
         XCTAssertEqual(textElement.lineSpacing, 3.5, accuracy: 0.0001)
@@ -95,14 +95,14 @@ final class TextSliderHistoryIntegrationTests: XCTestCase {
         let (_, textElement, editorViewModel, elementViewModel) = makeTextEditingContext()
         let initialHistoryCount = editorViewModel.getHistoryDescriptions().count
 
-        elementViewModel.beginTextLetterSpacingEditing()
-        elementViewModel.previewTextLetterSpacing(1.5)
-        elementViewModel.previewTextLetterSpacing(2.5)
+        elementViewModel.textEditing.beginTextLetterSpacingEditing()
+        elementViewModel.textEditing.previewTextLetterSpacing(1.5)
+        elementViewModel.textEditing.previewTextLetterSpacing(2.5)
 
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount)
         XCTAssertEqual(textElement.letterSpacing, 2.5, accuracy: 0.0001)
 
-        elementViewModel.commitTextLetterSpacingEditing()
+        elementViewModel.textEditing.commitTextLetterSpacingEditing()
 
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount + 1)
         XCTAssertEqual(textElement.letterSpacing, 2.5, accuracy: 0.0001)
@@ -122,8 +122,8 @@ final class TextSliderHistoryIntegrationTests: XCTestCase {
         let initialHistoryCount = editorViewModel.getHistoryDescriptions().count
         let oldBlur = shadowEffect.blurRadius
 
-        elementViewModel.beginShadowEffectEditing(atIndex: shadowIndex)
-        elementViewModel.updateShadowEffect(
+        elementViewModel.textEditing.beginShadowEffectEditing(atIndex: shadowIndex)
+        elementViewModel.textEditing.updateShadowEffect(
             atIndex: shadowIndex,
             color: shadowEffect.color,
             offset: shadowEffect.offset,
@@ -133,7 +133,7 @@ final class TextSliderHistoryIntegrationTests: XCTestCase {
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount)
         XCTAssertEqual(shadowEffect.blurRadius, oldBlur + 4.0, accuracy: 0.0001)
 
-        elementViewModel.commitShadowEffectEditing(atIndex: shadowIndex)
+        elementViewModel.textEditing.commitShadowEffectEditing(atIndex: shadowIndex)
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount + 1)
 
         editorViewModel.undo()
@@ -147,7 +147,7 @@ final class TextSliderHistoryIntegrationTests: XCTestCase {
     func testStrokeSlider_RecordsSingleHistoryOnCommit() throws {
         let (_, textElement, editorViewModel, elementViewModel) = makeTextEditingContext()
         if textElement.effects.firstIndex(where: { $0 is StrokeEffect }) == nil {
-            elementViewModel.addTextEffect(StrokeEffect())
+            elementViewModel.textEditing.addTextEffect(StrokeEffect())
         }
 
         let strokeIndex = try XCTUnwrap(textElement.effects.firstIndex(where: { $0 is StrokeEffect }))
@@ -155,8 +155,8 @@ final class TextSliderHistoryIntegrationTests: XCTestCase {
         let initialHistoryCount = editorViewModel.getHistoryDescriptions().count
         let oldWidth = strokeEffect.width
 
-        elementViewModel.beginStrokeEffectEditing(atIndex: strokeIndex)
-        elementViewModel.updateStrokeEffect(
+        elementViewModel.textEditing.beginStrokeEffectEditing(atIndex: strokeIndex)
+        elementViewModel.textEditing.updateStrokeEffect(
             atIndex: strokeIndex,
             color: strokeEffect.color,
             width: oldWidth + 3.0
@@ -165,7 +165,7 @@ final class TextSliderHistoryIntegrationTests: XCTestCase {
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount)
         XCTAssertEqual(strokeEffect.width, oldWidth + 3.0, accuracy: 0.0001)
 
-        elementViewModel.commitStrokeEffectEditing(atIndex: strokeIndex)
+        elementViewModel.textEditing.commitStrokeEffectEditing(atIndex: strokeIndex)
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount + 1)
 
         editorViewModel.undo()
@@ -179,7 +179,7 @@ final class TextSliderHistoryIntegrationTests: XCTestCase {
     func testGlowSlider_RecordsSingleHistoryOnCommit() throws {
         let (_, textElement, editorViewModel, elementViewModel) = makeTextEditingContext()
         if textElement.effects.firstIndex(where: { $0 is GlowEffect }) == nil {
-            elementViewModel.addTextEffect(GlowEffect())
+            elementViewModel.textEditing.addTextEffect(GlowEffect())
         }
 
         let glowIndex = try XCTUnwrap(textElement.effects.firstIndex(where: { $0 is GlowEffect }))
@@ -187,8 +187,8 @@ final class TextSliderHistoryIntegrationTests: XCTestCase {
         let initialHistoryCount = editorViewModel.getHistoryDescriptions().count
         let oldRadius = glowEffect.radius
 
-        elementViewModel.beginGlowEffectEditing(atIndex: glowIndex)
-        elementViewModel.updateGlowEffect(
+        elementViewModel.textEditing.beginGlowEffectEditing(atIndex: glowIndex)
+        elementViewModel.textEditing.updateGlowEffect(
             atIndex: glowIndex,
             color: glowEffect.color,
             radius: oldRadius + 6.0
@@ -197,7 +197,7 @@ final class TextSliderHistoryIntegrationTests: XCTestCase {
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount)
         XCTAssertEqual(glowEffect.radius, oldRadius + 6.0, accuracy: 0.0001)
 
-        elementViewModel.commitGlowEffectEditing(atIndex: glowIndex)
+        elementViewModel.textEditing.commitGlowEffectEditing(atIndex: glowIndex)
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount + 1)
 
         editorViewModel.undo()

@@ -18,14 +18,6 @@ extension UIImage {
 
 /// ImageElement連携拡張
 extension ImageElement {
-    /// 画像データからメタデータを抽出するメソッド
-    /// - Parameters:
-    ///   - imageData: 抽出対象の画像データ。
-    /// - Returns: 抽出したメタデータ。抽出できない場合は `nil`。
-    func extractMetadataFromImageData(_ imageData: Data) -> ImageMetadata? {
-        return ImageMetadataManager.shared.extractMetadata(from: imageData)
-    }
-
     /// メタデータ編集操作を記録
     /// - Parameters:
     ///   - fieldKey: 変更対象のメタデータキー。
