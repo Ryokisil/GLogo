@@ -64,8 +64,8 @@ UseCaseとCoordinatorへの委譲はすでに存在します。すべてを新�
 
 ### 要素別イベント生成の分離（2026-10-25）
 
-- [TextEditUseCase](../../../GLogo/UseCases/Editing/TextEditUseCase.swift)、[ShapeEditUseCase](../../../GLogo/UseCases/Editing/ShapeEditUseCase.swift)、[ImageEditUseCase](../../../GLogo/UseCases/Editing/ImageEditUseCase.swift) に確定操作を移しました。`EditorViewModel.swift` は 1,703 行から 1,213 行になりました。
-- UseCase は変更値から既存イベントを生成し、[ElementEditApplying](../../../GLogo/UseCases/Editing/ElementEditApplying.swift) の3操作へ渡します。履歴なしのプレビュー、イベントと選択の更新、選択通知を伴わないイベント適用を区別します。プロジェクト・選択・履歴スタックの所有者は引き続き `EditorViewModel` です。
+- [TextEditUseCase](../../../GLogo/UseCases/Editing/Text/TextEditUseCase.swift)、[ShapeEditUseCase](../../../GLogo/UseCases/Editing/Shape/ShapeEditUseCase.swift)、[ImageEditUseCase](../../../GLogo/UseCases/Editing/Image/ImageEditUseCase.swift) に確定操作を移しました。`EditorViewModel.swift` は 1,703 行から 1,213 行になりました。
+- UseCase は変更値から既存イベントを生成し、[ElementEditApplying](../../../GLogo/UseCases/Editing/Session/ElementEditApplying.swift) の3操作へ渡します。履歴なしのプレビュー、イベントと選択の更新、選択通知を伴わないイベント適用を区別します。プロジェクト・選択・履歴スタックの所有者は引き続き `EditorViewModel` です。
 - テキストとフレームの子 ViewModel は UseCase を強参照し、UseCase は共通の適用先を弱参照します。`TextEditApplying` と `ImageFrameEditApplying` は UseCases 層へ移し、UseCase が ViewModels 層に依存しない構造にしました。
 - このイベント生成分離の時点では、図形とティントの操作は `ElementViewModel` から対応する UseCase を呼びます。Canvas のテキスト入力は既存の `EditorViewModel.updateTextContent` を入口に残し、内部で委譲します。後続の 2026-10-27 に図形の操作受付を `ShapeEditingViewModel` へ移しました。詳細は [ElementViewModel の記録](ElementViewModel.md)を参照してください。
 - イベント生成本体は委譲先の変更以外、移動前と一致します。無変更判定、旧値、フレーム調整の履歴 → メタデータ → 表示更新の順序を維持し、イベント定義・Codable・レンダラー・保存形式は変更していません。
@@ -91,8 +91,8 @@ UseCaseとCoordinatorへの委譲はすでに存在します。すべてを新�
 
 - [AIToolsViewModel](../../../GLogo/ViewModels/AIToolsViewModel.swift) が背景除去・背景ぼかし・高画質化の要求と処理中／エラー、マスク編集の遷移先を所有します。`EditorViewModel` は `aiTools` を一度生成し、遷移を描画する `EditorView` へ子の変更通知だけを転送します。親に同じ AI 状態は残していません。
 - `ElementViewModel.aiTools` は同じインスタンスです。パネル向けのプロパティは計算プロパティで、従来の5つの状態コピーと非同期購読を廃止しました。選択 ID の変更でエラーを同期クリアし、同じ ID のプレビュー通知ではエラーを維持します。
-- 推論は既存の `BackgroundRemovalProcessing` と `ImageUpscaleUseCase` を使用します。背景処理の注入は親の初期化 API を維持し、子は高画質化 UseCase も注入できます。加工結果は [AIImageEditApplying](../../../GLogo/UseCases/Editing/AIImageEditApplying.swift) を実装する `ImageEditUseCase` へ渡します。
-- 画像差し替えイベントの生成と、既存 `BackgroundBlurUseCase` の計画適用を `ImageEditUseCase` へ移しました。[ImageEditCommitting](../../../GLogo/UseCases/Editing/ImageEditCommitting.swift) は全イベントの適用後に選択・変更フラグ・通知を更新します。差し替え時は結果を選択し、ぼかし時は別の選択を維持する既存の違いを残しています。
+- 推論は既存の `BackgroundRemovalProcessing` と `ImageUpscaleUseCase` を使用します。背景処理の注入は親の初期化 API を維持し、子は高画質化 UseCase も注入できます。加工結果は [AIImageEditApplying](../../../GLogo/UseCases/Editing/Image/AIImageEditApplying.swift) を実装する `ImageEditUseCase` へ渡します。
+- 画像差し替えイベントの生成と、既存 `BackgroundBlurUseCase` の計画適用を `ImageEditUseCase` へ移しました。[ImageEditCommitting](../../../GLogo/UseCases/Editing/Session/ImageEditCommitting.swift) は全イベントの適用後に選択・変更フラグ・通知を更新します。差し替え時は結果を選択し、ぼかし時は別の選択を維持する既存の違いを残しています。
 - マスク → 必要な半径の順に履歴を積む仕様を維持しています。イベント定義、画像調整のリセット／復元、Codable、メタデータ、レンダラー、保存形式は変更していません。
 - Task は await をまたいで子を強参照しません。子の解放後は結果を適用せず、子を保持するパネルだけが残っても UseCase がエディタを延命しません。推論そのもののキャンセルや、削除・Undo・別加工・保存中の完了結果の無効化は未実装です。AI と高画質化の別々の重複ガードも従来どおりで、両者の同時実行を一括制御する変更はしていません。
 - この AI 分離時点で `EditorViewModel.swift` は 1,213 → 951 行、`ElementViewModel.swift` は 803 → 754 行になりました。後続の変形分離は下記を参照してください。
@@ -118,8 +118,8 @@ UseCaseとCoordinatorへの委譲はすでに存在します。すべてを新�
 ### 変形操作の分離（2026-10-26）
 
 - [ElementTransformViewModel](../../../GLogo/ViewModels/ElementTransformViewModel.swift) が座標操作の開始点・変形値、同時ジェスチャーごとの基準値と進行状態を所有します。親と `ElementViewModel.transform` は同じ子を共有し、Canvas のコールバックは子へ直接接続します。親は子の通知を転送します。
-- [ElementTransformState](../../../GLogo/Models/ElementTransformState.swift) は位置・サイズ・回転だけを保持し、座標入力の変形計算を行います。開始時に画像を含む要素全体を深いコピーする処理を廃止しました。[ElementTransformUseCase](../../../GLogo/UseCases/Editing/ElementTransformUseCase.swift) は変化した属性のイベントと回転リセットのイベントを生成します。
-- 子は [ElementTransformApplying](../../../GLogo/UseCases/Editing/ElementTransformApplying.swift) を弱参照し、共通のプレビュー・履歴・変更フラグ・保存ロックへ接続します。プロジェクトと履歴の正は親に残ります。
+- [ElementTransformState](../../../GLogo/Models/ElementTransformState.swift) は位置・サイズ・回転だけを保持し、座標入力の変形計算を行います。開始時に画像を含む要素全体を深いコピーする処理を廃止しました。[ElementTransformUseCase](../../../GLogo/UseCases/Editing/Transform/ElementTransformUseCase.swift) は変化した属性のイベントと回転リセットのイベントを生成します。
+- 子は [ElementTransformApplying](../../../GLogo/UseCases/Editing/Session/ElementTransformApplying.swift) を弱参照し、共通のプレビュー・履歴・変更フラグ・保存ロックへ接続します。プロジェクトと履歴の正は親に残ります。
 - 選択通知は同期で受け、別 ID・未選択への変更で両入力の開始値を破棄します。同じ ID のプレビュー更新では基準値を維持します。`ElementViewModel` の遅れた選択通知が、再選択済みの画像の新しい変形を終了させない条件も追加しました。
 - `prepareForImageSave` は子の両入力を停止してから、従来どおり全画像の編集用描画を終了します。保存中は座標入力・SwiftUI ジェスチャー・直接変形・回転リセットを共通で抑止します。プレビュー値を巻き戻したり、保存開始で履歴を追加したりはしません。
 - 高解像度画像の準備・終了は既存 `ManipulationRenderingUseCase`、同時ジェスチャーの描画切り替えは既存 `ImageEditingSessionUseCase` を再利用します。準備したプロジェクトは弱参照で、選択変更・保存時も描画状態を終了します。

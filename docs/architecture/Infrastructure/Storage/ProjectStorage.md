@@ -2,10 +2,10 @@
 
 この文書は、プロジェクトJSON保存の現状と、非同期保存・保存形式互換性の検証範囲を記録します。調査日: 2026-10-18。改善案は未実装です。
 
-- 対象: [ProjectStorage.swift](../../../../GLogo/UseCases/Storage/ProjectStorage.swift)
+- 対象: [ProjectStorage.swift](../../../../GLogo/Infrastructure/Storage/ProjectStorage.swift)
 - 関連Model: [LogoProject.swift](../../../../GLogo/Models/LogoProject.swift)、[LogoElement.swift](../../../../GLogo/Models/LogoElement.swift)
 - 全体方針: [比較と責務分離方針](../../README.md)
-- 別の保存経路: [写真ライブラリへの書き出し](../SaveImage/SaveImageCoordinator.md)
+- 別の保存経路: [写真ライブラリへの書き出し](../../UseCases/SaveImage/SaveImageCoordinator.md)
 
 ## 確認した現状
 

@@ -9,7 +9,7 @@ final class DeviceCancellationPerformanceTests: XCTestCase {
     func test_visionCancellation_responseAndRetry() throws {
         try requireDevice()
         let image = makeFixture()
-        let processor = BackgroundRemovalUseCase()
+        let processor = VisionBackgroundRemover()
         try measureCancellation(after: 5_000_000) { try await processor.removeBackground(from: image) }
     }
 

@@ -8,29 +8,8 @@
 
 import UIKit
 
-/// 画像およびプロキシ画像の解決を行うプロトコル
-protocol ImageAssetRepositoryProtocol {
-    /// 編集用プロキシも含めた画像の取得
-    /// - Parameters:
-    ///   - identifier: オリジナル画像の識別子
-    ///   - fileName: アセット名
-    ///   - originalPath: ローカルファイルパス
-    ///   - originalImageProvider: オリジナル画像を提供するクロージャ（必要時のみ評価）
-    ///   - proxyTargetLongSide: プロキシ生成時の長辺ピクセル
-    ///   - highResThresholdMP: プロキシ生成を行う解像度しきい値（MP）
-    /// - Returns: プロキシまたはオリジナル画像
-    func loadEditingImage(
-        identifier: String?,
-        fileName: String?,
-        originalPath: String?,
-        originalImageProvider: () -> UIImage?,
-        proxyTargetLongSide: CGFloat,
-        highResThresholdMP: CGFloat
-    ) -> UIImage?
-}
-
 /// デフォルト実装。AssetManager を利用してプロキシを解決する。
-final class ImageAssetRepository: ImageAssetRepositoryProtocol, Sendable {
+final class ImageAssetRepository: EditingImageLoading, Sendable {
     static let shared = ImageAssetRepository()
 
     private init() {}

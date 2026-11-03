@@ -130,7 +130,7 @@ private extension ImageSourceResolverTests {
 }
 
 /// 呼び出し内容を記録するテスト用 ImageAssetRepository
-private final class RecordingImageAssetRepository: ImageAssetRepositoryProtocol {
+private final class RecordingImageAssetRepository: EditingImageLoading {
     let result: UIImage?
     private(set) var didLoadEditingImage = false
     private(set) var receivedIdentifier: String?

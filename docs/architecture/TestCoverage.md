@@ -41,7 +41,7 @@ xcodebuild -project GLogo.xcodeproj -scheme GLogo -configuration Debug \
 | [ImageAdjustmentViewModel.swift](../../GLogo/ViewModels/ImageAdjustmentViewModel.swift) | 166 / 169 | 98.2% |
 | [FilterPanelViewModel.swift](../../GLogo/ViewModels/FilterPanelViewModel.swift) | 82 / 83 | 98.8% |
 | [ImageRenderRefreshUseCase.swift](../../GLogo/UseCases/Rendering/ImageRenderRefreshUseCase.swift) | 126 / 127 | 99.2% |
-| [ImageRenderOperation.swift](../../GLogo/UseCases/Rendering/ImageRenderOperation.swift) | 85 / 85 | 100.0% |
+| [ImageRenderOperation.swift](../../GLogo/Infrastructure/Rendering/ImageRenderOperation.swift) | 85 / 85 | 100.0% |
 | [TextEditingViewModel.swift](../../GLogo/ViewModels/TextEditingViewModel.swift) | 326 / 436 | 74.8% |
 | [ImageFrameViewModel.swift](../../GLogo/ViewModels/ImageFrameViewModel.swift) | 196 / 212 | 92.5% |
 | [ElementTransformViewModel.swift](../../GLogo/ViewModels/ElementTransformViewModel.swift) | 187 / 208 | 89.9% |

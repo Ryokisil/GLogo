@@ -69,7 +69,7 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
         completion: @escaping (Data?) -> Void,
         useCase: ManualBackgroundRemovalUseCase = ManualBackgroundRemovalUseCase(),
         manualBackgroundBlurUseCase: ManualBackgroundBlurUseCase = ManualBackgroundBlurUseCase(),
-        backgroundRemovalUseCase: any BackgroundRemovalProcessing = BackgroundRemovalUseCase(),
+        backgroundRemovalUseCase: any BackgroundRemovalProcessing = VisionBackgroundRemover(),
         imageSourceResolver: ImageSourceResolving = ImageSourceResolver()
     ) {
         self.originalMaskData = initialMaskData

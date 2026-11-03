@@ -46,11 +46,11 @@ ResolverとRendererへの抽出はすでに進んでいます。さらに分離�
 | 責務 | 方針 |
 | --- | --- |
 | 画像ソースの識別、編集値、初期状態 | Modelに保持。値のスナップショット化を検討 |
-| 初期化時の読み込み・抽出 | [ImageInitializationLoader](../../../GLogo/UseCases/Import/ImageInitializationLoader.swift)へ委譲 |
+| 初期化時の読み込み・抽出 | [ImageInitializationLoader](../../../GLogo/Infrastructure/Import/ImageInitializationLoader.swift)へ委譲 |
 | 配置サイズの計算 | [ImageSizeCalculator](../../../GLogo/Models/ImageSizeCalculator.swift)で純粋な計算として共有 |
 | 画像ソースの優先順位と取得 | [ImageSourceResolver](../../../GLogo/UseCases/Storage/ImageSourceResolver.swift)とRepositoryを利用 |
-| フィルター、SDR／HDR経路、プレビュー | [ImagePreviewService](../../../GLogo/UseCases/Rendering/ImagePreviewService.swift)等を利用 |
-| 画像要素の描画 | [ImageElementRenderer](../../../GLogo/UseCases/Rendering/ImageElementRenderer.swift)を維持 |
+| フィルター、SDR／HDR経路、プレビュー | [ImagePreviewService](../../../GLogo/Infrastructure/Rendering/ImagePreviewService.swift)等を利用 |
+| 画像要素の描画 | [ImageElementRenderer](../../../GLogo/Infrastructure/Rendering/ImageElementRenderer.swift)を維持 |
 | キャッシュの保存場所・無効化・寿命 | [ImageRenderCache](../../../GLogo/UseCases/Rendering/ImageRenderCache.swift)に要素別の保持・無効化ルールを分離済み。保持元のModelと共有サービス側キャッシュの境界は引き続き整理 |
 | Codableと旧形式復元 | 当面の保存互換性を維持し、データの移動とは別に扱う |
 
@@ -133,7 +133,7 @@ CodegraphでModelとインポートBuilderの入口を確認し、ソースで�
 
 ### 変更した境界
 
-- UseCaseの [ImageInitializationLoader](../../../GLogo/UseCases/Import/ImageInitializationLoader.swift) に、初期化用の画像読み込みとメタデータ抽出条件を集約しました。返すのは寸法・入力Data・メタデータで、デコードしたUIImageは保持しません。
+- UseCaseの [ImageInitializationLoader](../../../GLogo/Infrastructure/Import/ImageInitializationLoader.swift) に、初期化用の画像読み込みとメタデータ抽出条件を集約しました。返すのは寸法・入力Data・メタデータで、デコードしたUIImageは保持しません。
 - Modelの [ImageSizeCalculator](../../../GLogo/Models/ImageSizeCalculator.swift) に、I/Oに依存しないサイズ計算を移しました。初期化・差し替え・復元で同じ計算を使用します。
 - `ImageElement` はソース・サイズ・メタデータの代入を担当します。直接の `UIImage(data:)`、`UIImage(named:)`、`UIImage(contentsOfFile:)`、`Data(contentsOf:)` を除去しました。
 - 呼び出しがなくなった `ImageElement.extractMetadataFromImageData` の橋渡しを削除しました。メタデータ編集と履歴記録の拡張は維持しています。
@@ -229,11 +229,11 @@ Codegraphと現行ソースで、Modelの同期／非同期描画、FilterPanelV
 ### 変更した境界
 
 - `ImageElement.previewService` はインスタンスの `let` になりました。全7種類の初期化入口から注入でき、`copy()` と `renderCopy()` も同じ依存を保持します。Model内の共有可変依存ストアは削除しました。
-- [ImagePreviewService](../../../GLogo/UseCases/Rendering/ImagePreviewService.swift) は不変の `static let shared` を既定値として提供します。`ImagePreviewing` は参照同一性と非同期共有のために `AnyObject & Sendable` を要求します。ファサードの依存は不変のSendable参照で、ファサードへの新しい `@unchecked Sendable` は不要です。
+- [ImagePreviewService](../../../GLogo/Infrastructure/Rendering/ImagePreviewService.swift) は不変の `static let shared` を既定値として提供します。`ImagePreviewing` は参照同一性と非同期共有のために `AnyObject & Sendable` を要求します。ファサードの依存は不変のSendable参照で、ファサードへの新しい `@unchecked Sendable` は不要です。
 - 既存のSDR／HDR実装は従来の `@unchecked Sendable` と、非同期パイプライン・PreviewCacheのロックを維持します。パイプラインの計算式・実行キュー・並列数は変えていません。テスト用サービスの可変観測値と応答キューはロックで保護しました。
 - `Decoder.userInfo[.imagePreviewService]` で子Decoderへ依存を渡せます。未指定時は共有サービスです。保存キー追加ではなく、同じプロジェクトを異なる依存で復元しても再エンコード結果は一致します。
 - [ImageImportElementBuilder](../../../GLogo/UseCases/Import/ImageImportElementBuilder.swift) が描画依存を受け取り、キャンバス指定の有無にかかわらず生成要素へ渡します。
-- [FilterPreviewUseCase](../../../GLogo/UseCases/Editing/Filters/FilterPreviewUseCase.swift) は描画依存を引数で受け取り、Modelのstaticプロパティに依存しません。FilterPanelViewModelは選択画像の依存を渡します。
+- [FilterPreviewUseCase](../../../GLogo/UseCases/Editing/Image/Filters/FilterPreviewUseCase.swift) は描画依存を引数で受け取り、Modelのstaticプロパティに依存しません。FilterPanelViewModelは選択画像の依存を渡します。
 - [ImageCacheReleaseUseCase](../../../GLogo/UseCases/Rendering/ImageCacheReleaseUseCase.swift) は要素別キャッシュを消した後、既定サービスと要素が利用するサービスをそれぞれ一度だけリセットします。画像がない場合も既定サービスを解放します。Editorの通知経路とToneCurveFilterの解放は維持しています。
 
 既定経路のサービス数・取得順・画質指定・SDR／HDR選択・フィルター計算・保存形式・履歴イベント・要素別キャッシュ無効化範囲は維持します。注入したサービスがある場合は、そのサービスへ描画とソース変更時のリセットを限定し、Editorのメモリ警告でも解放対象に含めます。これが今回明示的に変えた依存の適用範囲です。

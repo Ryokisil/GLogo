@@ -122,7 +122,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     /// 新しいプロジェクトでエディタを初期化
     init(
         project: LogoProject = LogoProject(),
-        backgroundRemovalUseCase: any BackgroundRemovalProcessing = BackgroundRemovalUseCase(),
+        backgroundRemovalUseCase: any BackgroundRemovalProcessing = VisionBackgroundRemover(),
         photoLibrarySaver: any PhotoLibrarySaving = SaveImageCoordinator(),
         imageImporter: any ImageImporting = ImageImportCoordinator(),
         viewportSizeProvider: @escaping @MainActor () -> CGSize = { UIScreen.main.bounds.size },

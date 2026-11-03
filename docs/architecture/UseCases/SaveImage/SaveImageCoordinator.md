@@ -4,7 +4,7 @@
 
 - 対象: [SaveImageCoordinator.swift](../../../../GLogo/UseCases/SaveImage/SaveImageCoordinator.swift)
 - 全体方針: [比較と責務分離方針](../../README.md)
-- 関連: [EditorViewModel](../../ViewModels/EditorViewModel.md)、[ImageElement](../../Models/ImageElement.md)、[プロジェクト永続化](../Storage/ProjectStorage.md)
+- 関連: [EditorViewModel](../../ViewModels/EditorViewModel.md)、[ImageElement](../../Models/ImageElement.md)、[プロジェクト永続化](../../Infrastructure/Storage/ProjectStorage.md)
 
 ## 確認した処理の流れ
 

@@ -52,8 +52,8 @@ final class ImageRenderOperationTests: XCTestCase {
         let image = UIImage()
         let request = ImageUpscaleRequest(sourceImage: image, method: .lanczos, scaleFactor: .x2, appliesSharpening: false)
         let operations: [@Sendable () async throws -> Void] = [
-            { _ = try await BackgroundRemovalUseCase().removeBackground(from: image) },
-            { _ = try await BackgroundRemovalUseCase().generateMask(from: image) },
+            { _ = try await VisionBackgroundRemover().removeBackground(from: image) },
+            { _ = try await VisionBackgroundRemover().generateMask(from: image) },
             { _ = try await LanczosUpscalePipeline().upscale(request) },
             { _ = try await RealESRGANPipeline().upscale(request) },
             { _ = try await CoreMLUpscaler(configuration: .init(compiledModelName: "missing")).upscale(request) },

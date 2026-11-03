@@ -19,9 +19,9 @@ Swift のキャンセルは協調的で、`cancel()` 自体が実行中の関数
 - [AIToolsViewModel](../../GLogo/ViewModels/AIToolsViewModel.swift) が AI と高画質化の Task をそれぞれ保持します。Editor の選択通知と変更通知から既存の画像トークンを再照合し、失効した要求をキャンセルします。変更前通知では MainActor の現在の更新が終わってから照合します。単なる選択変更では有効な AI 要求を止めません。
 - AI 所有者の解放時にも Task をキャンセルします。Task は await をまたいで所有者を強参照しません。処理中フラグはキャンセル要求時に解除せず、処理が復帰するまで維持します。キャンセルはエラー表示・履歴追加・部分結果の適用を行いません。
 - [ImageRenderRefreshUseCase](../../GLogo/UseCases/Rendering/ImageRenderRefreshUseCase.swift) は描画 Task を保持し、次の予約・明示的な取消・所有者解放でキャンセルします。FilterPanel の選択通知で画像・履歴の失効も検知します。取消を無視する代替実装に対しても、以前の世代・トークン照合を維持します。
-- [ImageRenderOperation](../../GLogo/UseCases/Rendering/ImageRenderOperation.swift) は SDR／HDR 共通で Task の取消をロック保護したフラグへ渡します。未実行の計算と、パイプラインのロック待機中に失効した計算を省きます。実行中の描画は完了を待ち、その結果を返しません。従来の同時実行数とパイプラインの排他は維持します。
+- [ImageRenderOperation](../../GLogo/Infrastructure/Rendering/ImageRenderOperation.swift) は SDR／HDR 共通で Task の取消をロック保護したフラグへ渡します。未実行の計算と、パイプラインのロック待機中に失効した計算を省きます。実行中の描画は完了を待ち、その結果を返しません。従来の同時実行数とパイプラインの排他は維持します。
 - Operation 自体は取り消しません。ブロックごと実行されなくなると continuation が未再開になるため、必ずキューから一度だけ復帰する構造です。取消直後の入力メモリ解放は保証せず、キューから取り出されるまで保持する場合があります。
-- [BackgroundRemovalUseCase](../../GLogo/UseCases/BackgroundRemoval/BackgroundRemovalUseCase.swift) は Vision 推論、マスク生成、画像変換の境界で確認します。[CoreMLUpscaler](../../GLogo/UseCases/Upscaling/CoreMLUpscaler.swift) と [UpscaleTileProcessor](../../GLogo/UseCases/Upscaling/UpscaleTileProcessor.swift) は推論前後・タイル間で確認します。Lanczos と高画質化入口も、開始前と結果返却前に確認します。
+- [BackgroundRemovalUseCase](../../GLogo/Infrastructure/BackgroundRemoval/VisionBackgroundRemover.swift) は Vision 推論、マスク生成、画像変換の境界で確認します。[CoreMLUpscaler](../../GLogo/Infrastructure/Upscaling/CoreMLUpscaler.swift) と [UpscaleTileProcessor](../../GLogo/Infrastructure/Upscaling/UpscaleTileProcessor.swift) は推論前後・タイル間で確認します。Lanczos と高画質化入口も、開始前と結果返却前に確認します。
 
 実行中の Vision `perform`、Core ML `prediction`、Core Image の1回の描画を強制中断する実装ではありません。モデル読み込みや同期演算中に取消された場合も、その呼び出しが戻ってから終了します。画像値の直接変更だけで Editor の通知がない場合は中止の即時伝達を保証しませんが、結果適用時のトークン照合は働きます。写真ライブラリへの保存処理は今回の取消対象にしていません。
 
