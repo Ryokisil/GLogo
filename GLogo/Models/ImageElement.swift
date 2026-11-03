@@ -856,7 +856,7 @@ class ImageElement: LogoElement {
     }
     
     /// 画像にフィルターを適用
-    private func applyFilters(to image: UIImage, quality: ToneCurveFilter.Quality = .full) -> UIImage? {
+    private func applyFilters(to image: UIImage, quality: RenderQuality = .full) -> UIImage? {
         previewService.applyFilters(
             to: image,
             params: currentFilterParams(),
@@ -867,7 +867,7 @@ class ImageElement: LogoElement {
     
     /// 画像にフィルターを非同期で適用（彩度調整特化）
     @MainActor
-    private func applyFiltersAsync(to image: UIImage, quality: ToneCurveFilter.Quality = .full) async -> UIImage? {
+    private func applyFiltersAsync(to image: UIImage, quality: RenderQuality = .full) async -> UIImage? {
         await previewService.applyFiltersAsync(
             to: image,
             params: currentFilterParams(),

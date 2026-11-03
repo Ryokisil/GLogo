@@ -27,7 +27,7 @@ protocol ImagePreviewing: AnyObject, Sendable {
     func instantPreview(
         baseImage: UIImage?,
         params: ImageFilterParams,
-        quality: ToneCurveFilter.Quality,
+        quality: RenderQuality,
         mode: ImageRenderMode
     ) -> UIImage?
 
@@ -41,7 +41,7 @@ protocol ImagePreviewing: AnyObject, Sendable {
     func applyFilters(
         to image: UIImage,
         params: ImageFilterParams,
-        quality: ToneCurveFilter.Quality,
+        quality: RenderQuality,
         mode: ImageRenderMode
     ) -> UIImage?
 
@@ -55,7 +55,7 @@ protocol ImagePreviewing: AnyObject, Sendable {
     func applyFiltersAsync(
         to image: UIImage,
         params: ImageFilterParams,
-        quality: ToneCurveFilter.Quality,
+        quality: RenderQuality,
         mode: ImageRenderMode
     ) async -> UIImage?
 
@@ -63,6 +63,17 @@ protocol ImagePreviewing: AnyObject, Sendable {
     /// - Parameters: なし
     /// - Returns: なし
     func resetCache()
+
+    /// メモリ警告時に、プレビューキャッシュに加えて実装が持つ再生成可能な資源を解放する。
+    /// 画像ソース変更時の `resetCache()` とは異なり、再計算コストの高い共有資源も対象にする。
+    func releaseMemory()
+}
+
+extension ImagePreviewing {
+    /// 追加で解放する資源を持たない実装は、プレビューキャッシュのリセットだけを行う。
+    func releaseMemory() {
+        resetCache()
+    }
 }
 
 extension CodingUserInfoKey {

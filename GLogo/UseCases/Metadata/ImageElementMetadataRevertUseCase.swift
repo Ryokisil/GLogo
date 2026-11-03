@@ -11,14 +11,14 @@ import UIKit
 /// 画像要素の初期状態リバートとメタデータ復元を調整するユースケース
 struct ImageElementMetadataRevertUseCase {
     /// メタデータ永続化と履歴操作の委譲先
-    private let metadataManager: ImageMetadataManager
+    private let store: any ImageMetadataStoring
 
     /// ユースケースを初期化する
     /// - Parameters:
-    ///   - metadataManager: メタデータ永続化と履歴操作の委譲先
+    ///   - store: メタデータ永続化と履歴操作の委譲先
     /// - Returns: なし
-    init(metadataManager: ImageMetadataManager = .shared) {
-        self.metadataManager = metadataManager
+    init(store: any ImageMetadataStoring = ImageMetadataManager.shared) {
+        self.store = store
     }
 
     /// 画像要素を初期状態へ戻し、関連するメタデータ履歴も巻き戻す
@@ -39,7 +39,7 @@ struct ImageElementMetadataRevertUseCase {
     /// - Returns: メタデータ編集履歴がある場合は `true`
     func hasEditHistory(for imageElement: ImageElement) -> Bool {
         guard let identifier = imageElement.originalImageIdentifier else { return false }
-        return metadataManager.hasEditHistory(for: identifier)
+        return store.hasEditHistory(for: identifier)
     }
 
     /// 画像要素が初期状態へ戻せるかを判定する
@@ -59,9 +59,9 @@ struct ImageElementMetadataRevertUseCase {
             return .noChanges
         }
 
-        let result = metadataManager.revertMetadata(for: identifier)
+        let result = store.revertMetadata(for: identifier, to: nil)
         guard case .success = result,
-              let metadata = metadataManager.getMetadata(for: identifier) else {
+              let metadata = store.getMetadata(for: identifier) else {
             return result
         }
 

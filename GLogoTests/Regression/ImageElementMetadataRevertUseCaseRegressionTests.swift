@@ -48,7 +48,7 @@ final class ImageElementMetadataRevertUseCaseRegressionTests: XCTestCase {
             )
         )
 
-        ImageElementMetadataRevertUseCase(metadataManager: manager)
+        ImageElementMetadataRevertUseCase(store: manager)
             .revertToInitialState(imageElement)
 
         XCTAssertEqual(imageElement.frameWidth, 7.5, accuracy: 0.0001)

@@ -138,6 +138,14 @@ final class ImagePreviewDependencyTests: XCTestCase {
         XCTAssertEqual(firstService.state.mode, .sdr)
     }
 
+    func test_facadeReleaseMemory_releasesBothServices() {
+        let sdr = PreviewDependencySpy(color: .red)
+        let hdr = PreviewDependencySpy(color: .blue)
+        ImagePreviewService(sdrService: sdr, hdrService: hdr).releaseMemory()
+        XCTAssertEqual(sdr.state.resets, 1)
+        XCTAssertEqual(hdr.state.resets, 1)
+    }
+
     func test_cacheRelease_resetsEachUsedServiceOnce() throws {
         let shared = PreviewDependencySpy(color: .red)
         let separate = PreviewDependencySpy(color: .blue)

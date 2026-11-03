@@ -44,11 +44,6 @@ extension UIColor {
         self.init(red: red, green: green, blue: blue, alpha: alpha)
     }
     
-    /// HSB（色相、彩度、明度）値から色を作成
-    convenience init(hue: CGFloat, saturation: CGFloat, brightness: CGFloat, alpha: CGFloat = 1.0) {
-        self.init(hue: hue / 360.0, saturation: saturation, brightness: brightness, alpha: alpha)
-    }
-    
     // MARK: - プロパティ
     
     /// RGB値を取得

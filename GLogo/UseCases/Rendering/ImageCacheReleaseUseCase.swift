@@ -4,11 +4,16 @@ import Foundation
 
 /// 複数要素で同じサービスを共有していても、1回の呼び出しにつき一度だけ解放する。
 enum ImageCacheReleaseUseCase {
-    static func releaseCaches(in elements: [LogoElement]) {
+    /// - Parameters:
+    ///   - elements: キャッシュを解放する要素
+    ///   - defaultService: 画像がない場合も解放する既定の描画サービス
+    static func releaseCaches(
+        in elements: [LogoElement],
+        defaultService: any ImagePreviewing = ImagePreviewService.shared
+    ) {
         // 画像のないプロジェクトでも、従来どおり既定サービスを解放する。
-        let sharedService = ImagePreviewService.shared
-        var services: [any ImagePreviewing] = [sharedService]
-        var identifiers: Set<ObjectIdentifier> = [ObjectIdentifier(sharedService)]
+        var services: [any ImagePreviewing] = [defaultService]
+        var identifiers: Set<ObjectIdentifier> = [ObjectIdentifier(defaultService)]
         for case let image as ImageElement in elements {
             image.handleMemoryWarning()
             let service = image.previewService
@@ -17,7 +22,7 @@ enum ImageCacheReleaseUseCase {
             }
         }
         for service in services {
-            service.resetCache()
+            service.releaseMemory()
         }
     }
 }

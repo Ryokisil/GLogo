@@ -126,6 +126,12 @@ final class SDRImagePreviewService: ImagePreviewing, @unchecked Sendable {
         previewCache.reset()
     }
 
+    /// トーンカーブのLUTは全要素で共有するため、画像ソース変更時ではなくメモリ警告時だけ解放する。
+    func releaseMemory() {
+        resetCache()
+        ToneCurveFilter.clearCache()
+    }
+
     // MARK: - Helpers
 
     /// キャッシュキー（トーンカーブ＋調整パラメータ）を生成

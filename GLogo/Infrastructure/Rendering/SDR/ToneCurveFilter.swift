@@ -17,10 +17,8 @@ import OSLog
 class ToneCurveFilter {
     private static let logger = Logger(subsystem: "com.silvia.GLogo", category: "ToneCurve")
 
-    enum Quality {
-        case preview   // 軽量プレビュー用
-        case full      // 保存・最終描画用
-    }
+    /// 境界の品質型 `RenderQuality` の別名。既存の実装・テストの記述を変えずに同じ型として扱う。
+    typealias Quality = RenderQuality
 
     /// LUTキャッシュの排他制御つきストア
     private final class LUTCache: @unchecked Sendable {

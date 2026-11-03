@@ -162,7 +162,6 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     /// メモリ警告を受けた際にキャッシュを解放する
     private func handleMemoryWarning() {
         ImageCacheReleaseUseCase.releaseCaches(in: project.elements)
-        ToneCurveFilter.clearCache()
     }
     
     // MARK: - プロジェクト操作

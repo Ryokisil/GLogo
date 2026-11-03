@@ -507,3 +507,6 @@ final class ImageMetadataManager: @unchecked Sendable {
     }
 
 }
+
+/// UseCase はメタデータ保存の境界だけに依存し、共有インスタンスや抽出処理には触れない。
+extension ImageMetadataManager: ImageMetadataStoring {}

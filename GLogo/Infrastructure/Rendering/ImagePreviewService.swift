@@ -130,4 +130,9 @@ final class ImagePreviewService: ImagePreviewing {
         sdrService.resetCache()
         hdrService.resetCache()
     }
+
+    func releaseMemory() {
+        sdrService.releaseMemory()
+        hdrService.releaseMemory()
+    }
 }

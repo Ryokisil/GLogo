@@ -10,6 +10,12 @@ import UIKit
 
 /// 手動背景ぼかし編集用ユースケース
 struct ManualBackgroundBlurUseCase {
+    private let renderer: any BackgroundBlurRendering
+
+    init(renderer: any BackgroundBlurRendering = CoreImageBackgroundBlurRenderer()) {
+        self.renderer = renderer
+    }
+
     /// 保存済みの原寸マスクを、ブラシ座標と同じ編集用サイズ・倍率へ合わせる。
     func makeEditingMask(from mask: UIImage, for editingImage: UIImage) -> UIImage {
         resizeMask(mask, toMatch: editingImage)
@@ -30,7 +36,7 @@ struct ManualBackgroundBlurUseCase {
             return originalImage
         }
 
-        return ImageFilterUtility.applyBackgroundBlur(
+        return renderer.applyBackgroundBlur(
             to: originalImage,
             maskData: maskData,
             radius: blurRadius
