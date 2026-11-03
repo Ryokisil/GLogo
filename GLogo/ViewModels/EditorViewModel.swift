@@ -199,17 +199,6 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         }
     }
     
-    /// 背景設定を更新
-    func updateBackgroundSettings(_ settings: BackgroundSettings) {
-        let event = BackgroundSettingsChangedEvent(
-            oldSettings: project.backgroundSettings,
-            newSettings: settings
-        )
-        
-        history.recordAndApply(event)
-        isProjectModified = true
-    }
-    
     // MARK: - 要素操作
     
     /// 要素を追加

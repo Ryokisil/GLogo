@@ -2435,26 +2435,6 @@ struct ImageRoundedCornersChangedEvent: EditorEvent {
 
 // MARK: - その他
 
-/// 背景設定変更イベント
-struct BackgroundSettingsChangedEvent: EditorEvent {
-    var eventName = "BackgroundSettingsChanged"
-    var timestamp = Date()
-    let oldSettings: BackgroundSettings
-    let newSettings: BackgroundSettings
-    
-    var description: String {
-        return "背景設定を変更しました"
-    }
-    
-    func apply(to project: LogoProject) {
-        project.backgroundSettings = newSettings
-    }
-    
-    func revert(from project: LogoProject) {
-        project.backgroundSettings = oldSettings
-    }
-}
-
 /// プロジェクト名変更イベント
 struct ProjectNameChangedEvent: EditorEvent {
     var eventName = "ProjectNameChanged"
