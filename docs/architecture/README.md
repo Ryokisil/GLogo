@@ -126,16 +126,16 @@ HandsPOSの設計方式が全画面で統一されているとは確認してい
 
 現在の進捗（2026-11-03）:
 
-現在地は **段階2の対象範囲を完了し、段階3の第6回まで実装・検証済み** です。第5回でフィルターパラメータの合成規則を一本化し、第6回で使われていない処理の削除、同居していた型の分離、メタデータ復元規則のUseCaseへの移動を行いました。あわせてレイヤー配置を整理し、技術的な実装を `Infrastructure/` へ移しました。続いて残件の小物として、内側の層から Infrastructure への直接呼び出しを境界経由へ整理しました。GLogoTests 367件中364件成功（失敗1件は既知の4K SDR性能テスト）です。
+現在地は **段階2の対象範囲を完了し、段階3の第7回まで実装・検証済み** です。第5回でフィルターパラメータの合成規則を一本化し、第6回で使われていない処理の削除、同居していた型の分離、メタデータ復元規則のUseCaseへの移動を行いました。あわせてレイヤー配置を整理し、技術的な実装を `Infrastructure/` へ移しました。続いて残件の小物として、内側の層から Infrastructure への直接呼び出しを境界経由へ整理しました。第7回で初期化の入口を `ImageElementFactory` へ移しました。GLogoTests 372件中369件成功（失敗1件は既知の4K SDR性能テスト、スキップ2件は実機専用）です。
 
-**次の着手は、軽いものから**：初期化Factory、履歴イベントとRevertへの調整値型の適用・EventSourcing.swiftの分割を先に進めます。描画・画像取得・キャッシュ保持のModel外への移動は高リスクのため後に回します。段階3の責務一覧は [ImageElement](Models/ImageElement.md) を参照してください。計画外で見つかった問題と寄り道の記録は、下の「計画外の対応と残件」で追跡します。
+**次の着手は、軽いものから**：履歴イベントとRevertへの調整値型の適用・EventSourcing.swiftの分割、Composition Rootの整備を先に進めます。描画・画像取得・キャッシュ保持のModel外への移動は高リスクのため後に回します。段階3の責務一覧は [ImageElement](Models/ImageElement.md) を参照してください。計画外で見つかった問題と寄り道の記録は、下の「計画外の対応と残件」で追跡します。
 
 | 段階 | 状態 | 完了した範囲／残り |
 | --- | --- | --- |
 | 0：状態所有・契約の整理 | 対象範囲を確認済み | 保存・テキスト・図形・フレーム・AI・変形・画像調整・フィルター・要素別イベント生成の入口、通知、履歴、寿命を確認 |
 | 1：保存とAI・描画の競合境界 | 主要対策・代表条件の検証完了 | 保存受付時の描画入力を固定し、権限待ち・加工待ち・AI 完了・Undo／Redo・削除との重なりを検証済み。背景除去・背景ぼかし・高画質化の古い結果とエラーの抑止も実装・検証済み。フィルター高品質描画と調整の遅延通知にも対象照合を追加済み。Task の取消伝達と安全な工程境界での終了、Simulator の保存入力測定まで実装・検証済み。iPhone 16 で保存入力4条件と Vision／Core ML の取消・再実行を実測。多画像・高解像度推論などの追加検証範囲は詳細文書に記録 |
 | 2：機能別ViewModel・DI | 対象範囲を完了 | 保存・テキスト・図形・フレーム・AI・変形・画像調整・フィルターとイベント生成を分離。補強第1回42件・第2回73件成功。インポート専用ViewModelは不要と判断し、既存CoordinatorをDI化。表示サイズ・高画質化も注入可能にし、関連47件成功。Model経由の取得・描画・メタデータ依存は段階3で扱う |
-| 3：ImageElement・履歴周辺 | 進行中・第6回完了 | 取得・初期化・キャッシュの分離、描画依存の要素別固定、フィルターパラメータ合成の一本化に続き、未使用処理の削除と型の分離。既定の描画サービス・Repositoryは共有を維持。Modelの描画要求組み立て・キャッシュ保持、履歴イベントとRevertへの調整値型の適用、初期化Factory、履歴周辺の境界整理は残る |
+| 3：ImageElement・履歴周辺 | 進行中・第7回完了 | 取得・初期化・キャッシュの分離、描画依存の要素別固定、フィルターパラメータ合成の一本化、未使用処理の削除と型の分離に続き、初期化の入口をFactoryへ移動。既定の描画サービス・Repositoryは共有を維持。Modelの描画要求組み立て・キャッシュ保持、履歴イベントとRevertへの調整値型の適用、履歴周辺の境界整理は残る |
 
 ### 計画外の対応と残件
 
@@ -151,7 +151,10 @@ HandsPOSの設計方式が全画面で統一されているとは確認してい
 | 2026-11-03 | 図形機能（作成モード・`ShapeEditorPanel`・`ShapeEditingViewModel`・`ShapeEditUseCase`）がUIに出ていない | ディレクトリ構造の確認 | 保留（意図的）：UIの配置が決まっていないため残す |
 | 2026-11-03 | ライブラリ画面（`Views/Library`・`LibraryViewModel`）がアプリから開かれていない（Xcodeプレビューのみ） | ディレクトリ構造の確認 | **対応済み**：削除。テンプレートは仮データで適用処理も未実装、テキストスタイル・エフェクトは現行のテキストパネルへ置き換え済み、背景は編集をやめる判断と同じ扱い。図形の追加入口は、図形UIを決める際に現在の設計で作り直す。ライブラリ専用だった `updateBackgroundSettings` と、保存されない履歴イベント `BackgroundSettingsChangedEvent` も削除 |
 | 2026-11-03 | `UIColor+Extensions.swift` の `init(hue:saturation:brightness:alpha:)` がUIKit標準の初期化と同じ形で自分自身を呼び、呼ばれると無限再帰になる（コンパイラ警告あり） | 全体再コンパイル時の警告 | **対応済み**：呼び出し元がないため削除 |
-| 2026-11-03 | `Infrastructure/` 新設後も残る内側の層からの依存：①Model（`ImageElement`→描画サービス・初期化読み込み・描画処理、`BackgroundSettings`→`AssetManager`）、②境界 `ImagePreviewing` の引数に `ToneCurveFilter.Quality`、③UseCase・ViewModelの初期化引数の既定値に具体型（Composition Rootが未整備）、④境界を介さない直接呼び出し（`ManualBackgroundBlurUseCase`→`ImageFilterUtility`、メタデータUseCase→`ImageMetadataManager`、`ImageElement`拡張の `recordMetadataEdit`、`EditorViewModel`→`ToneCurveFilter.clearCache()`、`ImageCacheReleaseUseCase`→`ImagePreviewService.shared`） | ディレクトリ再配置で可視化 | ②④は**対応済み**：境界の品質型 `RenderQuality`、メモリ解放 `releaseMemory()`、保存の境界 `ImageMetadataStoring`、描画の境界 `BackgroundBlurRendering` を追加し、記録ルールをUseCaseへ移動。①は描画・キャッシュの移動（高リスクのため後回し）で扱う。③はComposition Rootの整備として別の回で扱う |
+| 2026-11-03 | `Infrastructure/` 新設後も残る内側の層からの依存：①Model（`ImageElement`→描画サービス・初期化読み込み・描画処理、`BackgroundSettings`→`AssetManager`）、②境界 `ImagePreviewing` の引数に `ToneCurveFilter.Quality`、③UseCase・ViewModelの初期化引数の既定値に具体型（Composition Rootが未整備）、④境界を介さない直接呼び出し（`ManualBackgroundBlurUseCase`→`ImageFilterUtility`、メタデータUseCase→`ImageMetadataManager`、`ImageElement`拡張の `recordMetadataEdit`、`EditorViewModel`→`ToneCurveFilter.clearCache()`、`ImageCacheReleaseUseCase`→`ImagePreviewService.shared`） | ディレクトリ再配置で可視化 | ②④は**対応済み**：境界の品質型 `RenderQuality`、メモリ解放 `releaseMemory()`、保存の境界 `ImageMetadataStoring`、描画の境界 `BackgroundBlurRendering` を追加し、記録ルールをUseCaseへ移動。①は描画・キャッシュの移動（高リスクのため後回し）で扱う。①のうち初期化読み込みは第7回でFactoryへ移し、Modelには `copy()` のURL読み直しと `replaceImageSource` の寸法取得だけが残る。③はComposition Rootの整備として別の回で扱う（第7回の `ImageElementFactory` の既定値も対象） |
+| 2026-11-03 | 画像の差し替え・復元（`replaceImageSource`・`restoreImageSource`）が配置サイズを計算するが、本番の唯一の呼び出し元（`ImageContentReplacedEvent` の適用・取り消し）が直後に元のサイズへ戻している。復元時は、サイズを得るためだけに元画像をデコードする | 第7回の計画で呼び出し元を確認 | 未着手（第7回では対応しない判断）。Modelに残る `ImageInitializationLoader` 参照の1つ |
+| 2026-11-03 | インポートでメタデータを抽出・設定していない。`ImagePickerView` の結果に `metadata` はあるが、インポート経路では使っていない。意図した挙動かは未確認 | 第7回の計画で初期化入口の呼び出し元を確認 | 未着手（第7回では対応しない判断） |
+| 2026-11-03 | `LogoProject.duplicate` の呼び出し元がない（ライブラリ画面を削除した残りとみられる） | 第7回の計画で `copy()` の呼び出し元を確認 | 未着手（第7回では対応しない判断） |
 
 画像調整・フィルターの分離に続き、保存入力の固定を実装しました。保存は受付時の状態を使い、待機中に編集側が変わっても影響を受けません。削除・Undo・別加工後の古い AI 結果は適用しないようにしました。AI 完了・Undo などをまたぐ古い描画結果と遅延通知も破棄し、関連19スイート・93件の成功を確認しました。続いて協調的キャンセルを追加し、関連107件と保存入力測定4件が成功しました。2026-10-31 に iPhone 16 で保存入力4条件と実モデルの取消・再実行2件の測定を完了しました。Vision の初回50ms条件は先に正常完了したためスキップし、5ms条件で再測定して成功しています。次の構造変更は段階3の ImageElement の画像取得・描画・キャッシュの責務整理です。その前の補強として、2026-11-01 にテキスト即時確定・複製・保存テストを追加／改善し、関連42件が成功しました。続いて図形パネル・共通属性を補強し、選択直後に旧要素を更新する不具合を修正しました。第2回の関連73件も成功しています。補強第2回の後、インポートと残るDIの必要性を判断し、入口の依存注入を追加して関連47件が成功しました。段階2の対象範囲は完了しました。その後、段階3の画像取得依存を要素ごとに分離して関連79件が成功し、第2回で初期化処理とサイズ計算を分離して関連90件、第3回で要素別キャッシュを分離して関連104件が成功しました。2026-11-03の第4回では描画依存を固定し、関連126件が成功しました。画像・図形複製の残件と前後移動の履歴問題は [全スイートとカバレッジ](TestCoverage.md) に記録しています。条件と限界は [キャンセルと測定](AsyncCancellation.md) を参照してください。インポート専用ViewModelは不要と判断し、既存Coordinatorへの委譲と入口DIを採用しました。
 

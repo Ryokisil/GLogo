@@ -138,7 +138,7 @@ final class RevertSnapshotRegressionTests: XCTestCase {
     private func makeImageElement() throws -> ImageElement {
         let image = makeSolidImage(size: CGSize(width: 64, height: 64), color: .white)
         let data = try XCTUnwrap(image.pngData())
-        return ImageElement(imageData: data, importOrder: 0)
+        return ImageElementFactory().makeElement(imageData: data, importOrder: 0)
     }
 
     /// 単色画像を生成

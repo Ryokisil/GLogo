@@ -306,7 +306,7 @@ struct ManualBackgroundRemovalView: View {
 struct ManualBackgroundRemovalView_Previews: PreviewProvider {
     static var previews: some View {
         let sampleImageData = UIImage(systemName: "photo")?.pngData() ?? Data()
-        let imageElement = ImageElement(imageData: sampleImageData)
+        let imageElement = ImageElementFactory().makeElement(imageData: sampleImageData)
         
         ManualBackgroundRemovalView(imageElement: imageElement)
     }

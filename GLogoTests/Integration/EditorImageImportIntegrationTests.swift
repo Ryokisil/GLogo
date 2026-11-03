@@ -40,7 +40,7 @@ final class EditorImageImportIntegrationTests: XCTestCase {
     @MainActor
     func test_importSuccess_preservesSelectionHistoryAndCamera() throws {
         for cropped in [false, true] {
-            let element = ImageElement(imageData: snapshotImage(.blue).pngData()!)
+            let element = ImageElementFactory().makeElement(imageData: snapshotImage(.blue).pngData()!)
             element.position = CGPoint(x: 20, y: 30)
             element.size = CGSize(width: 80, height: 40)
             let importer = ImporterSpy(result: ImageImportResult(element: element, assetIdentifier: nil))

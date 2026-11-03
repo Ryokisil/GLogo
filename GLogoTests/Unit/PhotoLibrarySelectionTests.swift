@@ -14,9 +14,9 @@ final class PhotoLibrarySelectionTests: XCTestCase {
 
     func testSelectHighestResolutionImageElement_prefersLargestPixelCount() {
         // 低・中・高解像度の画像データを用意
-        let lowResElement = ImageElement(imageData: makeImage(size: CGSize(width: 200, height: 200)))
-        let midResElement = ImageElement(imageData: makeImage(size: CGSize(width: 800, height: 600)))
-        let highResElement = ImageElement(imageData: makeImage(size: CGSize(width: 1920, height: 1080)))
+        let lowResElement = ImageElementFactory().makeElement(imageData: makeImage(size: CGSize(width: 200, height: 200)))
+        let midResElement = ImageElementFactory().makeElement(imageData: makeImage(size: CGSize(width: 800, height: 600)))
+        let highResElement = ImageElementFactory().makeElement(imageData: makeImage(size: CGSize(width: 1920, height: 1080)))
 
         let elements = [midResElement, lowResElement, highResElement]
 

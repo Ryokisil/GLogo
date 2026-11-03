@@ -33,7 +33,7 @@ final class SaveSnapshotPerformanceTests: XCTestCase {
             }
             return try XCTUnwrap(source.jpegData(compressionQuality: 0.95))
         }
-        let image = ImageElement(imageData: data)
+        let image = ImageElementFactory().makeElement(imageData: data)
         let project = LogoProject()
         project.addElement(image)
         let options = XCTMeasureOptions()

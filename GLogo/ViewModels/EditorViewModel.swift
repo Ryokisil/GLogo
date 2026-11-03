@@ -641,7 +641,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         }
         guard let data = image.pngData() else { return }
 
-        let imageElement = ImageElement(imageData: data, canvasSize: project.canvasSize)
+        let imageElement = ImageElementFactory().makeElement(imageData: data, canvasSize: project.canvasSize)
         imageElement.position = CGPoint(
             x: project.canvasSize.width / 2,
             y: project.canvasSize.height / 2

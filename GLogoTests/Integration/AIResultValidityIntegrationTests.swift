@@ -39,7 +39,7 @@ final class AIResultValidityIntegrationTests: XCTestCase {
                     image.brightnessAdjustment = 0.3
                 case 5: editor.revertSelectedImageToInitialState()
                 default:
-                    let replacement = ImageElement(imageData: snapshotImage(.green).pngData()!)
+                    let replacement = ImageElementFactory().makeElement(imageData: snapshotImage(.green).pngData()!)
                     replacement.id = image.id
                     editor.project.elements = [replacement]
                     editor.selectElement(replacement)
@@ -194,7 +194,7 @@ final class AIResultValidityIntegrationTests: XCTestCase {
 
     @MainActor
     private func makeContext(_ processor: DeferredImageProcessor) -> (EditorViewModel, AIToolsViewModel, ImageElement) {
-        let image = ImageElement(imageData: snapshotImage(.red).pngData()!)
+        let image = ImageElementFactory().makeElement(imageData: snapshotImage(.red).pngData()!)
         let project = LogoProject()
         project.addElement(image)
         let editor = EditorViewModel(project: project)

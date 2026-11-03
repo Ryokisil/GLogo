@@ -41,7 +41,7 @@ final class PerformanceKpiTests: XCTestCase {
     func testSaveProcessingPerformance_4K_HEIC() {
         let size = CGSize(width: 3840, height: 2160)
         let sourceData = makeHEICData(size: size)
-        let imageElement = ImageElement(imageData: sourceData)
+        let imageElement = ImageElementFactory().makeElement(imageData: sourceData)
         imageElement.saturationAdjustment = 1.2
         imageElement.brightnessAdjustment = 0.1
         imageElement.contrastAdjustment = 1.1

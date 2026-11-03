@@ -120,7 +120,7 @@ final class FilterAdjustSeparationTests: XCTestCase {
         }
 
         let project = LogoProject(name: "FilterAdjust分離テスト", canvasSize: CGSize(width: 300, height: 300))
-        let element = ImageElement(imageData: image.pngData() ?? Data(), importOrder: 0, previewService: previewService)
+        let element = ImageElementFactory(previewService: previewService).makeElement(imageData: image.pngData() ?? Data(), importOrder: 0)
         project.addElement(element)
         return (project, element)
     }

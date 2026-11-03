@@ -113,8 +113,8 @@ class ImageElement: LogoElement {
 
     // MARK: - 画像ソース管理
 
-    /// 画像ソース種別
-    private enum ImageSource {
+    /// 画像ソース種別。設定時は他のソース参照をクリアする。
+    enum ImageSource {
         case data(Data)
         case fileName(String)
         case url(URL)
@@ -185,8 +185,11 @@ class ImageElement: LogoElement {
         return imageRole == .base
     }
     
+    /// キャンバス指定のない生成と、保存データから復元した要素が使うキャンバスサイズ。
+    static let defaultCanvasSize = CGSize(width: 3840, height: 2160)
+
     /// キャンバスサイズを保持（表示サイズ計算用）
-    private var canvasSize: CGSize = CGSize(width: 3840, height: 2160)
+    private var canvasSize: CGSize = ImageElement.defaultCanvasSize
     
     /// 編集履歴
     private var editHistory: [ImageEditOperation] = []
@@ -555,167 +558,46 @@ class ImageElement: LogoElement {
         initialAdjustmentSnapshot = try container.decodeIfPresent(RevertAdjustmentSnapshot.self, forKey: .initialAdjustmentSnapshot) ?? makeCurrentAdjustmentSnapshot()
     }
     
-    /// 共通の初期化処理
+    /// 読み込み済みの値から画像要素を作る。画像の読み込み・デコードは行わない。
+    /// 画像データからの生成は `ImageElementFactory` が寸法の読み取りと配置サイズの計算を担当する。
     /// - Parameters:
+    ///   - source: 画像ソース。nil の場合はソースを持たない（保存用コピーは元画像を別途固定する）
+    ///   - size: 配置サイズ。nil の場合は既定サイズのまま
+    ///   - canvasSize: 画像差し替え・履歴復元でサイズを計算するキャンバス。保存しない
     ///   - importOrder: インポート順序（1番目はベース画像として扱う）
-    /// - Returns: なし
-    private init(
-        importOrder: Int, sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
-        previewService: any ImagePreviewing = ImagePreviewService.shared
+    init(
+        source: ImageSource?,
+        size: CGSize?,
+        canvasSize: CGSize = ImageElement.defaultCanvasSize,
+        importOrder: Int = 0,
+        sourceResolver: any ImageSourceResolving,
+        previewService: any ImagePreviewing
     ) {
         self.sourceResolver = sourceResolver
         self.previewService = previewService
         self.originalImportOrder = importOrder
-        
+        self.canvasSize = canvasSize
+
         super.init(name: "Image")
         originalImageIdentifier = UUID().uuidString
-        
+
         // 1番目の画像は自動的にベース画像に設定
         if importOrder == 1 {
             imageRole = .base
         }
-        
+
         // デフォルトzIndexを設定
         zIndex = ElementPriority.image.rawValue
 
         // 生成時点の調整値を初期スナップショットとして確定
         initialAdjustmentSnapshot = makeCurrentAdjustmentSnapshot()
-    }
-    
-    /// 画像とメタデータから初期化
-    /// - Parameters:
-    ///   - imageData: 画像データ
-    ///   - metadata: 画像メタデータ（nilの場合は抽出を試みる）
-    ///   - importOrder: インポート順序
-    /// - Returns: なし
-    convenience init(
-        imageData: Data, metadata: ImageMetadata?, importOrder: Int = 0,
-        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
-        previewService: any ImagePreviewing = ImagePreviewService.shared
-    ) {
-        self.init(importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
-        setImageSource(.data(imageData))
 
-        let content = ImageInitializationLoader().load(imageData: imageData, metadata: metadata)
-        self.metadata = content.metadata
-        if let imageSize = content.imageSize {
-            updateSize(for: imageSize)
+        if let source {
+            setImageSource(source)
         }
-    }
-    
-    /// ファイル名から画像要素を初期化
-    /// - Parameters:
-    ///   - fileName: 画像ファイル名
-    ///   - importOrder: インポート順序
-    /// - Returns: なし
-    convenience init(
-        fileName: String, importOrder: Int = 0,
-        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
-        previewService: any ImagePreviewing = ImagePreviewService.shared
-    ) {
-        self.init(importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
-        setImageSource(.fileName(fileName))
-        
-        if let imageSize = ImageInitializationLoader().imageSize(fileName: fileName) {
-            updateSize(for: imageSize)
+        if let size {
+            self.size = size
         }
-    }
-    
-    /// URLから初期化（メタデータの抽出を含む）
-    /// - Parameters:
-    ///   - url: 画像URL
-    ///   - importOrder: インポート順序
-    /// - Returns: なし
-    convenience init(
-        url: URL, importOrder: Int = 0,
-        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
-        previewService: any ImagePreviewing = ImagePreviewService.shared
-    ) {
-        self.init(importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
-        setImageSource(.url(url))
-        
-        if let content = ImageInitializationLoader().load(url: url) {
-            imageData = content.imageData
-            if let imageSize = content.imageSize {
-                updateSize(for: imageSize)
-            }
-            metadata = content.metadata
-        }
-    }
-    
-    /// パスから画像要素を初期化
-    /// - Parameters:
-    ///   - path: 画像パス
-    ///   - importOrder: インポート順序
-    /// - Returns: なし
-    convenience init(
-        path: String, importOrder: Int = 0,
-        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
-        previewService: any ImagePreviewing = ImagePreviewService.shared
-    ) {
-        self.init(importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
-        setImageSource(.path(path))
-        
-        if let imageSize = ImageInitializationLoader().imageSize(path: path) {
-            updateSize(for: imageSize)
-        }
-    }
-    
-    /// データから画像要素を初期化（動的サイズ調整フラグ付き）
-    /// - Parameters:
-    ///   - imageData: 画像データ
-    ///   - isDynamicSizing: サイズを画像に合わせて自動調整するかどうか
-    ///   - importOrder: インポート順序
-    /// - Returns: なし
-    convenience init(
-        imageData: Data, isDynamicSizing: Bool = true, importOrder: Int = 0,
-        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
-        previewService: any ImagePreviewing = ImagePreviewService.shared
-    ) {
-        self.init(importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
-        setImageSource(.data(imageData))
-        
-        if let imageSize = ImageInitializationLoader().imageSize(imageData: imageData) {
-            if isDynamicSizing {
-                updateSize(for: imageSize)
-            } else {
-                // クロップ済み画像は元のサイズを維持
-                size = imageSize
-            }
-        }
-    }
-    
-    /// データから画像要素を初期化（キャンバスサイズ付き）
-    /// - Parameters:
-    ///   - imageData: 画像データ
-    ///   - canvasSize: キャンバスサイズ
-    ///   - importOrder: インポート順序
-    /// - Returns: なし
-    convenience init(
-        imageData: Data, canvasSize: CGSize = CGSize(width: 3840, height: 2160), importOrder: Int = 0,
-        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
-        previewService: any ImagePreviewing = ImagePreviewService.shared
-    ) {
-        self.init(importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
-        setImageSource(.data(imageData))
-        self.canvasSize = canvasSize
-        
-        if let imageSize = ImageInitializationLoader().imageSize(imageData: imageData) {
-            updateSize(for: imageSize)
-        }
-    }
-    
-    /// データから画像要素を初期化
-    /// - Parameters:
-    ///   - imageData: 画像データ
-    ///   - importOrder: インポート順序
-    /// - Returns: なし
-    convenience init(
-        imageData: Data, importOrder: Int = 0,
-        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
-        previewService: any ImagePreviewing = ImagePreviewService.shared
-    ) {
-        self.init(imageData: imageData, isDynamicSizing: true, importOrder: importOrder, sourceResolver: sourceResolver, previewService: previewService)
     }
     
     /// 元の画像に戻す
@@ -932,26 +814,20 @@ class ImageElement: LogoElement {
     
     /// 要素のコピーを作成
     override func copy() -> LogoElement {
-        let copy: ImageElement
-
-        if let source = resolveImageSource(
+        // ソースのない複製元は、従来どおり空のアセット名を参照として持たせる。
+        let source = resolveImageSource(
             imageData: imageData,
             fileName: imageFileName,
             url: originalImageURL,
             path: originalImagePath
-        ) {
-            switch source {
-            case .data(let data):
-                copy = ImageElement(imageData: data, sourceResolver: sourceResolver, previewService: previewService)
-            case .fileName(let fileName):
-                copy = ImageElement(fileName: fileName, sourceResolver: sourceResolver, previewService: previewService)
-            case .url(let url):
-                copy = ImageElement(url: url, sourceResolver: sourceResolver, previewService: previewService)
-            case .path(let path):
-                copy = ImageElement(path: path, sourceResolver: sourceResolver, previewService: previewService)
-            }
-        } else {
-            copy = ImageElement(fileName: "", sourceResolver: sourceResolver, previewService: previewService)
+        ) ?? .fileName("")
+        let copy = ImageElement(source: source, size: nil, sourceResolver: sourceResolver, previewService: previewService)
+
+        // URL ソースは従来どおり複製時にファイルを読み直し、読めた Data と抽出したメタデータを持たせる。
+        // 配置サイズは copyAppearance で複製元の値に上書きするため、ここでは計算しない。
+        if case .url(let url) = source, let content = ImageInitializationLoader().load(url: url) {
+            copy.imageData = content.imageData
+            copy.metadata = content.metadata
         }
 
         copyAppearance(to: copy)
@@ -962,7 +838,10 @@ class ImageElement: LogoElement {
     /// UIImage は再圧縮せず共有し、調整値・キャッシュ・編集フラグは共有しない。
     /// 元のファイル参照を持ち越さないため、後続のソース差し替えや削除にも影響されない。
     func renderCopy() -> ImageElement {
-        let copy = ImageElement(importOrder: originalImportOrder, sourceResolver: sourceResolver, previewService: previewService)
+        let copy = ImageElement(
+            source: nil, size: nil, importOrder: originalImportOrder,
+            sourceResolver: sourceResolver, previewService: previewService
+        )
         copyAppearance(to: copy)
         copy.id = id
         copy.name = name

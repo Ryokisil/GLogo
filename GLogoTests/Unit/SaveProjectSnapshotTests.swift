@@ -7,7 +7,7 @@ import XCTest
 final class SaveProjectSnapshotTests: XCTestCase {
     @MainActor
     func test_snapshot_preservesImageAppearance() throws {
-        let image = ImageElement(imageData: snapshotImage(.red).pngData()!, importOrder: 7)
+        let image = ImageElementFactory().makeElement(imageData: snapshotImage(.red).pngData()!, importOrder: 7)
         image.imageRole = .base
         image.zIndex = 155
         image.name = "Base"
@@ -113,7 +113,11 @@ final class SaveProjectSnapshotTests: XCTestCase {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".png")
         try XCTUnwrap(snapshotImage(.red).pngData()).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
-        let image = ImageElement(path: url.path)
+        // 保存データ由来のファイルパス参照を持つ要素
+        let image = ImageElement(
+            source: .path(url.path), size: nil,
+            sourceResolver: ImageSourceResolver(), previewService: ImagePreviewService.shared
+        )
         let project = LogoProject()
         project.addElement(image)
         let copy = try XCTUnwrap(SaveProjectSnapshot(project: project).project.elements.first as? ImageElement)
@@ -129,8 +133,8 @@ final class SaveProjectSnapshotTests: XCTestCase {
     func test_snapshot_preservesOrientationAndColorSpace() throws {
         let base = snapshotImage(.red)
         let oriented = UIImage(cgImage: try XCTUnwrap(base.cgImage), scale: 2, orientation: .leftMirrored)
-        let image = ImageElement(imageData: Data(), importOrder: 1,
-                                 sourceResolver: SnapshotSourceResolver(image: oriented))
+        let image = ImageElementFactory(sourceResolver: SnapshotSourceResolver(image: oriented))
+            .makeElement(imageData: Data(), importOrder: 1)
         let original = try XCTUnwrap(image.originalImage)
         let copy = image.renderCopy()
         XCTAssertTrue(copy.originalImage === original)

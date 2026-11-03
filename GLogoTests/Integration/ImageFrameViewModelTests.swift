@@ -14,7 +14,7 @@ final class ImageFrameViewModelTests: XCTestCase {
             UIColor.white.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
         }
-        return ImageElement(imageData: try XCTUnwrap(image.pngData()))
+        return ImageElementFactory().makeElement(imageData: try XCTUnwrap(image.pngData()))
     }
 
     @MainActor

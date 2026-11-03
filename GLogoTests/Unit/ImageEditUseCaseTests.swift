@@ -11,7 +11,7 @@ final class ImageEditUseCaseTests: XCTestCase {
             UIColor.white.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 16, height: 16))
         }
-        return ImageElement(imageData: try XCTUnwrap(image.pngData()))
+        return ImageElementFactory().makeElement(imageData: try XCTUnwrap(image.pngData()))
     }
 
     @MainActor

@@ -45,7 +45,7 @@ final class ImageRenderValidityIntegrationTests: XCTestCase {
 
     @MainActor
     private func makeContext(_ refresh: ImageRenderRefreshUseCase) -> (EditorViewModel, ElementViewModel, ImageElement) {
-        let image = ImageElement(imageData: snapshotImage(.red).pngData()!)
+        let image = ImageElementFactory().makeElement(imageData: snapshotImage(.red).pngData()!)
         let project = LogoProject()
         project.addElement(image)
         let editor = EditorViewModel(project: project)
@@ -72,7 +72,7 @@ final class ImageRenderValidityIntegrationTests: XCTestCase {
             editor.deleteSelectedElement()
             editor.undo()
         case .sameIDReplacement:
-            let replacement = ImageElement(imageData: snapshotImage(.green).pngData()!)
+            let replacement = ImageElementFactory().makeElement(imageData: snapshotImage(.green).pngData()!)
             replacement.id = image.id
             editor.project.elements = [replacement]
             editor.selectElement(replacement)
@@ -232,7 +232,7 @@ final class ImageRenderValidityIntegrationTests: XCTestCase {
         let (editor, panels, image) = makeContext(ImageRenderRefreshUseCase(renderScheduler: scheduler))
         panels.imageAdjustment.beginImageAdjustmentEditing(.brightness)
         panels.imageAdjustment.updateImageAdjustment(.brightness, value: 0.2)
-        let replacement = ImageElement(imageData: snapshotImage(.green).pngData()!)
+        let replacement = ImageElementFactory().makeElement(imageData: snapshotImage(.green).pngData()!)
         replacement.id = image.id
         replacement.brightnessAdjustment = 0.3
         editor.project.elements = [replacement]

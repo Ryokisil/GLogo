@@ -65,7 +65,7 @@ final class PhotoLibrarySaveTests: XCTestCase {
         }
 
         // ImageElementを作成しフィルターを適用（現行は fitMode 廃止）
-        let imageElement = ImageElement(imageData: imageData)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData)
         imageElement.saturationAdjustment = 2.0  // 彩度を大幅に上げる
         imageElement.brightnessAdjustment = 0.5  // 明度も上げる
 
@@ -115,9 +115,9 @@ final class PhotoLibrarySaveTests: XCTestCase {
         }
 
         // 意図的に順序をランダムにして追加（最高解像度が最初ではない）
-        let lowResElement = ImageElement(imageData: lowResData)
-        let midResElement = ImageElement(imageData: midResData)
-        let highResElement = ImageElement(imageData: highResData)
+        let lowResElement = ImageElementFactory().makeElement(imageData: lowResData)
+        let midResElement = ImageElementFactory().makeElement(imageData: midResData)
+        let highResElement = ImageElementFactory().makeElement(imageData: highResData)
 
         viewModel.addElement(lowResElement)
         viewModel.addElement(midResElement)
@@ -151,7 +151,7 @@ final class PhotoLibrarySaveTests: XCTestCase {
         let corruptedData = Data([0x89, 0x50, 0x4E, 0x47, 0x00, 0x00, 0x00, 0x00]) // 不完全なPNGヘッダ
 
         // 破損データでImageElementを作成
-        let imageElement = ImageElement(imageData: corruptedData)
+        let imageElement = ImageElementFactory().makeElement(imageData: corruptedData)
         viewModel.addElement(imageElement)
 
         // originalImageが正しくnilになることを確認
@@ -179,7 +179,7 @@ final class PhotoLibrarySaveTests: XCTestCase {
             return
         }
 
-        let imageElement = ImageElement(imageData: imageData)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData)
 
         // 初期状態でフィルター適用画像を取得（キャッシュされる）
         let initialFiltered = imageElement.image

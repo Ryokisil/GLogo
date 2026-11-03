@@ -7,7 +7,7 @@ import XCTest
 final class ImageRenderRefreshUseCaseTests: XCTestCase {
     @MainActor
     private func makeContext() -> (ImageElement, EditorViewModel) {
-        let image = ImageElement(imageData: Data(), importOrder: 0)
+        let image = ImageElementFactory().makeElement(imageData: Data(), importOrder: 0)
         let project = LogoProject()
         project.addElement(image)
         return (image, EditorViewModel(project: project))

@@ -33,7 +33,7 @@ final class FrameColorHistoryIntegrationTests: XCTestCase {
         let imageData = try XCTUnwrap(image.pngData())
 
         let project = LogoProject(name: "FrameColorHistory", canvasSize: CGSize(width: 1080, height: 1080))
-        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         project.addElement(imageElement)
 
         let editorViewModel = EditorViewModel(project: project)

@@ -47,7 +47,7 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
         defer { processor.resume() }
         let coordinator = SaveImageCoordinator(processingService: processor, writer: writer)
         let (project, base) = makeProject()
-        let overlay = ImageElement(imageData: snapshotImage(.blue).pngData()!, importOrder: 2)
+        let overlay = ImageElementFactory().makeElement(imageData: snapshotImage(.blue).pngData()!, importOrder: 2)
         overlay.imageRole = .overlay
         overlay.position = CGPoint(x: 4, y: 5)
         overlay.size = CGSize(width: 8, height: 8)
@@ -138,7 +138,7 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
 
     private func makeProject() -> (LogoProject, ImageElement) {
         let project = LogoProject(canvasSize: CGSize(width: 32, height: 24))
-        let image = ImageElement(imageData: snapshotImage(.red).pngData()!, importOrder: 1)
+        let image = ImageElementFactory().makeElement(imageData: snapshotImage(.red).pngData()!, importOrder: 1)
         image.size = project.canvasSize
         project.addElement(image)
         return (project, image)

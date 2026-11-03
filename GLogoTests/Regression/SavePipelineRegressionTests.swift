@@ -91,7 +91,7 @@ final class SavePipelineRegressionTests: XCTestCase {
         let baseData = try XCTUnwrap(baseImage.pngData())
         let project = LogoProject(name: "FrameRegression", canvasSize: baseImage.size)
 
-        let imageElement = ImageElement(imageData: baseData, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: baseData, importOrder: 0)
         imageElement.position = CGPoint(x: 40, y: 20)
         imageElement.size = CGSize(width: 120, height: 60)
         imageElement.zIndex = ElementPriority.image.rawValue
@@ -313,7 +313,7 @@ final class SavePipelineRegressionTests: XCTestCase {
             let imageData = try makeOrientedJPEGData(orientation: orientation)
             let sourceImage = try XCTUnwrap(UIImage(data: imageData))
             let project = LogoProject(name: "Orientation\(orientation.rawValue)", canvasSize: sourceImage.size)
-            let base = ImageElement(imageData: imageData, importOrder: 0)
+            let base = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
             base.position = .zero
             base.size = sourceImage.size
             base.zIndex = ElementPriority.image.rawValue
@@ -339,7 +339,7 @@ final class SavePipelineRegressionTests: XCTestCase {
         let imageData = try makeOrientedJPEGData(orientation: .left)
         let sourceImage = try XCTUnwrap(UIImage(data: imageData))
         let project = LogoProject(name: "OrientationEncodingRegression", canvasSize: sourceImage.size)
-        let base = ImageElement(imageData: imageData, importOrder: 0)
+        let base = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         base.position = .zero
         base.size = sourceImage.size
         base.zIndex = ElementPriority.image.rawValue
@@ -406,7 +406,7 @@ final class SavePipelineRegressionTests: XCTestCase {
         let project = LogoProject(name: "HighResolutionCompositeRegression", canvasSize: CGSize(width: 3840, height: 2160))
         let largeImage = makeSolidImage(size: CGSize(width: 2000, height: 1000), color: .red)
         let imageData = try XCTUnwrap(largeImage.pngData())
-        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         imageElement.position = CGPoint(x: 120, y: 80)
         imageElement.size = CGSize(width: 200, height: 100)
         imageElement.zIndex = ElementPriority.image.rawValue
@@ -578,7 +578,7 @@ final class SavePipelineRegressionTests: XCTestCase {
         // 透明なベース画像で背景が透けて見えることを確認
         let transparentImage = makeTransparentImage(size: CGSize(width: 100, height: 100))
         let imageData = try XCTUnwrap(transparentImage.pngData())
-        let base = ImageElement(imageData: imageData, importOrder: 0)
+        let base = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         base.position = CGPoint(x: 50, y: 50)
         base.size = CGSize(width: 100, height: 100)
         base.zIndex = ElementPriority.image.rawValue
@@ -654,7 +654,7 @@ final class SavePipelineRegressionTests: XCTestCase {
     /// ベース画像要素を生成する
     private func makeBaseImageElement(baseImage: UIImage) throws -> ImageElement {
         let imageData = try XCTUnwrap(baseImage.pngData())
-        let baseElement = ImageElement(imageData: imageData, importOrder: 0)
+        let baseElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         baseElement.position = .zero
         baseElement.size = baseImage.size
         baseElement.zIndex = ElementPriority.image.rawValue
@@ -671,7 +671,7 @@ final class SavePipelineRegressionTests: XCTestCase {
     ) throws -> ImageElement {
         let image = makeSolidImage(size: size, color: color)
         let imageData = try XCTUnwrap(image.pngData())
-        let overlay = ImageElement(imageData: imageData, importOrder: 0)
+        let overlay = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         overlay.position = position
         overlay.size = size
         overlay.zIndex = zIndex

@@ -52,6 +52,27 @@ final class ImageSourceResolverTests: XCTestCase {
         XCTAssertNil(resolved)
     }
 
+    /// 保存データ由来のファイルパス・ファイルURL・パス文字列のアセット名から元画像を取得できることを検証
+    func test_resolveOriginalImage_localFileSources() throws {
+        let resolver = ImageSourceResolver()
+        let image = makeSolidImage(size: CGSize(width: 16, height: 12), color: .blue)
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("png")
+        try XCTUnwrap(image.pngData()).write(to: fileURL)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+
+        let fromPath = resolver.resolveOriginalImage(imageData: nil, fileName: nil, url: nil, path: fileURL.path)
+        let fromURL = resolver.resolveOriginalImage(imageData: nil, fileName: nil, url: fileURL, path: nil)
+        let fromName = resolver.resolveOriginalImage(imageData: nil, fileName: fileURL.path, url: nil, path: nil)
+
+        XCTAssertNotNil(fromPath)
+        XCTAssertNotNil(fromURL)
+        XCTAssertNotNil(fromName)
+    }
+
     /// 編集用画像解決がリポジトリへ委譲されることを検証
     func test_resolveEditingImage_usesRepository() throws {
         let proxyImage = makeSolidImage(size: CGSize(width: 12, height: 12), color: .green)
@@ -102,7 +123,7 @@ final class ImageSourceResolverTests: XCTestCase {
         let expectedImage = makeSolidImage(size: CGSize(width: 18, height: 18), color: .orange)
         let resolver = CountingImageSourceResolver(originalImage: expectedImage)
 
-        let element = ImageElement(imageData: Data(), importOrder: 0, sourceResolver: resolver)
+        let element = ImageElementFactory(sourceResolver: resolver).makeElement(imageData: Data(), importOrder: 0)
         let first = try XCTUnwrap(element.originalImage)
         let second = try XCTUnwrap(element.originalImage)
 

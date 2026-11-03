@@ -21,7 +21,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
     func testNoOpMoveGesture_DoesNotMarkProjectModified() throws {
         let project = LogoProject(name: "noop-gesture", canvasSize: CGSize(width: 1080, height: 1920))
         let imageData = try XCTUnwrap(makeSolidImage(color: .systemTeal, size: CGSize(width: 64, height: 64)).pngData())
-        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         project.addElement(imageElement)
 
         let editorViewModel = EditorViewModel(project: project)
@@ -77,7 +77,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
     func testRotationGesture_DoesNotReanchorAfterInterleavedEndedEvent() throws {
         let project = LogoProject(name: "rotation-ended-interleave", canvasSize: CGSize(width: 1080, height: 1920))
         let imageData = try XCTUnwrap(makeSolidImage(color: .systemOrange, size: CGSize(width: 64, height: 64)).pngData())
-        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         project.addElement(imageElement)
 
         let editorViewModel = EditorViewModel(project: project)
@@ -138,8 +138,8 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         let project = LogoProject(name: "rotation-selection-switch", canvasSize: CGSize(width: 1080, height: 1920))
         let firstImageData = try XCTUnwrap(makeSolidImage(color: .systemPink, size: CGSize(width: 64, height: 64)).pngData())
         let secondImageData = try XCTUnwrap(makeSolidImage(color: .systemIndigo, size: CGSize(width: 64, height: 64)).pngData())
-        let firstElement = ImageElement(imageData: firstImageData, importOrder: 0)
-        let secondElement = ImageElement(imageData: secondImageData, importOrder: 1)
+        let firstElement = ImageElementFactory().makeElement(imageData: firstImageData, importOrder: 0)
+        let secondElement = ImageElementFactory().makeElement(imageData: secondImageData, importOrder: 1)
         secondElement.rotation = 1.0
         project.addElement(firstElement)
         project.addElement(secondElement)
@@ -186,7 +186,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
     func testResetRotation_UsesHistoryAndKeepsLayout() throws {
         let project = LogoProject(name: "reset-rotation", canvasSize: CGSize(width: 1080, height: 1920))
         let imageData = try XCTUnwrap(makeSolidImage(color: .systemGreen, size: CGSize(width: 64, height: 64)).pngData())
-        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         imageElement.position = CGPoint(x: 240, y: 360)
         imageElement.size = CGSize(width: 180, height: 120)
         imageElement.rotation = 0.75
@@ -221,8 +221,8 @@ final class NoOpGestureIntegrationTests: XCTestCase {
     func testResetRotation_IgnoresZeroAndLockedElement() throws {
         let project = LogoProject(name: "reset-rotation-noop", canvasSize: CGSize(width: 1080, height: 1920))
         let imageData = try XCTUnwrap(makeSolidImage(color: .systemRed, size: CGSize(width: 64, height: 64)).pngData())
-        let unlockedElement = ImageElement(imageData: imageData, importOrder: 0)
-        let lockedElement = ImageElement(imageData: imageData, importOrder: 1)
+        let unlockedElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
+        let lockedElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 1)
         lockedElement.rotation = 0.4
         lockedElement.isLocked = true
         project.addElement(unlockedElement)

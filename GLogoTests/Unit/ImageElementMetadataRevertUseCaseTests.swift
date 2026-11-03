@@ -41,7 +41,7 @@ final class ImageElementMetadataRevertUseCaseTests: XCTestCase {
 
     private func makeElement(identifier: String?) throws -> ImageElement {
         let data = try XCTUnwrap(snapshotImage(.white).pngData())
-        let element = ImageElement(imageData: data)
+        let element = ImageElementFactory().makeElement(imageData: data)
         element.originalImageIdentifier = identifier
         return element
     }

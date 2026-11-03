@@ -48,7 +48,7 @@ final class LogoProjectPolymorphicCodingRegressionTests: XCTestCase {
         )
 
         let imageData = makeSolidImage(color: .systemPink).pngData() ?? Data()
-        let image = ImageElement(imageData: imageData, importOrder: 1)
+        let image = ImageElementFactory().makeElement(imageData: imageData, importOrder: 1)
         image.name = "Image"
         image.position = CGPoint(x: 20, y: 20)
         image.zIndex = 100

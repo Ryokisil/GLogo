@@ -151,7 +151,7 @@ final class SaveCoordinatorMainActorCompletionRegressionTests: XCTestCase {
     private func makeProjectWithSingleImageElement() -> LogoProject {
         let project = LogoProject(name: "MainActorCompletion", canvasSize: CGSize(width: 256, height: 256))
         let imageData = makeMainActorCompletionSolidImage(color: .red).pngData() ?? Data()
-        let element = ImageElement(imageData: imageData, importOrder: 0)
+        let element = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         project.addElement(element)
         return project
     }

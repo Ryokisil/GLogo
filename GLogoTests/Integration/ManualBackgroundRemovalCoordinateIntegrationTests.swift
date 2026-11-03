@@ -28,7 +28,7 @@ final class ManualBackgroundRemovalCoordinateIntegrationTests: XCTestCase {
     @MainActor
     private func verifyEditingFlow(type: UTType, orientation: Int, usesProxy: Bool) throws {
         let sourceData = try makeEncodedImage(type: type, orientation: orientation)
-        let element = ImageElement(imageData: sourceData)
+        let element = ImageElementFactory().makeElement(imageData: sourceData)
         let source = try XCTUnwrap(element.originalImage)
         var completedImage: UIImage?
         let viewModel = ManualBackgroundRemovalViewModel(
@@ -49,7 +49,7 @@ final class ManualBackgroundRemovalCoordinateIntegrationTests: XCTestCase {
         XCTAssertEqual(result.size.width * result.scale, source.size.width * source.scale, label)
 
         // エディタ確定と同じ PNG 差し替え経路を通し、通常の画像レンダラーも確認する。
-        let reloadedElement = ImageElement(imageData: try XCTUnwrap(result.pngData()))
+        let reloadedElement = ImageElementFactory().makeElement(imageData: try XCTUnwrap(result.pngData()))
         let reloaded = try XCTUnwrap(reloadedElement.originalImage)
         let rendered = try XCTUnwrap(reloadedElement.getFilteredImageForce())
         for image in [preview, result, reloaded, rendered] {

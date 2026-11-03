@@ -185,7 +185,7 @@ final class ImageFilterParamsComposerTests: XCTestCase {
             context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
         }
         let data = try XCTUnwrap(image.pngData())
-        return ImageElement(imageData: data, previewService: service)
+        return ImageElementFactory(previewService: service).makeElement(imageData: data)
     }
 }
 

@@ -165,7 +165,7 @@ final class ImageElementCacheTests: XCTestCase {
     private func withFixture(_ body: (ImageElement, CacheSourceSpy, CachePreviewSpy) throws -> Void) rethrows {
         let preview = CachePreviewSpy()
         let source = CacheSourceSpy()
-        try body(ImageElement(imageData: Data(), sourceResolver: source, previewService: preview), source, preview)
+        try body(ImageElementFactory(sourceResolver: source, previewService: preview).makeElement(imageData: Data()), source, preview)
     }
 }
 

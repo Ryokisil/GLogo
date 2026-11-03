@@ -95,7 +95,7 @@ final class SaveCoordinatorRegressionTests: XCTestCase {
     /// 単画像かつ見た目追加なしなら通常保存が選ばれること
     func testResolveMode_SinglePlainImage_ReturnsIndividual() {
         let policy = SaveImagePolicy()
-        let imageElement = ImageElement(imageData: makeSolidImage(color: .white).pngData()!, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: makeSolidImage(color: .white).pngData()!, importOrder: 0)
 
         let mode = policy.resolveMode(elements: [imageElement])
 
@@ -107,7 +107,7 @@ final class SaveCoordinatorRegressionTests: XCTestCase {
     /// 単画像でもフレーム付きなら合成保存が選ばれること
     func testResolveMode_SingleFramedImage_ReturnsComposite() {
         let policy = SaveImagePolicy()
-        let imageElement = ImageElement(imageData: makeSolidImage(color: .white).pngData()!, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: makeSolidImage(color: .white).pngData()!, importOrder: 0)
         imageElement.showFrame = true
         imageElement.frameWidth = 8
         imageElement.frameStyle = .simple
@@ -123,7 +123,7 @@ final class SaveCoordinatorRegressionTests: XCTestCase {
     /// 画像1枚でもテキストを追加すると composite 保存へ切り替わること
     func testResolveMode_SingleImageWithText_ReturnsComposite() {
         let policy = SaveImagePolicy()
-        let imageElement = ImageElement(imageData: makeSolidImage(color: .white).pngData()!, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: makeSolidImage(color: .white).pngData()!, importOrder: 0)
         let textElement = TextElement(text: "T", fontName: "HelveticaNeue", fontSize: 20, textColor: .black)
         textElement.position = CGPoint(x: 10, y: 10)
         textElement.size = CGSize(width: 40, height: 20)
@@ -234,7 +234,7 @@ final class SaveCoordinatorRegressionTests: XCTestCase {
     private func makeProjectWithImageElement() -> LogoProject {
         let project = LogoProject(name: "CoordinatorRegression", canvasSize: CGSize(width: 200, height: 100))
         let imageData = makeSolidImage(color: .red).pngData()!
-        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         imageElement.imageRole = .base
         imageElement.position = .zero
         imageElement.size = CGSize(width: 200, height: 100)
@@ -253,7 +253,7 @@ final class SaveCoordinatorRegressionTests: XCTestCase {
         let project = LogoProject(name: "CoordinatorBaseSelection", canvasSize: CGSize(width: 600, height: 400))
 
         let baseImageData = makeSolidImage(color: .white, size: CGSize(width: 200, height: 100)).pngData()!
-        let baseElement = ImageElement(imageData: baseImageData, importOrder: 0)
+        let baseElement = ImageElementFactory().makeElement(imageData: baseImageData, importOrder: 0)
         baseElement.imageRole = .base
         baseElement.position = CGPoint(x: 40, y: 40)
         baseElement.size = CGSize(width: 200, height: 100)
@@ -261,7 +261,7 @@ final class SaveCoordinatorRegressionTests: XCTestCase {
         project.addElement(baseElement)
 
         let overlayImageData = makeSolidImage(color: .blue, size: CGSize(width: 1200, height: 1200)).pngData()!
-        let overlayElement = ImageElement(imageData: overlayImageData, importOrder: 0)
+        let overlayElement = ImageElementFactory().makeElement(imageData: overlayImageData, importOrder: 0)
         overlayElement.imageRole = .overlay
         overlayElement.position = CGPoint(x: 260, y: 60)
         overlayElement.size = CGSize(width: 120, height: 120)
@@ -280,7 +280,7 @@ final class SaveCoordinatorRegressionTests: XCTestCase {
     private func makeProjectWithSingleFramedImage() -> LogoProject {
         let project = LogoProject(name: "SingleFramedImageSave", canvasSize: CGSize(width: 300, height: 200))
         let imageData = makeSolidImage(color: .white, size: CGSize(width: 200, height: 100)).pngData()!
-        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         imageElement.imageRole = .base
         imageElement.position = CGPoint(x: 40, y: 40)
         imageElement.size = CGSize(width: 200, height: 100)

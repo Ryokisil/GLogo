@@ -27,7 +27,7 @@ final class ImageReorderTests: XCTestCase {
     private func makeViewModel(imageCount: Int) -> EditorViewModel {
         let vm = EditorViewModel()
         for _ in 0..<imageCount {
-            let element = ImageElement(imageData: makeImage())
+            let element = ImageElementFactory().makeElement(imageData: makeImage())
             vm.addElement(element)
         }
         return vm
@@ -119,8 +119,8 @@ final class ImageReorderTests: XCTestCase {
         let vm = EditorViewModel()
 
         // 画像2枚追加
-        let img1 = ImageElement(imageData: makeImage())
-        let img2 = ImageElement(imageData: makeImage())
+        let img1 = ImageElementFactory().makeElement(imageData: makeImage())
+        let img2 = ImageElementFactory().makeElement(imageData: makeImage())
         vm.addElement(img1)
         vm.addElement(img2)
 
@@ -163,9 +163,9 @@ final class ImageReorderTests: XCTestCase {
 
     func testImageOrderChangedEvent_applyAndRevert() {
         let project = LogoProject()
-        let img1 = ImageElement(imageData: makeImage())
+        let img1 = ImageElementFactory().makeElement(imageData: makeImage())
         img1.zIndex = 110
-        let img2 = ImageElement(imageData: makeImage())
+        let img2 = ImageElementFactory().makeElement(imageData: makeImage())
         img2.zIndex = 111
 
         project.elements.append(img1)

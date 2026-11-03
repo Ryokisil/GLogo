@@ -13,7 +13,7 @@ final class ImageAdjustmentViewModelTests: XCTestCase {
             UIColor.red.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
         }
-        let image = ImageElement(imageData: try XCTUnwrap(bitmap.pngData()), importOrder: 0)
+        let image = ImageElementFactory().makeElement(imageData: try XCTUnwrap(bitmap.pngData()), importOrder: 0)
         let project = LogoProject()
         project.addElement(image)
         let editor = EditorViewModel(project: project)
@@ -61,7 +61,7 @@ final class ImageAdjustmentViewModelTests: XCTestCase {
     func test_selection_resetsStartValuesSynchronously() throws {
         let scheduler = ManualImageRenderScheduler()
         let (editor, parent, first) = try makeContext(refresh: ImageRenderRefreshUseCase(renderScheduler: scheduler))
-        let second = ImageElement(imageData: try XCTUnwrap(first.imageData), importOrder: 1)
+        let second = ImageElementFactory().makeElement(imageData: try XCTUnwrap(first.imageData), importOrder: 1)
         second.brightnessAdjustment = 0.3
         editor.project.addElement(second)
         let adjustment = parent.imageAdjustment

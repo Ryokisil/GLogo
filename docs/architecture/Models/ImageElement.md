@@ -1,6 +1,6 @@
 # ImageElementのデータと技術処理の境界
 
-この文書は、画像要素Modelが担うデータ・描画・キャッシュ・永続化の境界を記録します。調査日: 2026-10-18。2026-10-28 に保存専用の描画コピーを追加し、2026-10-29 に AI 完了結果の照合に使う世代番号を記録しました。2026-11-01 に段階3の第1回として、画像取得Resolverを共有可変依存から要素ごとの依存へ変更しました。同日の第2回で初期化時の読み込み・メタデータ抽出とサイズ計算を分離しました。同日の第3回で要素別キャッシュの保持・無効化ルールを分離しました。2026-11-03の第4回で描画サービスの全体差し替えを廃止し、生成時の依存へ変更しました。同日の第5回でフィルターパラメータの合成規則をModel外へ一本化しました。キャッシュ保持と描画要求の組み立てを担当するModelの責務は残っています。
+この文書は、画像要素Modelが担うデータ・描画・キャッシュ・永続化の境界を記録します。調査日: 2026-10-18。2026-10-28 に保存専用の描画コピーを追加し、2026-10-29 に AI 完了結果の照合に使う世代番号を記録しました。2026-11-01 に段階3の第1回として、画像取得Resolverを共有可変依存から要素ごとの依存へ変更しました。同日の第2回で初期化時の読み込み・メタデータ抽出とサイズ計算を分離しました。同日の第3回で要素別キャッシュの保持・無効化ルールを分離しました。2026-11-03の第4回で描画サービスの全体差し替えを廃止し、生成時の依存へ変更しました。同日の第5回でフィルターパラメータの合成規則をModel外へ一本化し、第7回で初期化の入口をUseCasesのFactoryへ移しました。キャッシュ保持と描画要求の組み立てを担当するModelの責務は残っています。
 
 - 対象: [ImageElement.swift](../../../GLogo/Models/ImageElement.swift)
 - 全体方針: [比較と責務分離方針](../README.md)
@@ -11,7 +11,7 @@
 
 | 入口 | 確認した処理 |
 | --- | --- |
-| コンストラクター | `ImageInitializationLoader`で寸法・必要なメタデータを取得。`ImageSizeCalculator`で配置サイズを算出 |
+| コンストラクター | 読み込み済みの値（ソース・配置サイズ・キャンバス）を受け取るだけでI/Oを行わない。画像データからの生成は `ImageElementFactory` が寸法の読み取りと配置サイズの計算を担当 |
 | `originalImage` | Resolverで元画像を取得し、要素が保持する `ImageRenderCache` へキャッシュ |
 | `image` | 編集状態に応じてプレビューまたは高品質処理を呼び、必要に応じてキャッシュ更新 |
 | `renderFullQualityImageAsync()` | 非同期の高品質フィルター処理を呼び出す |
@@ -46,7 +46,7 @@ ResolverとRendererへの抽出はすでに進んでいます。さらに分離�
 | 責務 | 方針 |
 | --- | --- |
 | 画像ソースの識別、編集値、初期状態 | Modelに保持。値のスナップショット化を検討 |
-| 初期化時の読み込み・抽出 | [ImageInitializationLoader](../../../GLogo/Infrastructure/Import/ImageInitializationLoader.swift)へ委譲 |
+| 初期化時の読み込み・配置サイズの決定 | [ImageElementFactory](../../../GLogo/UseCases/Import/ImageElementFactory.swift)が境界 `ImageInitializationLoading` 経由で担当。`copy()` のURL読み直しと `replaceImageSource` の寸法取得は、Modelから [ImageInitializationLoader](../../../GLogo/Infrastructure/Import/ImageInitializationLoader.swift) を直接呼ぶ |
 | 配置サイズの計算 | [ImageSizeCalculator](../../../GLogo/Models/ImageSizeCalculator.swift)で純粋な計算として共有 |
 | 画像ソースの優先順位と取得 | [ImageSourceResolver](../../../GLogo/UseCases/Storage/ImageSourceResolver.swift)とRepositoryを利用 |
 | フィルター、SDR／HDR経路、プレビュー | [ImagePreviewService](../../../GLogo/Infrastructure/Rendering/ImagePreviewService.swift)等を利用 |
@@ -312,7 +312,7 @@ Serenaの参照検索で `ImageFilterParams` の生成元を確認し、合成�
 | 外へ出す③ | 画像取得：`originalImage`・編集用プロキシを読み取り時に読み込みキャッシュする | 未着手（高リスク） |
 | 外へ出す④ | キャッシュの持ち主：`renderCache`・`cachedImage`・無効化。履歴イベントから57か所で無効化を呼ぶ | 未着手（高リスク）。`editRevision` による自動失効を検討 |
 | 外へ出す⑤ | 編集中の状態：`isCurrentlyEditing`・`startEditing`／`endEditing` | 未着手（①と一緒に扱う） |
-| 外へ出す⑥ | 初期化時の読み込み：7つの初期化入口が画像を読み込みサイズを決める | 未着手（中リスク）。初期化Factory |
+| 外へ出す⑥ | 初期化時の読み込み：7つの初期化入口が画像を読み込みサイズを決める | **第7回で完了**。`copy()` のURL読み直しと画像差し替え時の寸法取得はModelに残る |
 | 外へ出す⑦ | メタデータからフレーム値を戻す規則 | **第6回で完了** |
 
 ## 段階3・第6回：使われていない処理の削除と型の分離（2026-11-03）
@@ -328,3 +328,39 @@ Serenaの参照検索で `ImageFilterParams` の生成元を確認し、合成�
 - **Critical／Warning**: 指摘なし。挙動・保存形式・履歴の変更はありません。
 - **Info**: `ImageElement.swift` は **1,437 → 1,211行**。
 - **Verification**: GLogoTests 361件中358件成功。失敗1件は既知の `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用。変更したファイルからのビルド警告なし。iPhone 17 Pro／iOS 26.1 Simulator。UI・実機は未実施です。
+
+## 段階3・第7回：初期化Factory（2026-11-03）
+
+### 計画と確認した経路
+
+Serenaの参照検索とソースで、7つの初期化入口の呼び出し元を確認しました。アプリから呼ばれるのは、Data＋キャンバス指定（インポート・DEBUG用fixture）とDataのみ（インポート・Preview・`copy()`）です。URL・パス・アセット名の入口は `copy()` からだけ、メタデータ指定と `isDynamicSizing: false` の入口はテストからだけ使われていました。
+
+| 仮説 | 確認・対応 |
+| --- | --- |
+| 入口ごとの規則（URLのData保持・メタデータ抽出・破損時の既定サイズ）がずれる | 変更前に `copy()` の結果をソース種別ごとに固定するテスト6件を追加し、既存の初期化テスト7件と合わせて成功を確認してから移行 |
+| `canvasSize` を渡し忘れると、差し替え後のサイズが変わる | Modelのinitで保持。生成時キャンバスでの差し替え・復元と、複製が既定キャンバスに戻ることをテストで確認 |
+| 代入順の変更で `editRevision` の初期値が変わる | 参照は `ImageEditToken` の相対比較だけで、絶対値に依存する箇所はない |
+
+### 変更した境界
+
+- `ImageElement`：7つのconvenience initと共通initを、読み込み済みの値（ソース・配置サイズ・キャンバス・インポート順・依存）を受け取るinit 1つに置き換えました。I/Oを行わず、依存の既定値も持ちません。`ImageSource` を内部公開し、既定キャンバス `defaultCanvasSize` を追加しました。
+- [ImageElementFactory](../../../GLogo/UseCases/Import/ImageElementFactory.swift)：画像データの寸法を境界 [ImageInitializationLoading](../../../GLogo/UseCases/Import/ImageInitializationLoading.swift) で読み取り、`ImageSizeCalculator` で配置サイズを決めてModelを作ります。メタデータは抽出しません。
+- [ImageInitializationLoader](../../../GLogo/Infrastructure/Import/ImageInitializationLoader.swift)：境界に準拠。使われなくなったアセット名・パスの寸法取得と、メタデータ指定付きの読み込みを削除し、URL読み込みの戻り値から寸法を外しました。
+- `ImageImportElementBuilder`・DEBUG用fixture・PreviewはFactoryを使います。Builderのinit引数は変えていません。
+- `copy()`：結果を変えずに新しいinitを使う形にしました。URLソースのときだけ、従来どおりファイルを読み直してDataとメタデータを持たせます。生成時に計算して直後に上書きしていた配置サイズの計算（画像のデコード）はなくなりました。
+- テストからのみ使われていたメタデータ指定の入口と `isDynamicSizing: false` の入口は、ユーザー確認のうえ削除しました。
+
+アプリから見た挙動、保存形式、履歴イベント、キャッシュの無効化範囲は変えていません。インポートで作る要素は、従来どおりメタデータを持ちません。
+
+### 検証と変更後レビュー
+
+- **Critical**: 指摘なし。
+- **Warning**: Factoryの初期化引数の既定値に、Infrastructureの具体型（`ImageInitializationLoader`・`ImagePreviewService.shared`）が入りました。Modelからの直接参照を減らした代わりで、Composition Rootの整備（残件③）でまとめて解消します。
+- **Info**: ModelからInfrastructureへの参照は、初期化引数の既定値16か所とLoaderの呼び出し7か所から、Decoderの既定値2か所とLoaderの呼び出し2か所（`copy()` のURL読み直し・`replaceImageSource` の寸法取得）に減りました。`ImageElement.swift` は **1,175 → 1,054行** です。
+- **Test Coverage**: 新規 [ImageElementCopyTests](../../../GLogoTests/Unit/ImageElementCopyTests.swift) 7件で、ソース種別ごとの複製結果（引き継ぐ値・作り直す値・URLの読み直し）を固定しました。`ImageElementInitializationTests` は [ImageElementFactoryTests](../../../GLogoTests/Unit/ImageElementFactoryTests.swift) 6件へ置き換え、境界の注入とインポート順・役割の確認を加えました。`ImageSourceResolverTests` にファイル由来ソースの取得1件を追加しました。テストの生成箇所（36ファイル・75か所ほか）はFactoryの呼び出しへ置き換え、期待値は変えていません。
+- **回帰テスト棚卸し**: 削除した2入口の確認だけを外しました。旧URL・パス・アセット名の入口の確認は、本番で同じ規則を使う `copy()` のテストとResolverのテストへ移しました。パス・アセット名から生成時に配置サイズを求める規則は、本番で通る経路がなくなったため確認対象から外しました。
+- **Verification**: GLogoTests 372件中369件成功。失敗1件は既知の `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用です。変更したファイルからの新しいビルド警告はありません（既存のweak変数・Sendable警告は残っています）。`git diff --check` 問題なし。iPhone 17 Pro／iOS 26.1 Simulator、`-parallel-testing-enabled NO`。UI・実機は未実施です。SwiftFormatは未導入のため実行できません。
+
+### 次の範囲
+
+段階3の第7回まで完了しました。次の候補は、履歴イベントとRevertへの調整値型の適用（EventSourcing.swiftの分割を含む）と、Composition Rootの整備です。描画・画像取得・キャッシュ保持のModel外への移動は、引き続き後に回します。

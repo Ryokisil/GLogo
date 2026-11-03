@@ -9,7 +9,7 @@ final class ImageImportCoordinatorTests: XCTestCase {
         let image = snapshotImage(.blue)
         let project = LogoProject()
         project.addElement(TextElement(text: "Text"))
-        project.addElement(ImageElement(imageData: try XCTUnwrap(image.pngData())))
+        project.addElement(ImageElementFactory().makeElement(imageData: try XCTUnwrap(image.pngData())))
         let originalIDs = project.elements.map(\.id)
         let result = try XCTUnwrap(ImageImportCoordinator().importImage(
             source: .uiImage(image), project: project, viewportSize: CGSize(width: 400, height: 800),

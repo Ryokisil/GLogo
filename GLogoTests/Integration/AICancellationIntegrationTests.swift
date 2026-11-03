@@ -81,7 +81,7 @@ final class AICancellationIntegrationTests: XCTestCase {
 
     @MainActor
     private func makeContext(_ processor: CancellationImageProcessor) -> (EditorViewModel, AIToolsViewModel, ImageElement) {
-        let image = ImageElement(imageData: snapshotImage(.red).pngData()!)
+        let image = ImageElementFactory().makeElement(imageData: snapshotImage(.red).pngData()!)
         let project = LogoProject()
         project.addElement(image)
         let editor = EditorViewModel(project: project)

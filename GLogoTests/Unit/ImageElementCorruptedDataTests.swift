@@ -15,7 +15,7 @@ final class ImageElementCorruptedDataTests: XCTestCase {
         // 不完全なPNGヘッダのみを持つ破損データ
         let corruptedData = Data([0x89, 0x50, 0x4E, 0x47, 0x00, 0x00, 0x00, 0x00])
 
-        let element = ImageElement(imageData: corruptedData)
+        let element = ImageElementFactory().makeElement(imageData: corruptedData)
 
         XCTAssertNil(element.originalImage, "破損データの場合、originalImageはnilであるべき")
         XCTAssertNil(element.getFilteredImageForce(), "破損データはフィルター適用に失敗すべき")

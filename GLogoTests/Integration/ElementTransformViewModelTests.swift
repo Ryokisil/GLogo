@@ -225,7 +225,7 @@ final class ElementTransformViewModelTests: XCTestCase {
     }
 
     private func makeImageElement() throws -> ImageElement {
-        ImageElement(imageData: try XCTUnwrap(makeImage().pngData()))
+        ImageElementFactory().makeElement(imageData: try XCTUnwrap(makeImage().pngData()))
     }
 
     private func makeImage() -> UIImage {

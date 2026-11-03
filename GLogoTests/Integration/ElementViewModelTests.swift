@@ -39,7 +39,7 @@ final class ElementViewModelTests: XCTestCase {
     @MainActor
     func test_selectionSwitch_updatesReferencesImmediately() async {
         let targets: [LogoElement] = [TextElement(text: "Next"), ShapeElement(shapeType: .rectangle),
-                                     ImageElement(imageData: snapshotImage(.blue).pngData()!)]
+                                     ImageElementFactory().makeElement(imageData: snapshotImage(.blue).pngData()!)]
         for target in targets {
             let (editor, panel, _) = await makeContext()
             editor.project.addElement(target)
@@ -72,7 +72,7 @@ final class ElementViewModelTests: XCTestCase {
 
     @MainActor
     func test_imageSelection_clearsImageReferencesImmediately() {
-        let image = ImageElement(imageData: snapshotImage(.blue).pngData()!)
+        let image = ImageElementFactory().makeElement(imageData: snapshotImage(.blue).pngData()!)
         let text = TextElement(text: "Next")
         let project = LogoProject()
         project.addElement(image)

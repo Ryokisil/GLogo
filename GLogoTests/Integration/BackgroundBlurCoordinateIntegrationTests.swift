@@ -37,7 +37,7 @@ final class BackgroundBlurCoordinateIntegrationTests: XCTestCase {
         CGImageDestinationAddImage(destination, try XCTUnwrap(stripes().cgImage), [kCGImagePropertyOrientation: 6] as CFDictionary)
         XCTAssertTrue(CGImageDestinationFinalize(destination))
         for proxy in [false, true] {
-            let element = ImageElement(imageData: encoded as Data)
+            let element = ImageElementFactory().makeElement(imageData: encoded as Data)
             let original = try XCTUnwrap(element.originalImage)
             let resolver = BlurEditingResolver(proxy: proxy)
             var outputMask: Data?

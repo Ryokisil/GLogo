@@ -31,7 +31,7 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
     private func makeProjectWithImageElement() -> (LogoProject, ImageElement) {
         let baseImage = makeSolidImage(color: .red, size: CGSize(width: 4, height: 4))
         let imageData = baseImage.pngData() ?? Data()
-        let element = ImageElement(imageData: imageData, importOrder: 0)
+        let element = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         let project = LogoProject(name: "テスト", canvasSize: CGSize(width: 100, height: 100))
         project.addElement(element)
         return (project, element)
@@ -46,8 +46,8 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
         let firstData = firstImage.pngData() ?? Data()
         let secondData = secondImage.pngData() ?? Data()
 
-        let first = ImageElement(imageData: firstData, importOrder: 0)
-        let second = ImageElement(imageData: secondData, importOrder: 1)
+        let first = ImageElementFactory().makeElement(imageData: firstData, importOrder: 0)
+        let second = ImageElementFactory().makeElement(imageData: secondData, importOrder: 1)
         let project = LogoProject(name: "テスト", canvasSize: CGSize(width: 100, height: 100))
         project.addElement(first)
         project.addElement(second)

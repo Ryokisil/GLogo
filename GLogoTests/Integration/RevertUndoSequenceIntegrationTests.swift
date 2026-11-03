@@ -32,7 +32,7 @@ final class RevertUndoSequenceIntegrationTests: XCTestCase {
         let viewModel = EditorViewModel(project: project)
 
         let imageData = try XCTUnwrap(makeSolidImage(color: .white, size: CGSize(width: 64, height: 64)).pngData())
-        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
 
         // 1) 画像追加（履歴: ElementAdded）
         viewModel.addElement(imageElement)

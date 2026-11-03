@@ -84,7 +84,7 @@ final class ImageUpscaleRestrictionIntegrationTests: XCTestCase {
     /// - Returns: 生成したImageElement
     private func makeImageElement(color: UIColor) throws -> ImageElement {
         let data = try XCTUnwrap(makeImage(color: color).pngData())
-        return ImageElement(imageData: data, importOrder: 0)
+        return ImageElementFactory().makeElement(imageData: data, importOrder: 0)
     }
 
     /// 単色画像を生成

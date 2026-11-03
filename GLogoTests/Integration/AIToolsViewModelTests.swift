@@ -196,7 +196,7 @@ final class AIToolsViewModelTests: XCTestCase {
     }
 
     private func makeElement() throws -> ImageElement {
-        ImageElement(imageData: try XCTUnwrap(makeImage(.white).pngData()))
+        ImageElementFactory().makeElement(imageData: try XCTUnwrap(makeImage(.white).pngData()))
     }
 
     private func makeImage(_ color: UIColor) -> UIImage {

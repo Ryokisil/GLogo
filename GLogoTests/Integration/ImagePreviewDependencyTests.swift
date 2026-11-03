@@ -6,8 +6,8 @@ import XCTest
 
 final class ImagePreviewDependencyTests: XCTestCase {
     func test_defaultDependency_reusesSharedService() throws {
-        let first = ImageElement(imageData: Data())
-        let second = ImageElement(imageData: Data())
+        let first = ImageElementFactory().makeElement(imageData: Data())
+        let second = ImageElementFactory().makeElement(imageData: Data())
         XCTAssertTrue(first.previewService === second.previewService)
         XCTAssertTrue(first.previewService === ImagePreviewService.shared)
         let decoded = try JSONDecoder().decode(ImageElement.self, from: JSONEncoder().encode(first))
@@ -55,15 +55,15 @@ final class ImagePreviewDependencyTests: XCTestCase {
     func test_initializersAndCopies_preserveDependency() throws {
         let service = PreviewDependencySpy(color: .orange)
         let missing = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let factory = ImageElementFactory(previewService: service)
+        // 保存データ由来のソースは Model の初期化で直接作り、複製の各分岐も通す。
+        let legacySources: [ImageElement.ImageSource] = [.fileName(""), .path(missing.path), .url(missing)]
         let elements = [
-            ImageElement(imageData: Data(), previewService: service),
-            ImageElement(imageData: Data(), metadata: nil, previewService: service),
-            ImageElement(imageData: Data(), isDynamicSizing: false, previewService: service),
-            ImageElement(imageData: Data(), canvasSize: CGSize(width: 80, height: 80), previewService: service),
-            ImageElement(fileName: "", previewService: service),
-            ImageElement(path: missing.path, previewService: service),
-            ImageElement(url: missing, previewService: service)
-        ]
+            factory.makeElement(imageData: Data()),
+            factory.makeElement(imageData: Data(), canvasSize: CGSize(width: 80, height: 80))
+        ] + legacySources.map {
+            ImageElement(source: $0, size: nil, sourceResolver: ImageSourceResolver(), previewService: service)
+        }
         for element in elements {
             let copy = try XCTUnwrap(element.copy() as? ImageElement)
             XCTAssertTrue(element.previewService === service)
@@ -179,7 +179,7 @@ final class ImagePreviewDependencyTests: XCTestCase {
 
     private func element(service: any ImagePreviewing) throws -> ImageElement {
         let data = try XCTUnwrap(snapshotImage(.white).pngData())
-        return ImageElement(imageData: data, previewService: service)
+        return ImageElementFactory(previewService: service).makeElement(imageData: data)
     }
 }
 

@@ -6,7 +6,7 @@ import XCTest
 final class ImageEditTokenTests: XCTestCase {
     @MainActor
     func test_adjustments_invalidateEvenAfterRestoration() throws {
-        let image = ImageElement(imageData: snapshotImage(.red).pngData()!)
+        let image = ImageElementFactory().makeElement(imageData: snapshotImage(.red).pngData()!)
         let project = LogoProject()
         project.addElement(image)
         let editor = EditorViewModel(project: project)
@@ -52,7 +52,7 @@ final class ImageEditTokenTests: XCTestCase {
     }
 
     func test_revision_isNotPersisted() throws {
-        let image = ImageElement(imageData: snapshotImage(.red).pngData()!)
+        let image = ImageElementFactory().makeElement(imageData: snapshotImage(.red).pngData()!)
         image.brightnessAdjustment = 0.4
         let data = try JSONEncoder().encode(image)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])

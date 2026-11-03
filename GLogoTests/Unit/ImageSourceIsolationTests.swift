@@ -8,8 +8,8 @@ final class ImageSourceIsolationTests: XCTestCase {
     func test_originalImages_keepIndependentCaches() {
         let red = SourceResolverSpy(image: snapshotImage(.red))
         let blue = SourceResolverSpy(image: snapshotImage(.blue))
-        let first = ImageElement(imageData: Data(), sourceResolver: red)
-        let second = ImageElement(imageData: Data(), sourceResolver: blue)
+        let first = ImageElementFactory(sourceResolver: red).makeElement(imageData: Data())
+        let second = ImageElementFactory(sourceResolver: blue).makeElement(imageData: Data())
         XCTAssertTrue(first.originalImage === red.image)
         XCTAssertTrue(second.originalImage === blue.image)
         XCTAssertTrue(first.originalImage === red.image)
@@ -25,8 +25,8 @@ final class ImageSourceIsolationTests: XCTestCase {
     func test_proxyImages_useEachResolverAndCache() {
         let firstResolver = SourceResolverSpy(image: snapshotImage(.red))
         let secondResolver = SourceResolverSpy(image: snapshotImage(.blue))
-        let first = ImageElement(imageData: Data(), sourceResolver: firstResolver)
-        let second = ImageElement(imageData: Data(), sourceResolver: secondResolver)
+        let first = ImageElementFactory(sourceResolver: firstResolver).makeElement(imageData: Data())
+        let second = ImageElementFactory(sourceResolver: secondResolver).makeElement(imageData: Data())
         first.originalImageIdentifier = "first-proxy"
         second.originalImageIdentifier = "second-proxy"
         XCTAssertNotNil(first.getInstantPreview())
@@ -44,15 +44,17 @@ final class ImageSourceIsolationTests: XCTestCase {
     func test_initializersAndCopies_keepResolver() throws {
         let resolver = SourceResolverSpy(image: snapshotImage(.orange))
         let missingPath = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
-        let elements = [
-            ImageElement(imageData: Data(), sourceResolver: resolver),
-            ImageElement(imageData: Data(), metadata: nil, sourceResolver: resolver),
-            ImageElement(imageData: Data(), isDynamicSizing: false, sourceResolver: resolver),
-            ImageElement(imageData: Data(), canvasSize: CGSize(width: 80, height: 80), sourceResolver: resolver),
-            ImageElement(fileName: "", sourceResolver: resolver),
-            ImageElement(path: missingPath, sourceResolver: resolver),
-            ImageElement(url: URL(fileURLWithPath: missingPath), sourceResolver: resolver)
+        let factory = ImageElementFactory(sourceResolver: resolver)
+        // 保存データ由来のソースは Model の初期化で直接作り、複製の各分岐も通す。
+        let legacySources: [ImageElement.ImageSource] = [
+            .fileName(""), .path(missingPath), .url(URL(fileURLWithPath: missingPath))
         ]
+        let elements = [
+            factory.makeElement(imageData: Data()),
+            factory.makeElement(imageData: Data(), canvasSize: CGSize(width: 80, height: 80))
+        ] + legacySources.map {
+            ImageElement(source: $0, size: nil, sourceResolver: resolver, previewService: ImagePreviewService.shared)
+        }
         for element in elements {
             XCTAssertTrue(element.originalImage === resolver.image)
             let beforeCopy = resolver.originalCalls
@@ -69,7 +71,7 @@ final class ImageSourceIsolationTests: XCTestCase {
 
     func test_restoreSource_usesResolverAndInvalidatesCache() {
         let resolver = SourceResolverSpy(image: snapshotImage(.red))
-        let element = ImageElement(imageData: Data(), sourceResolver: resolver)
+        let element = ImageElementFactory(sourceResolver: resolver).makeElement(imageData: Data())
         XCTAssertTrue(element.originalImage === resolver.image)
         resolver.image = snapshotImage(.blue)
         element.restoreImageSource(imageData: Data([1]), fileName: "ignored", url: nil,
@@ -89,7 +91,7 @@ final class ImageSourceIsolationTests: XCTestCase {
     func test_renderCopy_pinsResolvedImage() {
         let original = snapshotImage(.red)
         let resolver = SourceResolverSpy(image: original)
-        let element = ImageElement(imageData: Data(), sourceResolver: resolver)
+        let element = ImageElementFactory(sourceResolver: resolver).makeElement(imageData: Data())
         let copy = element.renderCopy()
         resolver.image = snapshotImage(.blue)
         element.handleMemoryWarning()
@@ -102,7 +104,7 @@ final class ImageSourceIsolationTests: XCTestCase {
 
     func test_projectDecode_isolatesResolverWithoutChangingFormat() throws {
         let project = LogoProject()
-        project.addElement(ImageElement(imageData: snapshotImage(.green).pngData()!))
+        project.addElement(ImageElementFactory().makeElement(imageData: snapshotImage(.green).pngData()!))
         let data = try JSONEncoder().encode(project)
         let firstResolver = SourceResolverSpy(image: snapshotImage(.red))
         let secondResolver = SourceResolverSpy(image: snapshotImage(.blue))
