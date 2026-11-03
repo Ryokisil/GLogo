@@ -11,3 +11,6 @@ tools/ml/.venv/
 tools/ml/checkpoints/
 tools/ml/artifacts/
 build/
+
+# sourcekit-lsp 用のローカル設定（xcode-build-server が生成、マシン固有のパスを含む）
+buildServer.json
