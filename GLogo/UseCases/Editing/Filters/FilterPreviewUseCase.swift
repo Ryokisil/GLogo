@@ -14,73 +14,23 @@ import UIKit
 enum FilterPreviewUseCase {
 
     /// プリセットのプレビュー画像を生成（filter + manual を合成）
+    /// 合成規則は編集画面の描画と共通のため、適用後の見た目とサムネイルが一致する。
     /// - Parameters:
     ///   - sourceImage: プレビュー元の画像
-    ///   - toneCurveData: 現在要素のトーンカーブ
-    ///   - manualSaturation: manual 側の彩度
-    ///   - manualBrightness: manual 側の明度
-    ///   - manualContrast: manual 側のコントラスト
-    ///   - manualHighlights: manual 側のハイライト
-    ///   - manualShadows: manual 側のシャドウ
-    ///   - manualBlacks: manual 側の黒レベル
-    ///   - manualWhites: manual 側の白レベル
-    ///   - manualWarmth: manual 側の色温度
-    ///   - manualVibrance: manual 側のヴィブランス
-    ///   - manualHue: manual 側の色相
-    ///   - manualSharpness: manual 側のシャープネス
-    ///   - manualGaussianBlur: manual 側のガウシアンブラー
-    ///   - manualTintColor: manual 側のティントカラー
-    ///   - manualTintIntensity: manual 側のティント強度
-    ///   - backgroundBlurRadius: 背景ぼかし半径
-    ///   - backgroundBlurMaskData: 背景ぼかしマスク
+    ///   - adjustments: 選択画像に設定された手動調整値
     ///   - preset: 適用するフィルタープリセット
     ///   - targetSize: サムネイルサイズ
     ///   - previewService: 選択画像と同じ描画依存。単独利用時は既定の共有サービス
     /// - Returns: プレビュー画像。生成に失敗した場合は nil
     static func generatePreview(
         sourceImage: UIImage,
-        toneCurveData: ToneCurveData,
-        manualSaturation: CGFloat,
-        manualBrightness: CGFloat,
-        manualContrast: CGFloat,
-        manualHighlights: CGFloat,
-        manualShadows: CGFloat,
-        manualBlacks: CGFloat,
-        manualWhites: CGFloat,
-        manualWarmth: CGFloat,
-        manualVibrance: CGFloat,
-        manualHue: CGFloat,
-        manualSharpness: CGFloat,
-        manualGaussianBlur: CGFloat,
-        manualTintColor: UIColor?,
-        manualTintIntensity: CGFloat,
-        backgroundBlurRadius: CGFloat,
-        backgroundBlurMaskData: Data?,
+        adjustments: ImageAdjustmentValues,
         preset: FilterPreset,
         targetSize: CGSize,
         previewService: any ImagePreviewing = ImagePreviewService.shared
     ) async -> UIImage? {
         let preparedImage = resizedImage(sourceImage, targetSize: targetSize)
-        let params = makePreviewParams(
-            toneCurveData: toneCurveData,
-            manualSaturation: manualSaturation,
-            manualBrightness: manualBrightness,
-            manualContrast: manualContrast,
-            manualHighlights: manualHighlights,
-            manualShadows: manualShadows,
-            manualBlacks: manualBlacks,
-            manualWhites: manualWhites,
-            manualWarmth: manualWarmth,
-            manualVibrance: manualVibrance,
-            manualHue: manualHue,
-            manualSharpness: manualSharpness,
-            manualGaussianBlur: manualGaussianBlur,
-            manualTintColor: manualTintColor,
-            manualTintIntensity: manualTintIntensity,
-            backgroundBlurRadius: backgroundBlurRadius,
-            backgroundBlurMaskData: backgroundBlurMaskData,
-            preset: preset
-        )
+        let params = ImageFilterParamsComposer.compose(adjustments, recipe: preset.recipe)
         let renderMode = ImageRenderMode.fromPresetId(preset.id)
 
         return await previewService.applyFiltersAsync(
@@ -88,77 +38,6 @@ enum FilterPreviewUseCase {
             params: params,
             quality: .preview,
             mode: renderMode
-        )
-    }
-
-    /// プレビュー適用用のフィルターパラメータを生成（filter + manual 合成）
-    private static func makePreviewParams(
-        toneCurveData: ToneCurveData,
-        manualSaturation: CGFloat,
-        manualBrightness: CGFloat,
-        manualContrast: CGFloat,
-        manualHighlights: CGFloat,
-        manualShadows: CGFloat,
-        manualBlacks: CGFloat,
-        manualWhites: CGFloat,
-        manualWarmth: CGFloat,
-        manualVibrance: CGFloat,
-        manualHue: CGFloat,
-        manualSharpness: CGFloat,
-        manualGaussianBlur: CGFloat,
-        manualTintColor: UIColor?,
-        manualTintIntensity: CGFloat,
-        backgroundBlurRadius: CGFloat,
-        backgroundBlurMaskData: Data?,
-        preset: FilterPreset
-    ) -> ImageFilterParams {
-        let recipe = preset.recipe
-
-        // 乗算系: filter_val * manual_val
-        let saturation = (recipe.saturation ?? 1.0) * manualSaturation
-        let contrast = (recipe.contrast ?? 1.0) * manualContrast
-
-        // 加算系: filter_val + manual_val
-        let brightness = (recipe.brightness ?? 0.0) + manualBrightness
-        let highlights = (recipe.highlights ?? 0.0) + manualHighlights
-        let shadows = (recipe.shadows ?? 0.0) + manualShadows
-        let blacks = manualBlacks
-        let whites = manualWhites
-        let warmth = manualWarmth
-        let vibrance = manualVibrance
-        let hue = (recipe.hue ?? 0.0) + manualHue
-        let sharpness = (recipe.sharpness ?? 0.0) + manualSharpness
-        let gaussianBlurRadius = (recipe.gaussianBlur ?? 0.0) + manualGaussianBlur
-
-        // ティント: filter が設定されていれば filter 側を使用
-        let tintColor: UIColor?
-        let tintIntensity: CGFloat
-        if recipe.affectsTint {
-            tintColor = recipe.tintColorHex.flatMap { UIColor(hex: $0) }
-            tintIntensity = recipe.tintIntensity ?? 0.0
-        } else {
-            tintColor = manualTintColor
-            tintIntensity = manualTintIntensity
-        }
-
-        return ImageFilterParams(
-            toneCurveData: toneCurveData,
-            saturation: saturation,
-            brightness: brightness,
-            contrast: contrast,
-            highlights: highlights,
-            shadows: shadows,
-            blacks: blacks,
-            whites: whites,
-            warmth: warmth,
-            vibrance: vibrance,
-            hue: hue,
-            sharpness: sharpness,
-            gaussianBlurRadius: gaussianBlurRadius,
-            tintColor: tintColor,
-            tintIntensity: tintIntensity,
-            backgroundBlurRadius: backgroundBlurRadius,
-            backgroundBlurMaskData: backgroundBlurMaskData
         )
     }
 

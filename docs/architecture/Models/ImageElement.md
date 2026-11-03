@@ -1,6 +1,6 @@
 # ImageElementのデータと技術処理の境界
 
-この文書は、画像要素Modelが担うデータ・描画・キャッシュ・永続化の境界を記録します。調査日: 2026-10-18。2026-10-28 に保存専用の描画コピーを追加し、2026-10-29 に AI 完了結果の照合に使う世代番号を記録しました。2026-11-01 に段階3の第1回として、画像取得Resolverを共有可変依存から要素ごとの依存へ変更しました。同日の第2回で初期化時の読み込み・メタデータ抽出とサイズ計算を分離しました。同日の第3回で要素別キャッシュの保持・無効化ルールを分離しました。2026-11-03の第4回で描画サービスの全体差し替えを廃止し、生成時の依存へ変更しました。キャッシュ保持と描画要求の組み立てを担当するModelの責務は残っています。
+この文書は、画像要素Modelが担うデータ・描画・キャッシュ・永続化の境界を記録します。調査日: 2026-10-18。2026-10-28 に保存専用の描画コピーを追加し、2026-10-29 に AI 完了結果の照合に使う世代番号を記録しました。2026-11-01 に段階3の第1回として、画像取得Resolverを共有可変依存から要素ごとの依存へ変更しました。同日の第2回で初期化時の読み込み・メタデータ抽出とサイズ計算を分離しました。同日の第3回で要素別キャッシュの保持・無効化ルールを分離しました。2026-11-03の第4回で描画サービスの全体差し替えを廃止し、生成時の依存へ変更しました。同日の第5回でフィルターパラメータの合成規則をModel外へ一本化しました。キャッシュ保持と描画要求の組み立てを担当するModelの責務は残っています。
 
 - 対象: [ImageElement.swift](../../../GLogo/Models/ImageElement.swift)
 - 全体方針: [比較と責務分離方針](../README.md)
@@ -259,3 +259,42 @@ Codegraphと現行ソースで、Modelの同期／非同期描画、FilterPanelV
 ### 次の範囲
 
 段階3の第4回まで完了しました。次はフィルターパラメータ合成と描画要求の組み立てをModelから分離します。キャッシュ保持元、初期化Factory、履歴周辺の境界整理は引き続き残件です。
+
+
+## 段階3・第5回：フィルターパラメータ合成の一本化（2026-11-03）
+
+### 計画と確認した経路
+
+Serenaの参照検索で `ImageFilterParams` の生成元を確認し、合成処理は `ImageElement.currentFilterParams()` と `FilterPreviewUseCase.makePreviewParams` の2か所だけと特定しました。サムネイルの呼び出し元は `FilterPanelViewModel` だけで、SDR／HDRのフィルターパネルはそこを経由します。
+
+| 仮説 | 確認・対応 |
+| --- | --- |
+| 合成規則が2か所に重複し、結果がずれている | サムネイル側にビネット・ブルーム・グレイン・フェード・色収差がなく、`ImageFilterParams` の既定値0で補われていた。最後のコミット時点から存在する既存不具合 |
+| 合成をModel外へ移しても実際の描画結果は変わらない | 全項目に異なる値を設定し、描画サービスへ届くパラメータが手動値と一致することをテストで確認 |
+| サムネイルの変更はフィルターパネルにだけ影響する | 呼び出し元を照合。ユーザー確認のうえ、サムネイルを適用後の見た目と一致させる |
+
+### 変更した境界
+
+- [ImageAdjustmentValues](../../../GLogo/Models/ImageAdjustmentValues.swift)：プリセット合成前の手動調整値をまとめた値型。メモリ上の受け渡し専用で、保存形式は変えていません。
+- [ImageFilterParamsComposer](../../../GLogo/UseCases/Rendering/ImageFilterParamsComposer.swift)：乗算・加算・手動値のみ・ティント置き換えの合成規則の唯一の入口。既定引数に頼らず全項目を明示します。
+- `ImageElement.adjustmentValues` を読み取り専用で追加し、`currentFilterParams()` は合成を委譲するだけにしました。
+- `FilterPreviewUseCase.generatePreview` は約20個の調整値引数を `adjustments` 1つに置き換え、重複していた `makePreviewParams` を削除しました。
+
+描画モードの判定は既に `ImageRenderMode.fromPresetId` に一本化されていたため対象外です。調整値を追加するときは、`ImageAdjustmentValues` と Composer を更新すれば描画とサムネイルの両方に反映されます。Codable・履歴イベント・Revertスナップショットへの追加は引き続き個別に必要です。
+
+### 検証と変更後レビュー
+
+- **Critical**: 指摘なし。
+- **Warning**: 今回の変更に新規指摘なし。サムネイルに効果系の処理が加わるため、生成負荷はわずかに増えます（72pt表示・縮小後画像に対する処理）。性能は未計測です。
+- **Info**: Modelが参照するUseCases層の型に `ImageFilterParamsComposer` が加わりました。`ImageFilterParams` がUseCases層にあるための一時的な形で、描画要求の組み立てをModel外へ移す次回に解消を検討します。
+- **Assumptions**: `ImageContentReplacedEvent` と `RevertAdjustmentSnapshot` は履歴・保存形式の契約に関わるため、今回は変更していません。
+- **Test Coverage**: 新規 [ImageFilterParamsComposerTests](../../../GLogoTests/Unit/ImageFilterParamsComposerTests.swift) 5件で、合成規則の全項目、要素から描画サービスへの全項目の受け渡し、サムネイルと適用後の合成結果の一致を検証しました。合成から効果値を落とす変更を一時的に加えると5件中4件が失敗し、回帰を検出できることを確認しています。
+- **Verification**: 関連26スイート・**131件成功、失敗0件**。iPhone 17 Pro／iOS 26.1 Simulator、Debug、`-parallel-testing-enabled NO`。変更したファイルからのビルド警告なし。`git diff --check` 問題なし。全スイート・UI・実機・性能再測定は未実施です。SwiftFormatは未導入のため実行できません。
+
+`ImageElement.swift` は **1,466 → 1,437行** です。
+
+対象: 第4回の25スイートに `ImageFilterParamsComposerTests` を追加。
+
+### 次の範囲
+
+段階3の第5回まで完了しました。次は描画要求の組み立てとキャッシュ保持をModelから移し、`image` の読み取りで同期描画が走る構造を解消します。`ImageAdjustmentValues` を履歴イベント・Revertスナップショットへ適用する整理（保存形式は維持）、初期化Factory、履歴周辺の境界整理も残件です。

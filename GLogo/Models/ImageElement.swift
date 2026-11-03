@@ -990,66 +990,37 @@ class ImageElement: LogoElement {
         ImageRenderMode.fromPresetId(appliedFilterPresetId)
     }
 
-    /// 現在のフィルタ設定をまとめてサービスに渡す（filter + manual を合成）
-    private func currentFilterParams() -> ImageFilterParams {
-        let recipe = appliedFilterRecipe
-
-        // 乗算系: filter_val * manual_val（デフォルト1.0同士 = 1.0）
-        let effectiveSaturation = (recipe?.saturation ?? 1.0) * saturationAdjustment
-        let effectiveContrast = (recipe?.contrast ?? 1.0) * contrastAdjustment
-
-        // 加算系: filter_val + manual_val（デフォルト0.0同士 = 0.0）
-        let effectiveBrightness = (recipe?.brightness ?? 0.0) + brightnessAdjustment
-        let effectiveHighlights = (recipe?.highlights ?? 0.0) + highlightsAdjustment
-        let effectiveShadows = (recipe?.shadows ?? 0.0) + shadowsAdjustment
-        let effectiveBlacks = blacksAdjustment
-        let effectiveWhites = whitesAdjustment
-        let effectiveWarmth = warmthAdjustment
-        let effectiveVibrance = vibranceAdjustment
-        let effectiveHue = (recipe?.hue ?? 0.0) + hueAdjustment
-        let effectiveSharpness = (recipe?.sharpness ?? 0.0) + sharpnessAdjustment
-        let effectiveBlur = (recipe?.gaussianBlur ?? 0.0) + gaussianBlurRadius
-        let effectiveVignette = vignetteAdjustment
-        let effectiveBloom = bloomAdjustment
-        let effectiveGrain = grainAdjustment
-        let effectiveFade = fadeAdjustment
-        let effectiveChromaticAberration = chromaticAberrationAdjustment
-
-        // ティント: filter が設定されていれば filter 側を使用
-        let effectiveTintColor: UIColor?
-        let effectiveTintIntensity: CGFloat
-        if let recipe = recipe, recipe.affectsTint {
-            effectiveTintColor = recipe.tintColorHex.flatMap { UIColor(hex: $0) }
-            effectiveTintIntensity = recipe.tintIntensity ?? 0.0
-        } else {
-            effectiveTintColor = tintColor
-            effectiveTintIntensity = tintIntensity
-        }
-
-        return ImageFilterParams(
+    /// プリセット合成前の手動調整値。描画とプリセットのサムネイルが同じ値を受け取る。
+    var adjustmentValues: ImageAdjustmentValues {
+        ImageAdjustmentValues(
+            saturation: saturationAdjustment,
+            brightness: brightnessAdjustment,
+            contrast: contrastAdjustment,
+            highlights: highlightsAdjustment,
+            shadows: shadowsAdjustment,
+            blacks: blacksAdjustment,
+            whites: whitesAdjustment,
+            warmth: warmthAdjustment,
+            vibrance: vibranceAdjustment,
+            hue: hueAdjustment,
+            sharpness: sharpnessAdjustment,
+            gaussianBlurRadius: gaussianBlurRadius,
+            vignette: vignetteAdjustment,
+            bloom: bloomAdjustment,
+            grain: grainAdjustment,
+            fade: fadeAdjustment,
+            chromaticAberration: chromaticAberrationAdjustment,
             toneCurveData: toneCurveData,
-            saturation: effectiveSaturation,
-            brightness: effectiveBrightness,
-            contrast: effectiveContrast,
-            highlights: effectiveHighlights,
-            shadows: effectiveShadows,
-            blacks: effectiveBlacks,
-            whites: effectiveWhites,
-            warmth: effectiveWarmth,
-            vibrance: effectiveVibrance,
-            hue: effectiveHue,
-            sharpness: effectiveSharpness,
-            gaussianBlurRadius: effectiveBlur,
-            vignetteIntensity: effectiveVignette,
-            bloomIntensity: effectiveBloom,
-            grainIntensity: effectiveGrain,
-            fadeIntensity: effectiveFade,
-            chromaticAberrationIntensity: effectiveChromaticAberration,
-            tintColor: effectiveTintColor,
-            tintIntensity: effectiveTintIntensity,
+            tintColor: tintColor,
+            tintIntensity: tintIntensity,
             backgroundBlurRadius: backgroundBlurRadius,
             backgroundBlurMaskData: backgroundBlurMaskData
         )
+    }
+
+    /// 現在のフィルタ設定をまとめてサービスに渡す（filter + manual を合成）
+    private func currentFilterParams() -> ImageFilterParams {
+        ImageFilterParamsComposer.compose(adjustmentValues, recipe: appliedFilterRecipe)
     }
 
     /// 画像を描画
