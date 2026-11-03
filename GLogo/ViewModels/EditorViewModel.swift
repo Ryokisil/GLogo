@@ -248,13 +248,6 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         addElement(shapeElement)
     }
     
-    /// 画像要素を追加
-//    func addImageElement(fileName: String, position: CGPoint) {
-//        let imageElement = ImageElement(fileName: fileName)
-//        imageElement.position = position
-//        addElement(imageElement)
-//    }
-    
     /// 選択中の要素を削除
     func deleteSelectedElement() {
         guard let selectedElement = selectedElement else { return }
@@ -268,20 +261,6 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         
         self.selectedElement = nil
         isProjectModified = true
-    }
-    
-    /// 特定の位置にある要素を取得（ヒットテスト）
-    func elementAt(_ point: CGPoint) -> LogoElement? {
-        // zIndexの降順で判定（前面優先）
-        let sorted = project.elements
-            .filter { $0.isVisible && !$0.isLocked }
-            .sorted { $0.zIndex > $1.zIndex }
-        return sorted.first { $0.hitTest(point) }
-    }
-    
-    /// 要素を選択
-    func selectElement(at point: CGPoint) {
-        selectedElement = elementAt(point)
     }
     
     // 特定の要素を直接選択
@@ -329,71 +308,6 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
             isEditingText = false
             editingTextElement = nil
         }
-    }
-    
-    /// 選択中の要素を最前面に移動
-    func bringSelectedElementToFront() {
-        guard let selectedElement = selectedElement else { return }
-        
-        // 要素のインデックスを取得
-        guard let index = project.elements.firstIndex(where: { $0.id == selectedElement.id }) else { return }
-        
-        // 削除してから最後に追加
-        let removeEvent = ElementRemovedEvent(element: selectedElement, index: index)
-        history.recordAndApply(removeEvent)
-        
-        let addEvent = ElementAddedEvent(element: selectedElement)
-        history.recordAndApply(addEvent)
-        
-        isProjectModified = true
-    }
-    
-    /// 選択中の要素を最背面に移動
-    func sendSelectedElementToBack() {
-        guard let selectedElement = selectedElement else { return }
-        
-        // 要素のインデックスを取得
-        guard let index = project.elements.firstIndex(where: { $0.id == selectedElement.id }) else { return }
-        
-        // 削除してから先頭に追加する代わりに
-        // 削除してインデックス0で再追加する必要があるため、コピーを使用
-        let elementCopy = selectedElement.copy()
-        
-        let removeEvent = ElementRemovedEvent(element: selectedElement, index: index)
-        history.recordAndApply(removeEvent)
-        
-        // 元の要素を一時的に削除
-        project.elements.removeAll { $0.id == selectedElement.id }
-        
-        // 先頭に追加
-        project.elements.insert(elementCopy, at: 0)
-        
-        // 選択要素を更新
-        self.selectedElement = elementCopy
-        
-        isProjectModified = true
-    }
-    
-    /// 選択中の要素の可視性を切り替え
-    func toggleSelectedElementVisibility() {
-        guard let element = selectedElement else { return }
-        
-        // 現在の実装では直接可視性を切り替え
-        element.isVisible = !element.isVisible
-        
-        updateSelectedElement(element)
-        isProjectModified = true
-    }
-    
-    /// 選択中の要素のロック状態を切り替え
-    func toggleSelectedElementLock() {
-        guard let element = selectedElement else { return }
-        
-        // 現在の実装では直接ロック状態を切り替え
-        element.isLocked = !element.isLocked
-        
-        updateSelectedElement(element)
-        isProjectModified = true
     }
     
     /// 選択中の要素をコピー
@@ -446,11 +360,6 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     /// テキスト要素のプロパティを更新
     func updateTextElement(_ textElement: TextElement) {
         updateSelectedElement(textElement)
-    }
-    
-    /// 図形要素のプロパティを更新
-    func updateShapeElement(_ shapeElement: ShapeElement) {
-        updateSelectedElement(shapeElement)
     }
     
     /// 画像要素のプロパティを更新

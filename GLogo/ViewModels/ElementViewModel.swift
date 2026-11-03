@@ -1,10 +1,4 @@
-//
-//  ElementViewModel.swift
-//  GameLogoMaker
-//
-//  概要:
-//  選択中要素の編集状態を保持し、要素種別ごとの編集操作を EditorViewModel へ橋渡しする。
-//
+// 選択中の要素と種類を保持し、要素種別ごとの機能別 ViewModel を組み立てて画面へ提供する。
 
 import Foundation
 import UIKit
@@ -14,10 +8,6 @@ import Combine
 @MainActor
 class ElementViewModel: ObservableObject {
     // MARK: - プロパティ
-
-    /// EditorViewModel への参照（非所有）
-    /// 循環参照を避けるため weak で保持する。
-    private weak var editorViewModel: EditorViewModel?
 
     /// 現在編集中の要素
     @Published private(set) var element: LogoElement?
@@ -65,7 +55,6 @@ class ElementViewModel: ObservableObject {
     // MARK: - イニシャライザ
 
     init(editorViewModel: EditorViewModel, imageRefresh: ImageRenderRefreshUseCase = ImageRenderRefreshUseCase()) {
-        self.editorViewModel = editorViewModel
         aiTools = editorViewModel.aiTools
         transform = editorViewModel.transform
         textEditing = TextEditingViewModel(
@@ -124,41 +113,6 @@ class ElementViewModel: ObservableObject {
         }
     }
 
-    // MARK: - 共通プロパティの更新
-
-    /// 不透明度の更新
-    func updateOpacity(_ opacity: CGFloat) {
-        guard let element = element else { return }
-        element.opacity = opacity
-
-        updateElement(to: element)
-    }
-
-    /// 名前の更新
-    func updateName(_ name: String) {
-        guard let element = element else { return }
-        element.name = name
-
-        updateElement(to: element)
-    }
-
-    /// 可視性の更新
-    func updateVisibility(_ isVisible: Bool) {
-        guard let element = element else { return }
-        element.isVisible = isVisible
-
-        updateElement(to: element)
-    }
-
-    /// ロック状態の更新
-    func updateLock(_ isLocked: Bool) {
-        guard let element = element else { return }
-        element.isLocked = isLocked
-
-        updateElement(to: element)
-    }
-
-
     // MARK: - 背景除去・背景ぼかし
 
     /// AI背景除去をリクエスト（ワンタップ）
@@ -208,32 +162,6 @@ class ElementViewModel: ObservableObject {
     func removeBackgroundBlurMask() {
         guard let imageElement = imageElement else { return }
         aiTools.removeBackgroundBlurMask(from: imageElement)
-    }
-
-    // MARK: - 更新の適用
-
-    /// 要素を更新してエディタビューモデルに通知
-    private func updateElement(to element: LogoElement) {
-        // 要素の参照を更新
-        self.element = element
-
-        // エディタビューモデルに要素の更新を通知
-        if let editorViewModel = editorViewModel {
-            // 要素の種類に応じて専用の更新メソッドを呼び出す
-            if let textElement = element as? TextElement {
-                self.imageElement = nil
-                editorViewModel.updateTextElement(textElement)
-            } else if let shapeElement = element as? ShapeElement {
-                self.imageElement = nil
-                editorViewModel.updateShapeElement(shapeElement)
-            } else if let imageElement = element as? ImageElement {
-                self.imageElement = imageElement
-                editorViewModel.updateImageElement(imageElement)
-            } else {
-                self.imageElement = nil
-                editorViewModel.updateSelectedElement(element)
-            }
-        }
     }
 
 }
