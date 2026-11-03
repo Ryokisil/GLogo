@@ -1,6 +1,5 @@
 //
 //  EventSourcing.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはイベントソーシングに基づくシンプルなアンドゥ・リドゥ機能を実装

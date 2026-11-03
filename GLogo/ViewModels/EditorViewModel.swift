@@ -1,6 +1,5 @@
 //
 //  EditorViewModel.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはエディタ画面の主要なビューモデルを定義しています。

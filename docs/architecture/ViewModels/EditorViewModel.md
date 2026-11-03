@@ -17,7 +17,7 @@
 - Undo／Redoでは要素を更新したあと、選択の再設定と画面通知も行います。
 - アプリ入口が`@StateObject`として生成し、`EditorView`へ渡します。`EditorView`は`ElementViewModel`を`@StateObject`として生成します。
 
-参照: [アプリ入口](../../../GLogo/App/GameLogoMakerApp.swift)、[EditorView](../../../GLogo/Views/Editor/Screen/EditorView.swift)。
+参照: [アプリ入口](../../../GLogo/App/GLogoApp.swift)、[EditorView](../../../GLogo/Views/Editor/Screen/EditorView.swift)。
 
 ## 評価
 

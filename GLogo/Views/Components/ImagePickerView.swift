@@ -1,6 +1,5 @@
 //
 //  ImagePickerView.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはフォトライブラリやカメラから画像を選択するためのビューを実装しています。

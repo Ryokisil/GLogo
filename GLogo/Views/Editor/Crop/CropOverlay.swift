@@ -1,6 +1,5 @@
 //
 //  CropOverlay.swift
-//  GameLogoMaker
 //
 //  概要:
 //  クロップオーバーレイを表示するビュー

@@ -1,6 +1,5 @@
 //
 //  ImageCropView.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルは画像インポート時の調整機能を提供するSwiftUIビューです。

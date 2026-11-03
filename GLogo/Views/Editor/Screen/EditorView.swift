@@ -1,5 +1,4 @@
 //  EditorView.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはアプリケーションの主要なエディタ画面を実装するSwiftUIビューです。

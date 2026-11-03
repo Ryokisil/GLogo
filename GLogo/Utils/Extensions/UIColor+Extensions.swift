@@ -1,6 +1,5 @@
 //
 //  UIColor+Extensions.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはUIColorクラスの拡張を提供します。

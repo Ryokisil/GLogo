@@ -1,6 +1,5 @@
 //
 //  ShapeEditorPanel.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルは図形要素の編集用パネルを実装するSwiftUIビューです。

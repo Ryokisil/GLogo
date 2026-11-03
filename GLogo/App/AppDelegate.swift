@@ -140,9 +140,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         
         // 未保存データの保存
         saveUnsavedData()
-        
-        // テンポラリファイルのクリーンアップ
-        cleanupTemporaryFiles()
     }
     
     /// 未保存データを保存
@@ -150,23 +147,4 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
        
     }
     
-    /// 一時ファイルをクリーンアップ
-    private func cleanupTemporaryFiles() {
-        let fileManager = FileManager.default
-        let tempDirectoryURL = fileManager.temporaryDirectory
-        
-        do {
-            let tempFiles = try fileManager.contentsOfDirectory(
-                at: tempDirectoryURL,
-                includingPropertiesForKeys: nil
-            )
-            
-            // アプリが作成した一時ファイルを削除
-            for fileURL in tempFiles where fileURL.lastPathComponent.hasPrefix("GameLogoMaker_") {
-                try? fileManager.removeItem(at: fileURL)
-            }
-        } catch {
-            logger.error("一時ファイル削除に失敗: \(error.localizedDescription, privacy: .public)")
-        }
-    }
 }

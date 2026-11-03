@@ -1,6 +1,5 @@
 //
 //  ElementSelectionView.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルは選択された要素に対するジェスチャー入力を扱う SwiftUI オーバーレイです。

@@ -1,6 +1,5 @@
 //
 //  ProjectStorage.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはロゴプロジェクトのデータ保存と読み込みを担当するユーティリティクラスです。

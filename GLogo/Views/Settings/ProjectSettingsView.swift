@@ -1,6 +1,5 @@
 //
 //  ProjectSettingsView.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはプロジェクトの設定を編集するためのビューを実装しています。
