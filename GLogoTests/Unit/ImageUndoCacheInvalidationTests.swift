@@ -402,4 +402,43 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
 
         XCTAssertGreaterThanOrEqual(publishCount, 1)
     }
+
+    /// Revert と画像差し替えの Undo／Redo で、古い描画キャッシュを使い続けないことを確認
+    @MainActor
+    func test_revertAndReplaceHistory_dropStaleCache() {
+        assertHistoryDropsStaleCache("Revert") { editorViewModel, _ in
+            editorViewModel.revertSelectedImageToInitialState()
+        }
+        let replacement = makeSolidImage(color: .blue, size: CGSize(width: 4, height: 4))
+        assertHistoryDropsStaleCache("差し替え") { editorViewModel, element in
+            editorViewModel.imageEdits.applyManualBackgroundRemovalResult(replacement, to: element)
+        }
+    }
+
+    /// 操作を履歴に積み、Undo／Redo のたびに描画キャッシュの目印が残らないことを確認する
+    /// - Parameters:
+    ///   - name: 失敗時に表示する操作名
+    ///   - operate: 編集値を初期状態へ戻す操作（Revert・差し替え）
+    @MainActor
+    private func assertHistoryDropsStaleCache(
+        _ name: String,
+        operate: @MainActor (EditorViewModel, ImageElement) -> Void
+    ) {
+        let (project, element) = makeProjectWithImageElement()
+        let editorViewModel = EditorViewModel(project: project)
+        editorViewModel.selectElement(element)
+        element.saturationAdjustment = 0.5
+        operate(editorViewModel, element)
+        let marker = makeSolidImage(color: .green, size: CGSize(width: 4, height: 4))
+
+        element.cachedImage = marker
+        editorViewModel.undo()
+        XCTAssertEqual(element.saturationAdjustment, 0.5, accuracy: 0.0001, "\(name) の Undo")
+        XCTAssertFalse(element.cachedImage === marker, "\(name) の Undo")
+
+        element.cachedImage = marker
+        editorViewModel.redo()
+        XCTAssertEqual(element.saturationAdjustment, 1.0, accuracy: 0.0001, "\(name) の Redo")
+        XCTAssertFalse(element.cachedImage === marker, "\(name) の Redo")
+    }
 }

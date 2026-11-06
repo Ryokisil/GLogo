@@ -74,6 +74,28 @@ final class RevertUndoSequenceIntegrationTests: XCTestCase {
         XCTAssertEqual(viewModel.getHistoryDescriptions().count, 0)
     }
 
+    /// Revert は編集値30項目を初期状態へ戻し、Undo でその直前の30項目へ戻る。
+    @MainActor
+    func test_revertUndo_restoresAllEditValues() throws {
+        let project = LogoProject(name: "revert-undo-all", canvasSize: CGSize(width: 1080, height: 1920))
+        let viewModel = EditorViewModel(project: project)
+        let imageData = try XCTUnwrap(makeSolidImage(color: .white, size: CGSize(width: 64, height: 64)).pngData())
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
+        viewModel.addElement(imageElement)
+        let initial = ImageEditStateRecord(imageElement)
+        ImageEditStateRecord.applyDistinctValues(to: imageElement)
+        let edited = ImageEditStateRecord(imageElement)
+
+        viewModel.revertSelectedImageToInitialState()
+        XCTAssertEqual(ImageEditStateRecord(imageElement), initial)
+
+        viewModel.undo()
+        XCTAssertEqual(ImageEditStateRecord(imageElement), edited)
+
+        viewModel.redo()
+        XCTAssertEqual(ImageEditStateRecord(imageElement), initial)
+    }
+
     // MARK: - Helpers
 
     /// 単色画像を生成する
