@@ -12,8 +12,9 @@ class ImageElement: LogoElement {
     /// 実行時の競合判定用で、Codable・Undo・コピーで以前の番号を復元しない。
     private(set) var editRevision: UInt = 0
 
-    /// RGBA成分を保持する簡易カラー表現
-    private struct RGBAColor: Codable, Equatable {
+    /// RGBA成分を保持する簡易カラー表現。初期スナップショットに色を保存するときの形式。
+    /// 色との変換はファイル末尾の extension に置き、メンバーワイズ初期化を残すため fileprivate にする。
+    fileprivate struct RGBAColor: Codable, Equatable {
         let red: CGFloat
         let green: CGFloat
         let blue: CGFloat
@@ -21,7 +22,9 @@ class ImageElement: LogoElement {
     }
 
     /// リバート判定/復元に使用する調整値スナップショット
-    private struct RevertAdjustmentSnapshot: Codable, Equatable {
+    /// 保存データの `initialAdjustmentSnapshot` として書き出す。プロパティ名が保存キーになるため変更しない。
+    /// 編集値との変換はファイル末尾の extension に置く（`default` がメンバーワイズ初期化を使うため）。
+    fileprivate struct RevertAdjustmentSnapshot: Codable, Equatable {
         let saturationAdjustment: CGFloat
         let brightnessAdjustment: CGFloat
         let contrastAdjustment: CGFloat
@@ -555,7 +558,7 @@ class ImageElement: LogoElement {
         appliedFilterPresetId = try container.decodeIfPresent(String.self, forKey: .appliedFilterPresetId)
 
         // 旧データ互換: 未保存の場合は復元後の現在値を初期基準として扱う
-        initialAdjustmentSnapshot = try container.decodeIfPresent(RevertAdjustmentSnapshot.self, forKey: .initialAdjustmentSnapshot) ?? makeCurrentAdjustmentSnapshot()
+        initialAdjustmentSnapshot = try container.decodeIfPresent(RevertAdjustmentSnapshot.self, forKey: .initialAdjustmentSnapshot) ?? RevertAdjustmentSnapshot(editState)
     }
     
     /// 読み込み済みの値から画像要素を作る。画像の読み込み・デコードは行わない。
@@ -590,7 +593,7 @@ class ImageElement: LogoElement {
         zIndex = ElementPriority.image.rawValue
 
         // 生成時点の調整値を初期スナップショットとして確定
-        initialAdjustmentSnapshot = makeCurrentAdjustmentSnapshot()
+        initialAdjustmentSnapshot = RevertAdjustmentSnapshot(editState)
 
         if let source {
             setImageSource(source)
@@ -602,7 +605,7 @@ class ImageElement: LogoElement {
     
     /// 元の画像に戻す
     func resetToOriginal() {
-        applyAdjustmentSnapshot(initialAdjustmentSnapshot)
+        applyEditState(initialAdjustmentSnapshot.editState)
         editHistory.removeAll()
 
         // キャッシュをクリアして再描画を促す
@@ -793,6 +796,59 @@ class ImageElement: LogoElement {
         )
     }
 
+    /// Revert・画像差し替えの Undo と複製で受け渡す編集値30項目。
+    var editState: ImageEditState {
+        ImageEditState(
+            adjustments: adjustmentValues,
+            filterRecipe: appliedFilterRecipe,
+            filterPresetId: appliedFilterPresetId,
+            frame: ImageFrameSettings(
+                isShown: showFrame,
+                color: frameColor,
+                width: frameWidth,
+                style: frameStyle,
+                hasRoundedCorners: roundedCorners,
+                cornerRadius: cornerRadius
+            )
+        )
+    }
+
+    /// 編集値30項目をまとめて反映する。
+    /// 描画キャッシュの扱いは経路ごとに異なるため、無効化は呼び出し側が行う。
+    func applyEditState(_ state: ImageEditState) {
+        let values = state.adjustments
+        saturationAdjustment = values.saturation
+        brightnessAdjustment = values.brightness
+        contrastAdjustment = values.contrast
+        highlightsAdjustment = values.highlights
+        shadowsAdjustment = values.shadows
+        blacksAdjustment = values.blacks
+        whitesAdjustment = values.whites
+        warmthAdjustment = values.warmth
+        vibranceAdjustment = values.vibrance
+        hueAdjustment = values.hue
+        sharpnessAdjustment = values.sharpness
+        gaussianBlurRadius = values.gaussianBlurRadius
+        vignetteAdjustment = values.vignette
+        bloomAdjustment = values.bloom
+        grainAdjustment = values.grain
+        fadeAdjustment = values.fade
+        chromaticAberrationAdjustment = values.chromaticAberration
+        backgroundBlurRadius = values.backgroundBlurRadius
+        backgroundBlurMaskData = values.backgroundBlurMaskData
+        toneCurveData = values.toneCurveData
+        tintColor = values.tintColor
+        tintIntensity = values.tintIntensity
+        appliedFilterRecipe = state.filterRecipe
+        appliedFilterPresetId = state.filterPresetId
+        showFrame = state.frame.isShown
+        frameColor = state.frame.color
+        frameWidth = state.frame.width
+        frameStyle = state.frame.style
+        roundedCorners = state.frame.hasRoundedCorners
+        cornerRadius = state.frame.cornerRadius
+    }
+
     /// 現在のフィルタ設定をまとめてサービスに渡す（filter + manual を合成）
     private func currentFilterParams() -> ImageFilterParams {
         ImageFilterParamsComposer.compose(adjustmentValues, recipe: appliedFilterRecipe)
@@ -860,38 +916,7 @@ class ImageElement: LogoElement {
         copy.name = "\(name) Copy"
         copy.isVisible = isVisible
         copy.isLocked = isLocked
-        
-        copy.saturationAdjustment = saturationAdjustment
-        copy.brightnessAdjustment = brightnessAdjustment
-        copy.contrastAdjustment = contrastAdjustment
-        copy.highlightsAdjustment = highlightsAdjustment
-        copy.shadowsAdjustment = shadowsAdjustment
-        copy.blacksAdjustment = blacksAdjustment
-        copy.whitesAdjustment = whitesAdjustment
-        copy.warmthAdjustment = warmthAdjustment
-        copy.vibranceAdjustment = vibranceAdjustment
-        copy.hueAdjustment = hueAdjustment
-        copy.sharpnessAdjustment = sharpnessAdjustment
-        copy.gaussianBlurRadius = gaussianBlurRadius
-        copy.vignetteAdjustment = vignetteAdjustment
-        copy.bloomAdjustment = bloomAdjustment
-        copy.grainAdjustment = grainAdjustment
-        copy.fadeAdjustment = fadeAdjustment
-        copy.chromaticAberrationAdjustment = chromaticAberrationAdjustment
-        copy.backgroundBlurRadius = backgroundBlurRadius
-        copy.backgroundBlurMaskData = backgroundBlurMaskData
-        copy.toneCurveData = toneCurveData
-        copy.tintColor = tintColor
-        copy.tintIntensity = tintIntensity
-        copy.appliedFilterRecipe = appliedFilterRecipe
-        copy.appliedFilterPresetId = appliedFilterPresetId
-
-        copy.showFrame = showFrame
-        copy.frameColor = frameColor
-        copy.frameWidth = frameWidth
-        copy.frameStyle = frameStyle
-        copy.roundedCorners = roundedCorners
-        copy.cornerRadius = cornerRadius
+        copy.applyEditState(editState)
         copy.hasAppliedUpscale = hasAppliedUpscale
         copy.initialAdjustmentSnapshot = initialAdjustmentSnapshot
     }
@@ -930,125 +955,124 @@ class ImageElement: LogoElement {
     /// - Parameters: なし
     /// - Returns: 現在値が初期スナップショットから外れている場合はtrue、そうでなければfalse
     var hasAdjustmentChangesFromInitialState: Bool {
-        makeCurrentAdjustmentSnapshot() != initialAdjustmentSnapshot
-    }
-
-    /// 現在の調整値スナップショットを生成
-    /// - Parameters: なし
-    /// - Returns: 現在状態を表すスナップショット
-    private func makeCurrentAdjustmentSnapshot() -> RevertAdjustmentSnapshot {
-        RevertAdjustmentSnapshot(
-            saturationAdjustment: saturationAdjustment,
-            brightnessAdjustment: brightnessAdjustment,
-            contrastAdjustment: contrastAdjustment,
-            highlightsAdjustment: highlightsAdjustment,
-            shadowsAdjustment: shadowsAdjustment,
-            blacksAdjustment: blacksAdjustment,
-            whitesAdjustment: whitesAdjustment,
-            warmthAdjustment: warmthAdjustment,
-            vibranceAdjustment: vibranceAdjustment,
-            hueAdjustment: hueAdjustment,
-            sharpnessAdjustment: sharpnessAdjustment,
-            gaussianBlurRadius: gaussianBlurRadius,
-            vignetteAdjustment: vignetteAdjustment,
-            bloomAdjustment: bloomAdjustment,
-            grainAdjustment: grainAdjustment,
-            fadeAdjustment: fadeAdjustment,
-            chromaticAberrationAdjustment: chromaticAberrationAdjustment,
-            backgroundBlurRadius: backgroundBlurRadius,
-            backgroundBlurMaskData: backgroundBlurMaskData,
-            toneCurveData: toneCurveData,
-            tintColorRGBA: makeRGBAColor(from: tintColor),
-            tintIntensity: tintIntensity,
-            appliedFilterRecipe: appliedFilterRecipe,
-            appliedFilterPresetId: appliedFilterPresetId,
-            showFrame: showFrame,
-            frameColorRGBA: RGBAColor(
-                red: frameColor.rgbComponents.red,
-                green: frameColor.rgbComponents.green,
-                blue: frameColor.rgbComponents.blue,
-                alpha: frameColor.rgbComponents.alpha
-            ),
-            frameWidth: frameWidth,
-            frameStyle: frameStyle,
-            roundedCorners: roundedCorners,
-            cornerRadius: cornerRadius
-        )
-    }
-
-    /// スナップショットを現在の調整値へ反映
-    /// - Parameters:
-    ///   - snapshot: 反映する調整値スナップショット
-    /// - Returns: なし
-    private func applyAdjustmentSnapshot(_ snapshot: RevertAdjustmentSnapshot) {
-        saturationAdjustment = snapshot.saturationAdjustment
-        brightnessAdjustment = snapshot.brightnessAdjustment
-        contrastAdjustment = snapshot.contrastAdjustment
-        highlightsAdjustment = snapshot.highlightsAdjustment
-        shadowsAdjustment = snapshot.shadowsAdjustment
-        blacksAdjustment = snapshot.blacksAdjustment
-        whitesAdjustment = snapshot.whitesAdjustment
-        warmthAdjustment = snapshot.warmthAdjustment
-        vibranceAdjustment = snapshot.vibranceAdjustment
-        hueAdjustment = snapshot.hueAdjustment
-        sharpnessAdjustment = snapshot.sharpnessAdjustment
-        gaussianBlurRadius = snapshot.gaussianBlurRadius
-        vignetteAdjustment = snapshot.vignetteAdjustment
-        bloomAdjustment = snapshot.bloomAdjustment
-        grainAdjustment = snapshot.grainAdjustment
-        fadeAdjustment = snapshot.fadeAdjustment
-        chromaticAberrationAdjustment = snapshot.chromaticAberrationAdjustment
-        backgroundBlurRadius = snapshot.backgroundBlurRadius
-        backgroundBlurMaskData = snapshot.backgroundBlurMaskData
-        toneCurveData = snapshot.toneCurveData
-        tintColor = makeUIColor(from: snapshot.tintColorRGBA)
-        tintIntensity = snapshot.tintIntensity
-        appliedFilterRecipe = snapshot.appliedFilterRecipe
-        appliedFilterPresetId = snapshot.appliedFilterPresetId
-        showFrame = snapshot.showFrame
-        frameColor = UIColor(
-            red: snapshot.frameColorRGBA.red,
-            green: snapshot.frameColorRGBA.green,
-            blue: snapshot.frameColorRGBA.blue,
-            alpha: snapshot.frameColorRGBA.alpha
-        )
-        frameWidth = snapshot.frameWidth
-        frameStyle = snapshot.frameStyle
-        roundedCorners = snapshot.roundedCorners
-        cornerRadius = snapshot.cornerRadius
+        // 保存用の表現（色は RGBA 成分）で比べ、色の表現の違いを変更として扱わない。
+        RevertAdjustmentSnapshot(editState) != initialAdjustmentSnapshot
     }
 
     /// 現在値を初期スナップショットとして再定義
     /// - Parameters: なし
     /// - Returns: なし
     func captureCurrentAdjustmentAsInitialSnapshot() {
-        initialAdjustmentSnapshot = makeCurrentAdjustmentSnapshot()
+        initialAdjustmentSnapshot = RevertAdjustmentSnapshot(editState)
+    }
+}
+
+// MARK: - 初期スナップショットと編集値の変換
+
+private extension ImageElement.RevertAdjustmentSnapshot {
+    /// 編集値を保存用の表現へ変換する。色は RGBA 成分で持つ。
+    init(_ state: ImageEditState) {
+        let values = state.adjustments
+        self.init(
+            saturationAdjustment: values.saturation,
+            brightnessAdjustment: values.brightness,
+            contrastAdjustment: values.contrast,
+            highlightsAdjustment: values.highlights,
+            shadowsAdjustment: values.shadows,
+            blacksAdjustment: values.blacks,
+            whitesAdjustment: values.whites,
+            warmthAdjustment: values.warmth,
+            vibranceAdjustment: values.vibrance,
+            hueAdjustment: values.hue,
+            sharpnessAdjustment: values.sharpness,
+            gaussianBlurRadius: values.gaussianBlurRadius,
+            vignetteAdjustment: values.vignette,
+            bloomAdjustment: values.bloom,
+            grainAdjustment: values.grain,
+            fadeAdjustment: values.fade,
+            chromaticAberrationAdjustment: values.chromaticAberration,
+            backgroundBlurRadius: values.backgroundBlurRadius,
+            backgroundBlurMaskData: values.backgroundBlurMaskData,
+            toneCurveData: values.toneCurveData,
+            tintColorRGBA: values.tintColor.map(ImageElement.RGBAColor.init(tintColor:)),
+            tintIntensity: values.tintIntensity,
+            appliedFilterRecipe: state.filterRecipe,
+            appliedFilterPresetId: state.filterPresetId,
+            showFrame: state.frame.isShown,
+            frameColorRGBA: ImageElement.RGBAColor(frameColor: state.frame.color),
+            frameWidth: state.frame.width,
+            frameStyle: state.frame.style,
+            roundedCorners: state.frame.hasRoundedCorners,
+            cornerRadius: state.frame.cornerRadius
+        )
     }
 
-    /// UIColorをRGBA成分へ変換
-    /// - Parameters:
-    ///   - color: 変換対象の色
-    /// - Returns: RGBA成分（変換不可時はnil）
-    private func makeRGBAColor(from color: UIColor?) -> RGBAColor? {
-        guard let color else { return nil }
+    /// 保存用の表現を編集値へ戻す。
+    var editState: ImageEditState {
+        ImageEditState(
+            adjustments: ImageAdjustmentValues(
+                saturation: saturationAdjustment,
+                brightness: brightnessAdjustment,
+                contrast: contrastAdjustment,
+                highlights: highlightsAdjustment,
+                shadows: shadowsAdjustment,
+                blacks: blacksAdjustment,
+                whites: whitesAdjustment,
+                warmth: warmthAdjustment,
+                vibrance: vibranceAdjustment,
+                hue: hueAdjustment,
+                sharpness: sharpnessAdjustment,
+                gaussianBlurRadius: gaussianBlurRadius,
+                vignette: vignetteAdjustment,
+                bloom: bloomAdjustment,
+                grain: grainAdjustment,
+                fade: fadeAdjustment,
+                chromaticAberration: chromaticAberrationAdjustment,
+                toneCurveData: toneCurveData,
+                tintColor: tintColorRGBA?.uiColor,
+                tintIntensity: tintIntensity,
+                backgroundBlurRadius: backgroundBlurRadius,
+                backgroundBlurMaskData: backgroundBlurMaskData
+            ),
+            filterRecipe: appliedFilterRecipe,
+            filterPresetId: appliedFilterPresetId,
+            frame: ImageFrameSettings(
+                isShown: showFrame,
+                color: frameColorRGBA.uiColor,
+                width: frameWidth,
+                style: frameStyle,
+                hasRoundedCorners: roundedCorners,
+                cornerRadius: cornerRadius
+            )
+        )
+    }
+}
+
+private extension ImageElement.RGBAColor {
+    // ティントとフレームで既存データの変換方法が異なるため、保存値を変えないようそれぞれを残す。
+
+    /// ティント色を RGBA 成分へ変換する。成分を直接取り出せない色は CIColor 経由で得る。
+    init(tintColor color: UIColor) {
         var red: CGFloat = 0
         var green: CGFloat = 0
         var blue: CGFloat = 0
         var alpha: CGFloat = 0
         if color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
-            return RGBAColor(red: red, green: green, blue: blue, alpha: alpha)
+            self.init(red: red, green: green, blue: blue, alpha: alpha)
+            return
         }
 
         let ciColor = CIColor(color: color)
-        return RGBAColor(red: ciColor.red, green: ciColor.green, blue: ciColor.blue, alpha: ciColor.alpha)
+        self.init(red: ciColor.red, green: ciColor.green, blue: ciColor.blue, alpha: ciColor.alpha)
     }
 
-    /// RGBA成分からUIColorを復元
-    /// - Parameters:
-    ///   - rgba: 復元元RGBA成分
-    /// - Returns: 復元後の色（復元失敗時はnil）
-    private func makeUIColor(from rgba: RGBAColor?) -> UIColor? {
-        guard let rgba else { return nil }
-        return UIColor(red: rgba.red, green: rgba.green, blue: rgba.blue, alpha: rgba.alpha)
+    /// フレーム色を RGBA 成分へ変換する。成分を直接取り出せない色は sRGB へ変換して得る。
+    init(frameColor color: UIColor) {
+        let components = color.rgbComponents
+        self.init(red: components.red, green: components.green, blue: components.blue, alpha: components.alpha)
+    }
+
+    var uiColor: UIColor {
+        UIColor(red: red, green: green, blue: blue, alpha: alpha)
     }
 }

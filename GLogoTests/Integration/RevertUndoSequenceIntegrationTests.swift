@@ -85,12 +85,17 @@ final class RevertUndoSequenceIntegrationTests: XCTestCase {
         let initial = ImageEditStateRecord(imageElement)
         ImageEditStateRecord.applyDistinctValues(to: imageElement)
         let edited = ImageEditStateRecord(imageElement)
+        let tintColor = try XCTUnwrap(imageElement.tintColor)
+        let frameColor = imageElement.frameColor
 
         viewModel.revertSelectedImageToInitialState()
         XCTAssertEqual(ImageEditStateRecord(imageElement), initial)
 
         viewModel.undo()
         XCTAssertEqual(ImageEditStateRecord(imageElement), edited)
+        // 色は RGBA 成分へ変換し直さず、Revert 前の値をそのまま戻す。
+        XCTAssertTrue(imageElement.tintColor === tintColor)
+        XCTAssertTrue(imageElement.frameColor === frameColor)
 
         viewModel.redo()
         XCTAssertEqual(ImageEditStateRecord(imageElement), initial)

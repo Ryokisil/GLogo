@@ -1194,111 +1194,6 @@ struct ImageTintColorChangedEvent: EditorEvent {
     }
 }
 
-/// リバート時に復元可能な画像調整状態スナップショット
-private struct ImageRevertStateSnapshot {
-    let saturationAdjustment: CGFloat
-    let brightnessAdjustment: CGFloat
-    let contrastAdjustment: CGFloat
-    let highlightsAdjustment: CGFloat
-    let shadowsAdjustment: CGFloat
-    let blacksAdjustment: CGFloat
-    let whitesAdjustment: CGFloat
-    let warmthAdjustment: CGFloat
-    let vibranceAdjustment: CGFloat
-    let hueAdjustment: CGFloat
-    let sharpnessAdjustment: CGFloat
-    let gaussianBlurRadius: CGFloat
-    let vignetteAdjustment: CGFloat
-    let bloomAdjustment: CGFloat
-    let grainAdjustment: CGFloat
-    let fadeAdjustment: CGFloat
-    let chromaticAberrationAdjustment: CGFloat
-    let backgroundBlurRadius: CGFloat
-    let backgroundBlurMaskData: Data?
-    let toneCurveData: ToneCurveData
-    let tintColor: RGBAColorSnapshot?
-    let tintIntensity: CGFloat
-    let appliedFilterRecipe: FilterRecipe?
-    let appliedFilterPresetId: String?
-    let showFrame: Bool
-    let frameColor: RGBAColorSnapshot
-    let frameWidth: CGFloat
-    let frameStyle: ImageFrameStyle
-    let roundedCorners: Bool
-    let cornerRadius: CGFloat
-
-    init(element: ImageElement) {
-        saturationAdjustment = element.saturationAdjustment
-        brightnessAdjustment = element.brightnessAdjustment
-        contrastAdjustment = element.contrastAdjustment
-        highlightsAdjustment = element.highlightsAdjustment
-        shadowsAdjustment = element.shadowsAdjustment
-        blacksAdjustment = element.blacksAdjustment
-        whitesAdjustment = element.whitesAdjustment
-        warmthAdjustment = element.warmthAdjustment
-        vibranceAdjustment = element.vibranceAdjustment
-        hueAdjustment = element.hueAdjustment
-        sharpnessAdjustment = element.sharpnessAdjustment
-        gaussianBlurRadius = element.gaussianBlurRadius
-        vignetteAdjustment = element.vignetteAdjustment
-        bloomAdjustment = element.bloomAdjustment
-        grainAdjustment = element.grainAdjustment
-        fadeAdjustment = element.fadeAdjustment
-        chromaticAberrationAdjustment = element.chromaticAberrationAdjustment
-        backgroundBlurRadius = element.backgroundBlurRadius
-        backgroundBlurMaskData = element.backgroundBlurMaskData
-        toneCurveData = element.toneCurveData
-        tintColor = element.tintColor.map(RGBAColorSnapshot.init)
-        tintIntensity = element.tintIntensity
-        appliedFilterRecipe = element.appliedFilterRecipe
-        appliedFilterPresetId = element.appliedFilterPresetId
-        showFrame = element.showFrame
-        frameColor = RGBAColorSnapshot(element.frameColor)
-        frameWidth = element.frameWidth
-        frameStyle = element.frameStyle
-        roundedCorners = element.roundedCorners
-        cornerRadius = element.cornerRadius
-    }
-
-    /// スナップショット状態を画像要素へ反映する
-    /// - Parameters:
-    ///   - element: 反映先画像要素
-    /// - Returns: なし
-    func apply(to element: ImageElement) {
-        element.saturationAdjustment = saturationAdjustment
-        element.brightnessAdjustment = brightnessAdjustment
-        element.contrastAdjustment = contrastAdjustment
-        element.highlightsAdjustment = highlightsAdjustment
-        element.shadowsAdjustment = shadowsAdjustment
-        element.blacksAdjustment = blacksAdjustment
-        element.whitesAdjustment = whitesAdjustment
-        element.warmthAdjustment = warmthAdjustment
-        element.vibranceAdjustment = vibranceAdjustment
-        element.hueAdjustment = hueAdjustment
-        element.sharpnessAdjustment = sharpnessAdjustment
-        element.gaussianBlurRadius = gaussianBlurRadius
-        element.vignetteAdjustment = vignetteAdjustment
-        element.bloomAdjustment = bloomAdjustment
-        element.grainAdjustment = grainAdjustment
-        element.fadeAdjustment = fadeAdjustment
-        element.chromaticAberrationAdjustment = chromaticAberrationAdjustment
-        element.backgroundBlurRadius = backgroundBlurRadius
-        element.backgroundBlurMaskData = backgroundBlurMaskData
-        element.toneCurveData = toneCurveData
-        element.tintColor = tintColor?.uiColor
-        element.tintIntensity = tintIntensity
-        element.appliedFilterRecipe = appliedFilterRecipe
-        element.appliedFilterPresetId = appliedFilterPresetId
-        element.showFrame = showFrame
-        element.frameColor = frameColor.uiColor
-        element.frameWidth = frameWidth
-        element.frameStyle = frameStyle
-        element.roundedCorners = roundedCorners
-        element.cornerRadius = cornerRadius
-        element.invalidateRenderedImageCache()
-    }
-}
-
 /// UIColor を RGBA 成分に変換して保持する色の値
 struct RGBAColorSnapshot {
     let red: CGFloat
@@ -1335,7 +1230,7 @@ struct RGBAColorSnapshot {
 /// 画像要素を初期状態へ戻すイベント（UndoでRevert前状態へ復元可能）
 struct ImageRevertedToInitialStateEvent: EditorEvent {
     let elementId: UUID
-    private let beforeState: ImageRevertStateSnapshot
+    private let beforeState: ImageEditState
 
     var description: String {
         "画像を初期状態に戻しました"
@@ -1347,7 +1242,7 @@ struct ImageRevertedToInitialStateEvent: EditorEvent {
     /// - Returns: なし
     init(element: ImageElement) {
         self.elementId = element.id
-        self.beforeState = ImageRevertStateSnapshot(element: element)
+        self.beforeState = element.editState
     }
 
     /// Revert操作を適用する
@@ -1369,41 +1264,27 @@ struct ImageRevertedToInitialStateEvent: EditorEvent {
         guard let element = project.element(for: elementId, as: ImageElement.self) else {
             return
         }
-        beforeState.apply(to: element)
+        element.applyEditState(beforeState)
+        element.invalidateRenderedImageCache()
     }
 }
 
-/// 画像内容差し替えイベント（手動背景除去などの結果適用）
+/// 画像内容差し替えイベント（手動背景除去・高画質化の結果適用）
 struct ImageContentReplacedEvent: EditorEvent {
+    /// 差し替え前の画像ソース。Undo で `restoreImageSource` に渡す。
+    private struct Source {
+        let imageData: Data?
+        let fileName: String?
+        let url: URL?
+        let path: String?
+        let originalIdentifier: String?
+        let hasAppliedUpscale: Bool
+    }
+
     let elementId: UUID
-    let oldImageData: Data?
-    let oldImageFileName: String?
-    let oldOriginalImageURL: URL?
-    let oldOriginalImagePath: String?
-    let oldOriginalImageIdentifier: String?
-    let oldHasAppliedUpscale: Bool
-    let oldToneCurveData: ToneCurveData
-    let oldSaturation: CGFloat
-    let oldBrightness: CGFloat
-    let oldContrast: CGFloat
-    let oldHighlights: CGFloat
-    let oldShadows: CGFloat
-    let oldBlacks: CGFloat
-    let oldWhites: CGFloat
-    let oldWarmth: CGFloat
-    let oldVibrance: CGFloat
-    let oldHue: CGFloat
-    let oldSharpness: CGFloat
-    let oldGaussianBlurRadius: CGFloat
-    let oldVignette: CGFloat
-    let oldBloom: CGFloat
-    let oldGrain: CGFloat
-    let oldFade: CGFloat
-    let oldChromaticAberration: CGFloat
-    let oldTintIntensity: CGFloat
-    let oldTintColor: UIColor?
-    let oldAppliedFilterRecipe: FilterRecipe?
-    let oldAppliedFilterPresetId: String?
+    private let oldSource: Source
+    /// 差し替え前の編集値。差し替えでは初期スナップショットへ戻すため、Undo で戻す値として記録する。
+    private let oldEditState: ImageEditState
     let newImageData: Data
     let newOriginalImageIdentifier: String
     let newHasAppliedUpscale: Bool
@@ -1412,104 +1293,23 @@ struct ImageContentReplacedEvent: EditorEvent {
         return "画像内容を差し替えました"
     }
 
-    /// 画像差し替えイベントを生成する
+    /// 差し替え前の画像ソースと編集値を、対象の画像要素から記録する
     /// - Parameters:
-    ///   - elementId: 対象要素のID
-    ///   - oldImageData: 以前の画像データ
-    ///   - oldImageFileName: 以前の画像ファイル名
-    ///   - oldOriginalImageURL: 以前の画像URL
-    ///   - oldOriginalImagePath: 以前の画像パス
-    ///   - oldOriginalImageIdentifier: 以前の画像識別子
-    ///   - oldHasAppliedUpscale: 以前の高画質化適用状態
-    ///   - oldToneCurveData: 以前のトーンカーブ
-    ///   - oldSaturation: 以前の彩度
-    ///   - oldBrightness: 以前の明度
-    ///   - oldContrast: 以前のコントラスト
-    ///   - oldHighlights: 以前のハイライト補正
-    ///   - oldShadows: 以前のシャドウ補正
-    ///   - oldBlacks: 以前の黒レベル補正
-    ///   - oldWhites: 以前の白レベル補正
-    ///   - oldWarmth: 以前の色温度補正
-    ///   - oldVibrance: 以前のヴィブランス補正
-    ///   - oldHue: 以前の色相
-    ///   - oldSharpness: 以前のシャープネス
-    ///   - oldGaussianBlurRadius: 以前のガウシアンブラー半径
-    ///   - oldVignette: 以前のビネット強度
-    ///   - oldBloom: 以前のブルーム強度
-    ///   - oldGrain: 以前のグレイン強度
-    ///   - oldFade: 以前のフェード強度
-    ///   - oldChromaticAberration: 以前の色収差強度
-    ///   - oldTintIntensity: 以前のティント強度
-    ///   - oldTintColor: 以前のティントカラー
-    ///   - oldAppliedFilterRecipe: 以前のフィルターレシピ
-    ///   - oldAppliedFilterPresetId: 以前のフィルタープリセットID
+    ///   - element: 差し替え対象の画像要素
     ///   - newImageData: 差し替え後の画像データ
     ///   - newOriginalImageIdentifier: 差し替え後の画像識別子
-    ///   - newHasAppliedUpscale: 差し替え後の高画質化適用状態
-    /// - Returns: なし
-    init(
-        elementId: UUID,
-        oldImageData: Data?,
-        oldImageFileName: String?,
-        oldOriginalImageURL: URL?,
-        oldOriginalImagePath: String?,
-        oldOriginalImageIdentifier: String?,
-        oldHasAppliedUpscale: Bool,
-        oldToneCurveData: ToneCurveData,
-        oldSaturation: CGFloat,
-        oldBrightness: CGFloat,
-        oldContrast: CGFloat,
-        oldHighlights: CGFloat,
-        oldShadows: CGFloat,
-        oldBlacks: CGFloat,
-        oldWhites: CGFloat,
-        oldWarmth: CGFloat,
-        oldVibrance: CGFloat,
-        oldHue: CGFloat,
-        oldSharpness: CGFloat,
-        oldGaussianBlurRadius: CGFloat,
-        oldVignette: CGFloat,
-        oldBloom: CGFloat,
-        oldGrain: CGFloat,
-        oldFade: CGFloat,
-        oldChromaticAberration: CGFloat,
-        oldTintIntensity: CGFloat,
-        oldTintColor: UIColor?,
-        oldAppliedFilterRecipe: FilterRecipe?,
-        oldAppliedFilterPresetId: String?,
-        newImageData: Data,
-        newOriginalImageIdentifier: String,
-        newHasAppliedUpscale: Bool
-    ) {
-        self.elementId = elementId
-        self.oldImageData = oldImageData
-        self.oldImageFileName = oldImageFileName
-        self.oldOriginalImageURL = oldOriginalImageURL
-        self.oldOriginalImagePath = oldOriginalImagePath
-        self.oldOriginalImageIdentifier = oldOriginalImageIdentifier
-        self.oldHasAppliedUpscale = oldHasAppliedUpscale
-        self.oldToneCurveData = oldToneCurveData
-        self.oldSaturation = oldSaturation
-        self.oldBrightness = oldBrightness
-        self.oldContrast = oldContrast
-        self.oldHighlights = oldHighlights
-        self.oldShadows = oldShadows
-        self.oldBlacks = oldBlacks
-        self.oldWhites = oldWhites
-        self.oldWarmth = oldWarmth
-        self.oldVibrance = oldVibrance
-        self.oldHue = oldHue
-        self.oldSharpness = oldSharpness
-        self.oldGaussianBlurRadius = oldGaussianBlurRadius
-        self.oldVignette = oldVignette
-        self.oldBloom = oldBloom
-        self.oldGrain = oldGrain
-        self.oldFade = oldFade
-        self.oldChromaticAberration = oldChromaticAberration
-        self.oldTintIntensity = oldTintIntensity
-        self.oldTintColor = oldTintColor
-        self.oldAppliedFilterRecipe = oldAppliedFilterRecipe
-        self.oldAppliedFilterPresetId = oldAppliedFilterPresetId
+    ///   - newHasAppliedUpscale: 差し替え後に高画質化済みとして扱うかどうか
+    init(element: ImageElement, newImageData: Data, newOriginalImageIdentifier: String, newHasAppliedUpscale: Bool) {
+        elementId = element.id
+        oldSource = Source(
+            imageData: element.imageData,
+            fileName: element.imageFileName,
+            url: element.originalImageURL,
+            path: element.originalImagePath,
+            originalIdentifier: element.originalImageIdentifier,
+            hasAppliedUpscale: element.hasAppliedUpscale
+        )
+        oldEditState = element.editState
         self.newImageData = newImageData
         self.newOriginalImageIdentifier = newOriginalImageIdentifier
         self.newHasAppliedUpscale = newHasAppliedUpscale
@@ -1546,37 +1346,22 @@ struct ImageContentReplacedEvent: EditorEvent {
         let preservedSize = element.size
 
         element.restoreImageSource(
-            imageData: oldImageData,
-            fileName: oldImageFileName,
-            url: oldOriginalImageURL,
-            path: oldOriginalImagePath,
-            originalIdentifier: oldOriginalImageIdentifier,
-            hasAppliedUpscale: oldHasAppliedUpscale
+            imageData: oldSource.imageData,
+            fileName: oldSource.fileName,
+            url: oldSource.url,
+            path: oldSource.path,
+            originalIdentifier: oldSource.originalIdentifier,
+            hasAppliedUpscale: oldSource.hasAppliedUpscale
         )
         element.size = preservedSize
 
-        element.toneCurveData = oldToneCurveData
-        element.saturationAdjustment = oldSaturation
-        element.brightnessAdjustment = oldBrightness
-        element.contrastAdjustment = oldContrast
-        element.highlightsAdjustment = oldHighlights
-        element.shadowsAdjustment = oldShadows
-        element.blacksAdjustment = oldBlacks
-        element.whitesAdjustment = oldWhites
-        element.warmthAdjustment = oldWarmth
-        element.vibranceAdjustment = oldVibrance
-        element.hueAdjustment = oldHue
-        element.sharpnessAdjustment = oldSharpness
-        element.gaussianBlurRadius = oldGaussianBlurRadius
-        element.vignetteAdjustment = oldVignette
-        element.bloomAdjustment = oldBloom
-        element.grainAdjustment = oldGrain
-        element.fadeAdjustment = oldFade
-        element.chromaticAberrationAdjustment = oldChromaticAberration
-        element.tintColor = oldTintColor
-        element.tintIntensity = oldTintIntensity
-        element.appliedFilterRecipe = oldAppliedFilterRecipe
-        element.appliedFilterPresetId = oldAppliedFilterPresetId
+        // 現行の挙動を保つため、フレームと背景ぼかしは差し替え時に戻した値のまま残す。
+        var restoredState = oldEditState
+        let currentState = element.editState
+        restoredState.frame = currentState.frame
+        restoredState.adjustments.backgroundBlurRadius = currentState.adjustments.backgroundBlurRadius
+        restoredState.adjustments.backgroundBlurMaskData = currentState.adjustments.backgroundBlurMaskData
+        element.applyEditState(restoredState)
     }
 }
 
