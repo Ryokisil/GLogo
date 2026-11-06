@@ -1355,13 +1355,9 @@ struct ImageContentReplacedEvent: EditorEvent {
         )
         element.size = preservedSize
 
-        // 現行の挙動を保つため、フレームと背景ぼかしは差し替え時に戻した値のまま残す。
-        var restoredState = oldEditState
-        let currentState = element.editState
-        restoredState.frame = currentState.frame
-        restoredState.adjustments.backgroundBlurRadius = currentState.adjustments.backgroundBlurRadius
-        restoredState.adjustments.backgroundBlurMaskData = currentState.adjustments.backgroundBlurMaskData
-        element.applyEditState(restoredState)
+        // 差し替えで初期スナップショットへ戻した30項目を、すべて差し替え前の値へ戻す。
+        // 画像キャッシュは restoreImageSource で破棄済みのため、ここで改めて無効化しない。
+        element.applyEditState(oldEditState)
     }
 }
 

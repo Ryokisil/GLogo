@@ -1,5 +1,5 @@
 // 画像の差し替え（手動背景除去・高画質化の結果適用）を Undo／Redo したとき、
-// 画像ソース・配置サイズ・編集値30項目のうち何が戻るかを固定する。
+// 画像ソース・配置サイズ・編集値30項目が差し替え前の状態へ戻ることを確かめる。
 
 import UIKit
 import XCTest
@@ -7,7 +7,7 @@ import XCTest
 
 final class ImageContentReplacedEventTests: XCTestCase {
     @MainActor
-    func test_replaceUndo_keepsFrameAndBlurReset() throws {
+    func test_replaceUndo_restoresAllEditValues() throws {
         for path in ReplacementPath.allCases {
             let project = LogoProject(name: "replace-undo", canvasSize: CGSize(width: 1080, height: 1920))
             let viewModel = EditorViewModel(project: project)
@@ -30,12 +30,8 @@ final class ImageContentReplacedEventTests: XCTestCase {
             XCTAssertEqual(element.imageData, oldData, "\(path)")
             XCTAssertEqual(element.originalImageIdentifier, oldIdentifier, "\(path)")
             XCTAssertEqual(element.size, CGSize(width: 77, height: 33), "\(path)")
-            // 現状の差し替えイベントはフレームと背景ぼかしを記録しておらず、差し替え時に戻した初期値のまま残る。
-            var expected = edited
-            expected.frame = initial.frame
-            expected.backgroundBlurRadius = initial.backgroundBlurRadius
-            expected.backgroundBlurMaskData = initial.backgroundBlurMaskData
-            XCTAssertEqual(ImageEditStateRecord(element), expected, "\(path)")
+            // フレームと背景ぼかしも含め、差し替え前の30項目へ戻る。
+            XCTAssertEqual(ImageEditStateRecord(element), edited, "\(path)")
 
             viewModel.redo()
             XCTAssertEqual(ImageEditStateRecord(element), initial, "\(path)")
