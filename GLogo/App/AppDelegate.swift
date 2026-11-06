@@ -3,8 +3,7 @@
 //
 //  概要:
 //  このファイルはアプリのエントリーポイントとなるAppDelegateクラスを定義しています。
-//  アプリのライフサイクルイベント（起動、バックグラウンド移行、終了など）を管理し、
-//  必要な初期化処理や終了時の処理を行います。
+//  起動時の初期化（データディレクトリ・既定設定）と、シーン構成・画面の向きを扱います。
 //
 
 import UIKit
@@ -132,19 +131,4 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let launchCount = defaults.integer(forKey: "appLaunchCount") + 1
         defaults.set(launchCount, forKey: "appLaunchCount")
     }
-    
-    // MARK: - アプリ終了時の処理
-    
-    func applicationWillTerminate(_ application: UIApplication) {
-        // アプリが終了する前に呼ばれる
-        
-        // 未保存データの保存
-        saveUnsavedData()
-    }
-    
-    /// 未保存データを保存
-    private func saveUnsavedData() {
-       
-    }
-    
 }
