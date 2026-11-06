@@ -1,6 +1,6 @@
 # ImageElementのデータと技術処理の境界
 
-この文書は、画像要素Modelが担うデータ・描画・キャッシュ・永続化の境界を記録します。調査日: 2026-10-18。2026-10-28 に保存専用の描画コピーを追加し、2026-10-29 に AI 完了結果の照合に使う世代番号を記録しました。2026-11-01 に段階3の第1回として、画像取得Resolverを共有可変依存から要素ごとの依存へ変更しました。同日の第2回で初期化時の読み込み・メタデータ抽出とサイズ計算を分離しました。同日の第3回で要素別キャッシュの保持・無効化ルールを分離しました。2026-11-03の第4回で描画サービスの全体差し替えを廃止し、生成時の依存へ変更しました。同日の第5回でフィルターパラメータの合成規則をModel外へ一本化し、第7回で初期化の入口をUseCasesのFactoryへ移しました。キャッシュ保持と描画要求の組み立てを担当するModelの責務は残っています。
+この文書は、画像要素Modelが担うデータ・描画・キャッシュ・永続化の境界を記録します。調査日: 2026-10-18。2026-10-28 に保存専用の描画コピーを追加し、2026-10-29 に AI 完了結果の照合に使う世代番号を記録しました。2026-11-01 に段階3の第1回として、画像取得Resolverを共有可変依存から要素ごとの依存へ変更しました。同日の第2回で初期化時の読み込み・メタデータ抽出とサイズ計算を分離しました。同日の第3回で要素別キャッシュの保持・無効化ルールを分離しました。2026-11-03の第4回で描画サービスの全体差し替えを廃止し、生成時の依存へ変更しました。同日の第5回でフィルターパラメータの合成規則をModel外へ一本化し、第7回で初期化の入口をUseCasesのFactoryへ移しました。2026-11-05の第8回で、編集値30項目をまとめた `ImageEditState` を Revert・画像差し替えの Undo・複製に適用しました。キャッシュ保持と描画要求の組み立てを担当するModelの責務は残っています。
 
 - 対象: [ImageElement.swift](../../../GLogo/Models/ImageElement.swift)
 - 全体方針: [比較と責務分離方針](../README.md)
@@ -144,7 +144,7 @@ URLの同期読み込みは維持しています。URLが読めれば破損デ�
 
 ### テストと回帰テスト棚卸し
 
-新規 [ImageElementInitializationTests](../../../GLogoTests/Unit/ImageElementInitializationTests.swift) 7件を変更前に実行しました。当初、破損URLのメタデータをnilと想定した新規テストが失敗し、現行抽出器が空のメタデータを返すことを確認しました。既存動作に合わせた期待値で、分離前・分離後とも7件成功しています。既存テストの期待値は変更していません。
+新規 [ImageElementInitializationTests](../../../GLogoTests/Unit/ImageElementFactoryTests.swift)（第7回で `ImageElementFactoryTests` へ置き換え）7件を変更前に実行しました。当初、破損URLのメタデータをnilと想定した新規テストが失敗し、現行抽出器が空のメタデータを返すことを確認しました。既存動作に合わせた期待値で、分離前・分離後とも7件成功しています。既存テストの期待値は変更していません。
 
 - 新規: 縦横・正方形・細長い画像、最小寸法、固定サイズ、指定キャンバス、差し替えと復元、指定メタデータ優先、入口別の抽出条件、ファイル参照とURLのData保持、URLコピー、破損・存在しないファイル。
 - 引き続き有効: Resolverの取得優先順位・独立性、Undoのキャッシュ無効化、Revertとメタデータ復元、旧形式と多態Codable、保存画像の向き・配置・非破壊性、クロップ、インポート、古いAI／描画結果の破棄。今回の責務移動によって保護対象を失った回帰テストはありません。
@@ -306,11 +306,11 @@ Serenaの参照検索で `ImageFilterParams` の生成元を確認し、合成�
 
 | 区分 | 責務 | 状態 |
 | --- | --- | --- |
-| Modelに残す | 画像ソースの参照と優先順位、編集値（調整・フレーム・フィルター）、役割・順序・メタデータ、`editRevision`、Revertの初期スナップショット、Codableと旧形式互換、`copy()`・`renderCopy()` | 維持 |
+| Modelに残す | 画像ソースの参照と優先順位、編集値（調整・フレーム・フィルター）、役割・順序・メタデータ、`editRevision`、Revertの初期スナップショット、Codableと旧形式互換、`copy()`・`renderCopy()` | 維持。第8回で編集値を `ImageEditState` として一括で取り出し・反映できるようにした |
 | 外へ出す① | 読み取り時の描画：`image` が同期でフル品質描画し、編集中は即時プレビューへ切り替える | 未着手（高リスク） |
 | 外へ出す② | キャンバス描画：`draw(in:)` が表示画像を選んで描画する | 未着手（高リスク） |
 | 外へ出す③ | 画像取得：`originalImage`・編集用プロキシを読み取り時に読み込みキャッシュする | 未着手（高リスク） |
-| 外へ出す④ | キャッシュの持ち主：`renderCache`・`cachedImage`・無効化。履歴イベントから57か所で無効化を呼ぶ | 未着手（高リスク）。`editRevision` による自動失効を検討 |
+| 外へ出す④ | キャッシュの持ち主：`renderCache`・`cachedImage`・無効化。履歴イベントから55か所で無効化を呼ぶ（第8回で数え直し。以前の「57か所」は誤り） | 未着手（高リスク）。`editRevision` による自動失効を検討 |
 | 外へ出す⑤ | 編集中の状態：`isCurrentlyEditing`・`startEditing`／`endEditing` | 未着手（①と一緒に扱う） |
 | 外へ出す⑥ | 初期化時の読み込み：7つの初期化入口が画像を読み込みサイズを決める | **第7回で完了**。`copy()` のURL読み直しと画像差し替え時の寸法取得はModelに残る |
 | 外へ出す⑦ | メタデータからフレーム値を戻す規則 | **第6回で完了** |
@@ -356,7 +356,7 @@ Serenaの参照検索とソースで、7つの初期化入口の呼び出し元�
 
 - **Critical**: 指摘なし。
 - **Warning**: Factoryの初期化引数の既定値に、Infrastructureの具体型（`ImageInitializationLoader`・`ImagePreviewService.shared`）が入りました。Modelからの直接参照を減らした代わりで、Composition Rootの整備（残件③）でまとめて解消します。
-- **Info**: ModelからInfrastructureへの参照は、初期化引数の既定値16か所とLoaderの呼び出し7か所から、Decoderの既定値2か所とLoaderの呼び出し2か所（`copy()` のURL読み直し・`replaceImageSource` の寸法取得）に減りました。`ImageElement.swift` は **1,175 → 1,054行** です。
+- **Info**: Modelから外側の層（UseCases・Infrastructure）への参照は、初期化引数の既定値16か所とLoaderの呼び出し7か所から、Decoderの既定値2か所とLoaderの呼び出し2か所（`copy()` のURL読み直し・`replaceImageSource` の寸法取得）に減りました。既定値の内訳は、UseCases層の `ImageSourceResolver()` とInfrastructure層の `ImagePreviewService.shared` が各8か所です（第8回で訂正。当初は「Infrastructureへの参照」と書いていました）。`ImageElement.swift` は **1,175 → 1,054行** です。
 - **Test Coverage**: 新規 [ImageElementCopyTests](../../../GLogoTests/Unit/ImageElementCopyTests.swift) 7件で、ソース種別ごとの複製結果（引き継ぐ値・作り直す値・URLの読み直し）を固定しました。`ImageElementInitializationTests` は [ImageElementFactoryTests](../../../GLogoTests/Unit/ImageElementFactoryTests.swift) 6件へ置き換え、境界の注入とインポート順・役割の確認を加えました。`ImageSourceResolverTests` にファイル由来ソースの取得1件を追加しました。テストの生成箇所（36ファイル・75か所ほか）はFactoryの呼び出しへ置き換え、期待値は変えていません。
 - **回帰テスト棚卸し**: 削除した2入口の確認だけを外しました。旧URL・パス・アセット名の入口の確認は、本番で同じ規則を使う `copy()` のテストとResolverのテストへ移しました。パス・アセット名から生成時に配置サイズを求める規則は、本番で通る経路がなくなったため確認対象から外しました。
 - **Verification**: GLogoTests 372件中369件成功。失敗1件は既知の `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用です。変更したファイルからの新しいビルド警告はありません（既存のweak変数・Sendable警告は残っています）。`git diff --check` 問題なし。iPhone 17 Pro／iOS 26.1 Simulator、`-parallel-testing-enabled NO`。UI・実機は未実施です。SwiftFormatは未導入のため実行できません。
@@ -364,3 +364,47 @@ Serenaの参照検索とソースで、7つの初期化入口の呼び出し元�
 ### 次の範囲
 
 段階3の第7回まで完了しました。次の候補は、履歴イベントとRevertへの調整値型の適用（EventSourcing.swiftの分割を含む）と、Composition Rootの整備です。描画・画像取得・キャッシュ保持のModel外への移動は、引き続き後に回します。
+
+## 段階3・第8回：履歴イベントの整理と編集値の型（2026-11-05）
+
+### 計画と確認した経路
+
+「変更前と変更後の値を記録して Undo する」方式は変えずに、履歴まわりの書き方を整理しました。プロジェクトの保存形式は変えていません。作業は、未使用の削除 → 固定テスト → 編集値の型の適用 → 差し替え Undo の修正 → ファイル分割の順に分け、それぞれ別のコミットにしました。
+
+| 仮説・リスク | 確認・対応 |
+| --- | --- |
+| 履歴は保存されておらず、`EditorEvent` の Codable は使われていない | アプリ・テストのどちらにもイベントのエンコード・デコードがないことを確認し、Codable 準拠、9つのイベントの独自エンコード処理、`eventName`・`timestamp`・`getEventNames`、`undo()` 内の空の要素数チェック、未使用のイベント3つ（移動・サイズ変更・Z順）を削除 |
+| 初期スナップショットの保存形式を壊すと、既存プロジェクトの Revert 基準を読めなくなる | 移行前に、`initialAdjustmentSnapshot` のキー30個と値の表現（書き出し）と、既存ファイルの書式で手書きした固定 JSON の読み込みを固定するテストを追加。型 `RevertAdjustmentSnapshot` とプロパティ名は残した |
+| 差し替えの Undo がフレームと背景ぼかしを戻さない | 確認用テストで再現。編集値の型の適用では現行の挙動を保ったままテストで固定し、ユーザー確認のうえ別のコミットで修正 |
+| Revert の Undo で描画キャッシュの無効化を落とす | 無効化の呼び出しを、削除した履歴用スナップショットからイベント側へ移した。Revert・差し替えの Undo／Redo で古い描画キャッシュを使わないことを、固定テストに加えた |
+
+### 変更した境界
+
+- [ImageEditState](../../../GLogo/Models/ImageEditState.swift)：調整値（既存の `ImageAdjustmentValues`）・フィルター（レシピとプリセットID）・フレーム設定（新しい [ImageFrameSettings](../../../GLogo/Models/ImageFrameSettings.swift)）をまとめた値型。メモリ上の受け渡し専用で、保存しません。
+- `ImageElement`：現在の編集値を取り出す `editState` と、まとめて反映する `applyEditState(_:)` を追加しました。`copyAppearance` の30項目の代入と、初期スナップショットの作成・反映はこれを使います。描画キャッシュの無効化は、従来どおり呼び出し側が経路ごとに行います。
+- `RevertAdjustmentSnapshot`：保存キーと色の RGBA 表現は変えず、`ImageEditState` との変換だけを受け持たせました。ティントとフレームで既存の色の変換方法が異なるため、保存値を変えないよう両方を残しています。
+- Revert のイベント：履歴用の `ImageRevertStateSnapshot` を削除し、`ImageEditState` を記録します。
+- 差し替えのイベント：34項目の記録を「差し替え前の画像ソース」と「`ImageEditState`」の2つにまとめ、要素から自分で記録する形にしました。作成側（`ImageEditUseCase`）で30行並んでいた引数もなくなりました。
+- 履歴のファイル：`EventSourcing.swift`（作業前2,704行）を、`EditorEvent`・`EditorHistory` と、`UseCases/History/Events/` の機能別7ファイルに分けました（合計1,760行）。中身は変えずに移し、移動前後で宣言部分の行（1,434行）が一致することを機械的に確認しました。
+- `AppDelegate`：中身が空の `saveUnsavedData()` と、それだけを呼んでいた `applicationWillTerminate` を削除しました（別のコミット）。
+
+これで、画像の編集値を1つ追加するときに直すのは Model の中（プロパティ・値型・保存キー・初期スナップショットの変換）だけになり、Revert・差し替えのイベントと複製の処理は直さなくてよくなりました。
+
+### 挙動の変更
+
+- Revert を Undo したとき、ティントとフレームの色を RGBA へ変換し直さず、Revert 前の UIColor をそのまま戻します（計画どおり。RGB で表せる色なら見た目は同じ）。
+- 画像の差し替え（手動背景除去・高画質化）を Undo したとき、フレーム6項目と背景ぼかし2項目も差し替え前の値へ戻ります（不具合の修正。別のコミット）。差し替えのイベントは背景ぼかしのマスクも保持するようになりました。
+
+### 検証と変更後レビュー
+
+- **Critical／Warning**: 指摘なし。
+- **Info**: 色を RGBA 成分へ変換する処理が、Model の初期スナップショット（ティント）と履歴の `RGBAColorSnapshot`（フレーム見た目のイベント）の2か所に残っています。後者は Codable の名残で、README の残件に記録しました。
+- **Info**: 画像の編集値を追加したときは、テスト用の記録型 `ImageEditStateRecord` と、初期スナップショットのキー一覧のテストにも項目を足す必要があります。手順は [EventSourcing](../UseCases/History/EventSourcing.md) の共通契約に書きました。
+- **Info**: `ImageElement.swift` は **1,054 → 1,078行** です（`copyAppearance` は短くなり、編集値との変換を追加）。
+- **Test Coverage**: 編集値の型の適用前に、固定テスト5件を追加しました（[RevertSnapshotRegressionTests](../../../GLogoTests/Regression/RevertSnapshotRegressionTests.swift) の保存キーの書き出しと、手書きの固定 JSON の読み込み、[RevertUndoSequenceIntegrationTests](../../../GLogoTests/Integration/RevertUndoSequenceIntegrationTests.swift) の30項目、[ImageContentReplacedEventTests](../../../GLogoTests/Integration/ImageContentReplacedEventTests.swift)、[ImageUndoCacheInvalidationTests](../../../GLogoTests/Unit/ImageUndoCacheInvalidationTests.swift) の Revert・差し替えのキャッシュ）。5件とも、変更前のコードで成功することを一時 worktree で確認しました。あわせて、取り出しと反映の項目漏れを確かめる [ImageEditStateTests](../../../GLogoTests/Unit/ImageEditStateTests.swift) と、Revert の Undo で色の値そのものを戻す確認を追加しました。読み込みテストは当初、値を今の書き出しの結果から作っていましたが、書き出しと読み込みを同時に変えたときの互換切れに気づけないという Codex のレビューを受けて、手書きの固定 JSON に改めました。固定したのは初期スナップショットの部分で、要素全体の旧形式の固定 JSON はまだありません。
+- **回帰テスト棚卸し**: 意味を失ったテストはありません（履歴の Codable やイベント名を確かめるテストはなかった）。初期スナップショットの往復テストと Revert → Undo の既存テストは彩度だけを見ていたため、キー30個と30項目の確認で補強しました。キャッシュ無効化・高画質化の制限・枠色の履歴・複製・保存用コピーの既存テストは、そのまま有効です。
+- **Verification**: 各ステップのあとでビルドと GLogoTests 全体を実行しました。最終状態は378件中375件成功で、失敗1件は既知の `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用です。途中の全体実行で `testPreviewLatencyHDR_4K_P95` が1回だけ超過しましたが、性能テストだけの再実行2回では成功しました（固定パラメータでプレビューを測るテストで、今回の変更とは経路が無関係）。変更したファイルからのビルド警告はなく、`git diff --check`（新規ファイルを含む）と、更新した文書の相対リンクも確認しました。iPhone 17 Pro／iOS 26.1 Simulator、`-parallel-testing-enabled NO`。UI・実機は未実施です。SwiftFormatは未導入のため実行できません。Codegraph は未接続で、参照の確認は `rg` とコンパイラで行いました。
+
+### 次の範囲
+
+段階3の第8回まで完了しました。次の候補は Composition Root の整備です。その後に、SwiftUI オーバーレイのジェスチャー変形を履歴に積む案（README の残件）を扱います。描画・画像取得・キャッシュ保持のModel外への移動は、引き続き後に回します。
