@@ -9,14 +9,9 @@
 import Foundation
 import UIKit
 
-/// エディタイベントのプロトコル - すべてのイベントが実装される必要がある
-protocol EditorEvent: Codable {
-    /// イベントを識別するための名前
-    var eventName: String { get }
-    
-    /// イベントが発生した日時
-    var timestamp: Date { get }
-    
+/// 編集の適用と取り消しを1組で表す履歴の単位。
+/// 履歴は Undo／Redo のためにメモリ上だけで保持し、保存しないため Codable にしない。
+protocol EditorEvent {
     /// イベントを適用するメソッド
     func apply(to project: LogoProject)
     
@@ -85,16 +80,8 @@ class EditorHistory {
         }
         restorationRevision &+= 1
         
-        // ここでプロジェクトの要素数をチェック
-        let beforeCount = project.elements.count
-        
         // イベントの効果を元に戻す
         lastEvent.revert(from: project)
-        
-        // ここでプロジェクトの要素数をチェック
-        let afterCount = project.elements.count
-        if beforeCount != afterCount {
-        }
         
         // 取り消し履歴に追加
         undoneEventStack.append(lastEvent)
@@ -150,18 +137,12 @@ class EditorHistory {
     func getHistoryDescriptions() -> [String] {
         return eventStack.map { $0.description }
     }
-    
-    func getEventNames() -> [String] {
-        return eventStack.map { $0.eventName }
-    }
 }
 
 // MARK: - 具体的なイベント実装
 
 /// 要素追加イベント
 struct ElementAddedEvent: EditorEvent {
-    var eventName = "ElementAdded"
-    var timestamp = Date()
     let element: LogoElement
     
     var description: String {
@@ -179,8 +160,6 @@ struct ElementAddedEvent: EditorEvent {
 
 /// 要素削除イベント
 struct ElementRemovedEvent: EditorEvent {
-    var eventName = "ElementRemoved"
-    var timestamp = Date()
     let element: LogoElement
     let index: Int
     
@@ -199,60 +178,8 @@ struct ElementRemovedEvent: EditorEvent {
     }
 }
 
-/// 要素移動イベント
-struct ElementMovedEvent: EditorEvent {
-    var eventName = "ElementMoved"
-    var timestamp = Date()
-    let elementId: UUID
-    let oldPosition: CGPoint
-    let newPosition: CGPoint
-    
-    var description: String {
-        return "要素を移動しました"
-    }
-    
-    func apply(to project: LogoProject) {
-        if let element = project.element(for: elementId) {
-            element.position = newPosition
-        }
-    }
-    
-    func revert(from project: LogoProject) {
-        if let element = project.element(for: elementId) {
-            element.position = oldPosition
-        }
-    }
-}
-
-/// 要素サイズ変更イベント
-struct ElementResizedEvent: EditorEvent {
-    var eventName = "ElementResized"
-    var timestamp = Date()
-    let elementId: UUID
-    let oldSize: CGSize
-    let newSize: CGSize
-    
-    var description: String {
-        return "要素のサイズを変更しました"
-    }
-    
-    func apply(to project: LogoProject) {
-        if let element = project.element(for: elementId) {
-            element.size = newSize
-        }
-    }
-    
-    func revert(from project: LogoProject) {
-        if let element = project.element(for: elementId) {
-            element.size = oldSize
-        }
-    }
-}
-
 /// 要素回転イベント
 struct ElementRotatedEvent: EditorEvent {
-    var eventName = "ElementRotated"
-    var timestamp = Date()
     let elementId: UUID
     let oldRotation: CGFloat
     let newRotation: CGFloat
@@ -276,8 +203,6 @@ struct ElementRotatedEvent: EditorEvent {
 
 /// テキスト内容変更イベント
 struct TextContentChangedEvent: EditorEvent {
-    var eventName = "TextContentChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldText: String
     let newText: String
@@ -301,63 +226,12 @@ struct TextContentChangedEvent: EditorEvent {
 
 /// テキスト色変更イベント
 struct TextColorChangedEvent: EditorEvent {
-    let eventName = "TextColorChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldColor: UIColor
     let newColor: UIColor
     
     var description: String {
         return "テキストの色を変更しました"
-    }
-    
-    // Codable対応のためのプロパティ
-    private enum CodingKeys: String, CodingKey {
-        case timestamp, elementId
-        case oldColorData, newColorData
-    }
-    
-    // カスタムエンコーダー
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encode(elementId, forKey: .elementId)
-        
-        // UIColorのエンコード
-        let oldColorData = try NSKeyedArchiver.archivedData(withRootObject: oldColor, requiringSecureCoding: false)
-        let newColorData = try NSKeyedArchiver.archivedData(withRootObject: newColor, requiringSecureCoding: false)
-        
-        try container.encode(oldColorData, forKey: .oldColorData)
-        try container.encode(newColorData, forKey: .newColorData)
-    }
-    
-    // カスタムデコーダー
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        timestamp = try container.decode(Date.self, forKey: .timestamp)
-        elementId = try container.decode(UUID.self, forKey: .elementId)
-        
-        // UIColorのデコード
-        let oldColorData = try container.decode(Data.self, forKey: .oldColorData)
-        let newColorData = try container.decode(Data.self, forKey: .newColorData)
-        
-        guard let decodedOldColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: oldColorData),
-              let decodedNewColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: newColorData) else {
-            throw DecodingError.dataCorrupted(DecodingError.Context(
-                codingPath: container.codingPath,
-                debugDescription: "Failed to decode UIColor"
-            ))
-        }
-        
-        oldColor = decodedOldColor
-        newColor = decodedNewColor
-    }
-    
-    // 通常のイニシャライザ
-    init(elementId: UUID, oldColor: UIColor, newColor: UIColor) {
-        self.elementId = elementId
-        self.oldColor = oldColor
-        self.newColor = newColor
     }
     
     func apply(to project: LogoProject) {
@@ -377,8 +251,6 @@ struct TextColorChangedEvent: EditorEvent {
 
 /// フォント変更イベント
 struct FontChangedEvent: EditorEvent {
-    var eventName = "FontChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldFontName: String
     let newFontName: String
@@ -408,8 +280,6 @@ struct FontChangedEvent: EditorEvent {
 
 /// 行間変更イベント
 struct TextLineSpacingChangedEvent: EditorEvent {
-    var eventName = "TextLineSpacingChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldSpacing: CGFloat
     let newSpacing: CGFloat
@@ -433,8 +303,6 @@ struct TextLineSpacingChangedEvent: EditorEvent {
 
 /// 文字間隔変更イベント
 struct TextLetterSpacingChangedEvent: EditorEvent {
-    var eventName = "TextLetterSpacingChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldSpacing: CGFloat
     let newSpacing: CGFloat
@@ -458,8 +326,6 @@ struct TextLetterSpacingChangedEvent: EditorEvent {
 
 /// シャドウ効果変更イベント
 struct TextShadowEffectChangedEvent: EditorEvent {
-    var eventName = "TextShadowEffectChanged"
-    var timestamp = Date()
     let elementId: UUID
     let effectIndex: Int
     let oldOffset: CGSize
@@ -492,8 +358,6 @@ struct TextShadowEffectChangedEvent: EditorEvent {
 
 /// ストローク効果変更イベント
 struct TextStrokeEffectChangedEvent: EditorEvent {
-    var eventName = "TextStrokeEffectChanged"
-    var timestamp = Date()
     let elementId: UUID
     let effectIndex: Int
     let oldWidth: CGFloat
@@ -522,8 +386,6 @@ struct TextStrokeEffectChangedEvent: EditorEvent {
 
 /// グロー効果変更イベント
 struct TextGlowEffectChangedEvent: EditorEvent {
-    var eventName = "TextGlowEffectChanged"
-    var timestamp = Date()
     let elementId: UUID
     let effectIndex: Int
     let oldRadius: CGFloat
@@ -552,8 +414,6 @@ struct TextGlowEffectChangedEvent: EditorEvent {
 
 /// グラデーション塗り効果の色変更イベント
 struct TextGradientFillColorChangedEvent: EditorEvent {
-    var eventName = "TextGradientFillColorChanged"
-    var timestamp = Date()
     let elementId: UUID
     let effectIndex: Int
     let oldStartColor: UIColor
@@ -563,71 +423,6 @@ struct TextGradientFillColorChangedEvent: EditorEvent {
 
     var description: String {
         return "テキストのグラデーション色を変更しました"
-    }
-
-    // Codable対応のためのプロパティ
-    private enum CodingKeys: String, CodingKey {
-        case timestamp, elementId, effectIndex
-        case oldStartColorData, newStartColorData
-        case oldEndColorData, newEndColorData
-    }
-
-    // カスタムエンコーダー
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encode(elementId, forKey: .elementId)
-        try container.encode(effectIndex, forKey: .effectIndex)
-
-        let oldStartData = try NSKeyedArchiver.archivedData(withRootObject: oldStartColor, requiringSecureCoding: false)
-        let newStartData = try NSKeyedArchiver.archivedData(withRootObject: newStartColor, requiringSecureCoding: false)
-        let oldEndData = try NSKeyedArchiver.archivedData(withRootObject: oldEndColor, requiringSecureCoding: false)
-        let newEndData = try NSKeyedArchiver.archivedData(withRootObject: newEndColor, requiringSecureCoding: false)
-
-        try container.encode(oldStartData, forKey: .oldStartColorData)
-        try container.encode(newStartData, forKey: .newStartColorData)
-        try container.encode(oldEndData, forKey: .oldEndColorData)
-        try container.encode(newEndData, forKey: .newEndColorData)
-    }
-
-    // カスタムデコーダー
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        timestamp = try container.decode(Date.self, forKey: .timestamp)
-        elementId = try container.decode(UUID.self, forKey: .elementId)
-        effectIndex = try container.decode(Int.self, forKey: .effectIndex)
-
-        let oldStartData = try container.decode(Data.self, forKey: .oldStartColorData)
-        let newStartData = try container.decode(Data.self, forKey: .newStartColorData)
-        let oldEndData = try container.decode(Data.self, forKey: .oldEndColorData)
-        let newEndData = try container.decode(Data.self, forKey: .newEndColorData)
-
-        guard let decodedOldStart = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: oldStartData),
-              let decodedNewStart = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: newStartData),
-              let decodedOldEnd = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: oldEndData),
-              let decodedNewEnd = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: newEndData) else {
-            throw DecodingError.dataCorrupted(DecodingError.Context(
-                codingPath: container.codingPath,
-                debugDescription: "Failed to decode UIColor"
-            ))
-        }
-
-        oldStartColor = decodedOldStart
-        newStartColor = decodedNewStart
-        oldEndColor = decodedOldEnd
-        newEndColor = decodedNewEnd
-    }
-
-    // 通常のイニシャライザ
-    init(elementId: UUID, effectIndex: Int,
-         oldStartColor: UIColor, newStartColor: UIColor,
-         oldEndColor: UIColor, newEndColor: UIColor) {
-        self.elementId = elementId
-        self.effectIndex = effectIndex
-        self.oldStartColor = oldStartColor
-        self.newStartColor = newStartColor
-        self.oldEndColor = oldEndColor
-        self.newEndColor = newEndColor
     }
 
     func apply(to project: LogoProject) {
@@ -651,8 +446,6 @@ struct TextGradientFillColorChangedEvent: EditorEvent {
 
 /// グラデーション塗り効果の角度変更イベント
 struct TextGradientFillEffectChangedEvent: EditorEvent {
-    var eventName = "TextGradientFillEffectChanged"
-    var timestamp = Date()
     let elementId: UUID
     let effectIndex: Int
     let oldAngle: CGFloat
@@ -681,8 +474,6 @@ struct TextGradientFillEffectChangedEvent: EditorEvent {
 
 /// グラデーション塗り効果の不透明度変更イベント
 struct TextGradientFillOpacityChangedEvent: EditorEvent {
-    var eventName = "TextGradientFillOpacityChanged"
-    var timestamp = Date()
     let elementId: UUID
     let effectIndex: Int
     let oldOpacity: CGFloat
@@ -713,8 +504,6 @@ struct TextGradientFillOpacityChangedEvent: EditorEvent {
 
 /// 図形タイプ変更イベント
 struct ShapeTypeChangedEvent: EditorEvent {
-    var eventName = "ShapeTypeChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldType: ShapeType
     let newType: ShapeType
@@ -726,79 +515,24 @@ struct ShapeTypeChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.shapeType = newType
-        } else {
         }
     }
     
     func revert(from project: LogoProject) {
-        
         if let element = project.element(for: elementId, as: ShapeElement.self) {
             element.shapeType = oldType
-        } else {
         }
-        
     }
 }
 
 /// 図形の塗りつぶし色変更イベント
 struct ShapeFillColorChangedEvent: EditorEvent {
-    let eventName = "ShapeFillColorChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldColor: UIColor
     let newColor: UIColor
     
     var description: String {
         return "図形の塗りつぶし色を変更しました"
-    }
-    
-    // Codable対応のためのプロパティ
-    private enum CodingKeys: String, CodingKey {
-        case timestamp, elementId
-        case oldColorData, newColorData
-    }
-    
-    // カスタムエンコーダー
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encode(elementId, forKey: .elementId)
-        
-        // UIColorのエンコード
-        let oldColorData = try NSKeyedArchiver.archivedData(withRootObject: oldColor, requiringSecureCoding: false)
-        let newColorData = try NSKeyedArchiver.archivedData(withRootObject: newColor, requiringSecureCoding: false)
-        
-        try container.encode(oldColorData, forKey: .oldColorData)
-        try container.encode(newColorData, forKey: .newColorData)
-    }
-    
-    // カスタムデコーダー
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        timestamp = try container.decode(Date.self, forKey: .timestamp)
-        elementId = try container.decode(UUID.self, forKey: .elementId)
-        
-        // UIColorのデコード
-        let oldColorData = try container.decode(Data.self, forKey: .oldColorData)
-        let newColorData = try container.decode(Data.self, forKey: .newColorData)
-        
-        guard let decodedOldColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: oldColorData),
-              let decodedNewColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: newColorData) else {
-            throw DecodingError.dataCorrupted(DecodingError.Context(
-                codingPath: container.codingPath,
-                debugDescription: "Failed to decode UIColor"
-            ))
-        }
-        
-        oldColor = decodedOldColor
-        newColor = decodedNewColor
-    }
-    
-    // 通常のイニシャライザ
-    init(elementId: UUID, oldColor: UIColor, newColor: UIColor) {
-        self.elementId = elementId
-        self.oldColor = oldColor
-        self.newColor = newColor
     }
     
     func apply(to project: LogoProject) {
@@ -816,8 +550,6 @@ struct ShapeFillColorChangedEvent: EditorEvent {
 
 /// 図形の塗りつぶしモード変更イベント
 struct ShapeFillModeChangedEvent: EditorEvent {
-    var eventName = "ShapeFillModeChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldMode: FillMode
     let newMode: FillMode
@@ -841,63 +573,12 @@ struct ShapeFillModeChangedEvent: EditorEvent {
 
 /// 図形の枠線色変更イベント
 struct ShapeStrokeColorChangedEvent: EditorEvent {
-    let eventName = "ShapeStrokeColorChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldColor: UIColor
     let newColor: UIColor
     
     var description: String {
         return "図形の枠線色を変更しました"
-    }
-    
-    // Codable対応のためのプロパティ
-    private enum CodingKeys: String, CodingKey {
-        case timestamp, elementId
-        case oldColorData, newColorData
-    }
-    
-    // カスタムエンコーダー
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encode(elementId, forKey: .elementId)
-        
-        // UIColorのエンコード
-        let oldColorData = try NSKeyedArchiver.archivedData(withRootObject: oldColor, requiringSecureCoding: false)
-        let newColorData = try NSKeyedArchiver.archivedData(withRootObject: newColor, requiringSecureCoding: false)
-        
-        try container.encode(oldColorData, forKey: .oldColorData)
-        try container.encode(newColorData, forKey: .newColorData)
-    }
-    
-    // カスタムデコーダー
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        timestamp = try container.decode(Date.self, forKey: .timestamp)
-        elementId = try container.decode(UUID.self, forKey: .elementId)
-        
-        // UIColorのデコード
-        let oldColorData = try container.decode(Data.self, forKey: .oldColorData)
-        let newColorData = try container.decode(Data.self, forKey: .newColorData)
-        
-        guard let decodedOldColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: oldColorData),
-              let decodedNewColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: newColorData) else {
-            throw DecodingError.dataCorrupted(DecodingError.Context(
-                codingPath: container.codingPath,
-                debugDescription: "Failed to decode UIColor"
-            ))
-        }
-        
-        oldColor = decodedOldColor
-        newColor = decodedNewColor
-    }
-    
-    // 通常のイニシャライザ
-    init(elementId: UUID, oldColor: UIColor, newColor: UIColor) {
-        self.elementId = elementId
-        self.oldColor = oldColor
-        self.newColor = newColor
     }
     
     func apply(to project: LogoProject) {
@@ -915,8 +596,6 @@ struct ShapeStrokeColorChangedEvent: EditorEvent {
 
 /// 図形の枠線太さ変更イベント
 struct ShapeStrokeWidthChangedEvent: EditorEvent {
-    var eventName = "ShapeStrokeWidthChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldWidth: CGFloat
     let newWidth: CGFloat
@@ -940,8 +619,6 @@ struct ShapeStrokeWidthChangedEvent: EditorEvent {
 
 /// 図形の枠線モード変更イベント
 struct ShapeStrokeModeChangedEvent: EditorEvent {
-    var eventName = "ShapeStrokeModeChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldMode: StrokeMode
     let newMode: StrokeMode
@@ -965,8 +642,6 @@ struct ShapeStrokeModeChangedEvent: EditorEvent {
 
 /// 図形の角丸半径変更イベント
 struct ShapeCornerRadiusChangedEvent: EditorEvent {
-    var eventName = "ShapeCornerRadiusChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldRadius: CGFloat
     let newRadius: CGFloat
@@ -990,8 +665,6 @@ struct ShapeCornerRadiusChangedEvent: EditorEvent {
 
 /// 図形の辺の数変更イベント
 struct ShapeSidesChangedEvent: EditorEvent {
-    var eventName = "ShapeSidesChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldSides: Int
     let newSides: Int
@@ -1015,8 +688,6 @@ struct ShapeSidesChangedEvent: EditorEvent {
 
 /// 図形のグラデーション色変更イベント
 struct ShapeGradientColorsChangedEvent: EditorEvent {
-    let eventName = "ShapeGradientColorsChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldStartColor: UIColor
     let newStartColor: UIColor
@@ -1025,68 +696,6 @@ struct ShapeGradientColorsChangedEvent: EditorEvent {
     
     var description: String {
         return "図形のグラデーション色を変更しました"
-    }
-    
-    // Codable対応のためのプロパティ
-    private enum CodingKeys: String, CodingKey {
-        case timestamp, elementId
-        case oldStartColorData, newStartColorData
-        case oldEndColorData, newEndColorData
-    }
-    
-    // カスタムエンコーダー
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encode(elementId, forKey: .elementId)
-        
-        // UIColorのエンコード
-        let oldStartColorData = try NSKeyedArchiver.archivedData(withRootObject: oldStartColor, requiringSecureCoding: false)
-        let newStartColorData = try NSKeyedArchiver.archivedData(withRootObject: newStartColor, requiringSecureCoding: false)
-        let oldEndColorData = try NSKeyedArchiver.archivedData(withRootObject: oldEndColor, requiringSecureCoding: false)
-        let newEndColorData = try NSKeyedArchiver.archivedData(withRootObject: newEndColor, requiringSecureCoding: false)
-        
-        try container.encode(oldStartColorData, forKey: .oldStartColorData)
-        try container.encode(newStartColorData, forKey: .newStartColorData)
-        try container.encode(oldEndColorData, forKey: .oldEndColorData)
-        try container.encode(newEndColorData, forKey: .newEndColorData)
-    }
-    
-    // カスタムデコーダー
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        timestamp = try container.decode(Date.self, forKey: .timestamp)
-        elementId = try container.decode(UUID.self, forKey: .elementId)
-        
-        // UIColorのデコード
-        let oldStartColorData = try container.decode(Data.self, forKey: .oldStartColorData)
-        let newStartColorData = try container.decode(Data.self, forKey: .newStartColorData)
-        let oldEndColorData = try container.decode(Data.self, forKey: .oldEndColorData)
-        let newEndColorData = try container.decode(Data.self, forKey: .newEndColorData)
-        
-        guard let decodedOldStartColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: oldStartColorData),
-              let decodedNewStartColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: newStartColorData),
-              let decodedOldEndColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: oldEndColorData),
-              let decodedNewEndColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: newEndColorData) else {
-            throw DecodingError.dataCorrupted(DecodingError.Context(
-                codingPath: container.codingPath,
-                debugDescription: "Failed to decode UIColor"
-            ))
-        }
-        
-        oldStartColor = decodedOldStartColor
-        newStartColor = decodedNewStartColor
-        oldEndColor = decodedOldEndColor
-        newEndColor = decodedNewEndColor
-    }
-    
-    // 通常のイニシャライザ
-    init(elementId: UUID, oldStartColor: UIColor, newStartColor: UIColor, oldEndColor: UIColor, newEndColor: UIColor) {
-        self.elementId = elementId
-        self.oldStartColor = oldStartColor
-        self.newStartColor = newStartColor
-        self.oldEndColor = oldEndColor
-        self.newEndColor = newEndColor
     }
     
     func apply(to project: LogoProject) {
@@ -1106,8 +715,6 @@ struct ShapeGradientColorsChangedEvent: EditorEvent {
 
 /// 図形のグラデーション角度変更イベント
 struct ShapeGradientAngleChangedEvent: EditorEvent {
-    var eventName = "ShapeGradientAngleChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldAngle: CGFloat
     let newAngle: CGFloat
@@ -1135,8 +742,6 @@ struct ShapeGradientAngleChangedEvent: EditorEvent {
 
 /// 画像彩度変更イベント
 struct ImageSaturationChangedEvent: EditorEvent {
-    var eventName = "ImageSaturationChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldSaturation: CGFloat
     let newSaturation: CGFloat
@@ -1162,8 +767,6 @@ struct ImageSaturationChangedEvent: EditorEvent {
 
 /// 画像明度変更イベント
 struct ImageBrightnessChangedEvent: EditorEvent {
-    var eventName = "ImageBrightnessChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldBrightness: CGFloat
     let newBrightness: CGFloat
@@ -1189,8 +792,6 @@ struct ImageBrightnessChangedEvent: EditorEvent {
 
 /// 画像コントラスト変更イベント
 struct ImageContrastChangedEvent: EditorEvent {
-    var eventName = "ImageContrastChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldContrast: CGFloat
     let newContrast: CGFloat
@@ -1216,8 +817,6 @@ struct ImageContrastChangedEvent: EditorEvent {
 
 /// 画像ハイライト変更イベント
 struct ImageHighlightsChangedEvent: EditorEvent {
-    var eventName = "ImageHighlightsChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldHighlights: CGFloat
     let newHighlights: CGFloat
@@ -1243,8 +842,6 @@ struct ImageHighlightsChangedEvent: EditorEvent {
 
 /// 画像シャドウ変更イベント
 struct ImageShadowsChangedEvent: EditorEvent {
-    var eventName = "ImageShadowsChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldShadows: CGFloat
     let newShadows: CGFloat
@@ -1270,8 +867,6 @@ struct ImageShadowsChangedEvent: EditorEvent {
 
 /// 画像黒レベル変更イベント
 struct ImageBlacksChangedEvent: EditorEvent {
-    var eventName = "ImageBlacksChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldBlacks: CGFloat
     let newBlacks: CGFloat
@@ -1297,8 +892,6 @@ struct ImageBlacksChangedEvent: EditorEvent {
 
 /// 画像白レベル変更イベント
 struct ImageWhitesChangedEvent: EditorEvent {
-    var eventName = "ImageWhitesChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldWhites: CGFloat
     let newWhites: CGFloat
@@ -1324,8 +917,6 @@ struct ImageWhitesChangedEvent: EditorEvent {
 
 /// 画像色温度変更イベント
 struct ImageWarmthChangedEvent: EditorEvent {
-    var eventName = "ImageWarmthChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldWarmth: CGFloat
     let newWarmth: CGFloat
@@ -1351,8 +942,6 @@ struct ImageWarmthChangedEvent: EditorEvent {
 
 /// 画像ヴィブランス変更イベント
 struct ImageVibranceChangedEvent: EditorEvent {
-    var eventName = "ImageVibranceChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldVibrance: CGFloat
     let newVibrance: CGFloat
@@ -1378,8 +967,6 @@ struct ImageVibranceChangedEvent: EditorEvent {
 
 /// 画像色相変更イベント
 struct ImageHueChangedEvent: EditorEvent {
-    var eventName = "ImageHueChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldHue: CGFloat
     let newHue: CGFloat
@@ -1405,8 +992,6 @@ struct ImageHueChangedEvent: EditorEvent {
 
 /// 画像シャープネス変更イベント
 struct ImageSharpnessChangedEvent: EditorEvent {
-    var eventName = "ImageSharpnessChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldSharpness: CGFloat
     let newSharpness: CGFloat
@@ -1432,8 +1017,6 @@ struct ImageSharpnessChangedEvent: EditorEvent {
 
 /// 画像ガウシアンブラー変更イベント
 struct ImageGaussianBlurChangedEvent: EditorEvent {
-    var eventName = "ImageGaussianBlurChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldRadius: CGFloat
     let newRadius: CGFloat
@@ -1459,8 +1042,6 @@ struct ImageGaussianBlurChangedEvent: EditorEvent {
 
 /// 画像ビネット変更イベント
 struct ImageVignetteChangedEvent: EditorEvent {
-    var eventName = "ImageVignetteChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldIntensity: CGFloat
     let newIntensity: CGFloat
@@ -1486,8 +1067,6 @@ struct ImageVignetteChangedEvent: EditorEvent {
 
 /// 画像ブルーム変更イベント
 struct ImageBloomChangedEvent: EditorEvent {
-    var eventName = "ImageBloomChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldIntensity: CGFloat
     let newIntensity: CGFloat
@@ -1513,8 +1092,6 @@ struct ImageBloomChangedEvent: EditorEvent {
 
 /// 画像グレイン変更イベント
 struct ImageGrainChangedEvent: EditorEvent {
-    var eventName = "ImageGrainChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldIntensity: CGFloat
     let newIntensity: CGFloat
@@ -1540,8 +1117,6 @@ struct ImageGrainChangedEvent: EditorEvent {
 
 /// 画像フェード変更イベント
 struct ImageFadeChangedEvent: EditorEvent {
-    var eventName = "ImageFadeChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldIntensity: CGFloat
     let newIntensity: CGFloat
@@ -1567,8 +1142,6 @@ struct ImageFadeChangedEvent: EditorEvent {
 
 /// 画像色収差変更イベント
 struct ImageChromaticAberrationChangedEvent: EditorEvent {
-    var eventName = "ImageChromaticAberrationChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldIntensity: CGFloat
     let newIntensity: CGFloat
@@ -1594,81 +1167,14 @@ struct ImageChromaticAberrationChangedEvent: EditorEvent {
 
 /// 画像ティントカラー変更イベント
 struct ImageTintColorChangedEvent: EditorEvent {
-    let eventName = "ImageTintColorChanged"
-    var timestamp = Date()
     let elementId: UUID
-    var oldColor: UIColor?
-    var newColor: UIColor?
+    let oldColor: UIColor?
+    let newColor: UIColor?
     let oldIntensity: CGFloat
     let newIntensity: CGFloat
     
     var description: String {
         return "画像のティントカラーを変更しました"
-    }
-    
-    // Codable対応のためのプロパティ
-    private enum CodingKeys: String, CodingKey {
-        case timestamp, elementId, oldIntensity, newIntensity
-        case oldColorData, newColorData
-        case hasOldColor, hasNewColor
-    }
-    
-    // カスタムエンコーダー
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encode(elementId, forKey: .elementId)
-        try container.encode(oldIntensity, forKey: .oldIntensity)
-        try container.encode(newIntensity, forKey: .newIntensity)
-        
-        // UIColorのエンコード（nilの場合も考慮）
-        try container.encode(oldColor != nil, forKey: .hasOldColor)
-        try container.encode(newColor != nil, forKey: .hasNewColor)
-        
-        if let oldColor = oldColor {
-            let oldColorData = try NSKeyedArchiver.archivedData(withRootObject: oldColor, requiringSecureCoding: false)
-            try container.encode(oldColorData, forKey: .oldColorData)
-        }
-        
-        if let newColor = newColor {
-            let newColorData = try NSKeyedArchiver.archivedData(withRootObject: newColor, requiringSecureCoding: false)
-            try container.encode(newColorData, forKey: .newColorData)
-        }
-    }
-    
-    // カスタムデコーダー
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        timestamp = try container.decode(Date.self, forKey: .timestamp)
-        elementId = try container.decode(UUID.self, forKey: .elementId)
-        oldIntensity = try container.decode(CGFloat.self, forKey: .oldIntensity)
-        newIntensity = try container.decode(CGFloat.self, forKey: .newIntensity)
-        
-        // UIColorのデコード（nilの場合も考慮）
-        let hasOldColor = try container.decode(Bool.self, forKey: .hasOldColor)
-        let hasNewColor = try container.decode(Bool.self, forKey: .hasNewColor)
-        
-        oldColor = nil
-        newColor = nil
-        
-        if hasOldColor {
-            let oldColorData = try container.decode(Data.self, forKey: .oldColorData)
-            oldColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: oldColorData)
-        }
-        
-        if hasNewColor {
-            let newColorData = try container.decode(Data.self, forKey: .newColorData)
-            newColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: newColorData)
-        }
-    }
-    
-    // 通常のイニシャライザ
-    init(elementId: UUID, oldColor: UIColor?, newColor: UIColor?, oldIntensity: CGFloat, newIntensity: CGFloat) {
-        self.elementId = elementId
-        self.oldColor = oldColor
-        self.newColor = newColor
-        self.oldIntensity = oldIntensity
-        self.newIntensity = newIntensity
     }
     
     func apply(to project: LogoProject) {
@@ -1689,7 +1195,7 @@ struct ImageTintColorChangedEvent: EditorEvent {
 }
 
 /// リバート時に復元可能な画像調整状態スナップショット
-private struct ImageRevertStateSnapshot: Codable {
+private struct ImageRevertStateSnapshot {
     let saturationAdjustment: CGFloat
     let brightnessAdjustment: CGFloat
     let contrastAdjustment: CGFloat
@@ -1793,8 +1299,8 @@ private struct ImageRevertStateSnapshot: Codable {
     }
 }
 
-/// UIColorを保存可能なRGBAへ変換するスナップショット
-struct RGBAColorSnapshot: Codable {
+/// UIColor を RGBA 成分に変換して保持する色の値
+struct RGBAColorSnapshot {
     let red: CGFloat
     let green: CGFloat
     let blue: CGFloat
@@ -1828,8 +1334,6 @@ struct RGBAColorSnapshot: Codable {
 
 /// 画像要素を初期状態へ戻すイベント（UndoでRevert前状態へ復元可能）
 struct ImageRevertedToInitialStateEvent: EditorEvent {
-    var eventName = "ImageRevertedToInitialState"
-    var timestamp = Date()
     let elementId: UUID
     private let beforeState: ImageRevertStateSnapshot
 
@@ -1871,8 +1375,6 @@ struct ImageRevertedToInitialStateEvent: EditorEvent {
 
 /// 画像内容差し替えイベント（手動背景除去などの結果適用）
 struct ImageContentReplacedEvent: EditorEvent {
-    var eventName = "ImageContentReplaced"
-    var timestamp = Date()
     let elementId: UUID
     let oldImageData: Data?
     let oldImageFileName: String?
@@ -1899,7 +1401,7 @@ struct ImageContentReplacedEvent: EditorEvent {
     let oldFade: CGFloat
     let oldChromaticAberration: CGFloat
     let oldTintIntensity: CGFloat
-    var oldTintColor: UIColor?
+    let oldTintColor: UIColor?
     let oldAppliedFilterRecipe: FilterRecipe?
     let oldAppliedFilterPresetId: String?
     let newImageData: Data
@@ -2013,115 +1515,6 @@ struct ImageContentReplacedEvent: EditorEvent {
         self.newHasAppliedUpscale = newHasAppliedUpscale
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case timestamp, elementId
-        case oldImageData, oldImageFileName, oldOriginalImageURL, oldOriginalImagePath, oldOriginalImageIdentifier, oldHasAppliedUpscale
-        case oldToneCurveData, oldSaturation, oldBrightness, oldContrast, oldHighlights, oldShadows, oldBlacks, oldWhites
-        case oldWarmth, oldVibrance
-        case oldHue, oldSharpness, oldGaussianBlurRadius
-        case oldVignette, oldBloom, oldGrain, oldFade, oldChromaticAberration
-        case oldTintIntensity
-        case oldTintColorData, hasOldTintColor
-        case oldAppliedFilterRecipe, oldAppliedFilterPresetId
-        case newImageData, newOriginalImageIdentifier, newHasAppliedUpscale
-    }
-
-    /// エンコード処理（UIColorの変換を含む）
-    /// - Parameters:
-    ///   - encoder: エンコーダー
-    /// - Returns: なし
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encode(elementId, forKey: .elementId)
-        try container.encodeIfPresent(oldImageData, forKey: .oldImageData)
-        try container.encodeIfPresent(oldImageFileName, forKey: .oldImageFileName)
-        try container.encodeIfPresent(oldOriginalImageURL, forKey: .oldOriginalImageURL)
-        try container.encodeIfPresent(oldOriginalImagePath, forKey: .oldOriginalImagePath)
-        try container.encodeIfPresent(oldOriginalImageIdentifier, forKey: .oldOriginalImageIdentifier)
-        try container.encode(oldHasAppliedUpscale, forKey: .oldHasAppliedUpscale)
-        try container.encode(oldToneCurveData, forKey: .oldToneCurveData)
-        try container.encode(oldSaturation, forKey: .oldSaturation)
-        try container.encode(oldBrightness, forKey: .oldBrightness)
-        try container.encode(oldContrast, forKey: .oldContrast)
-        try container.encode(oldHighlights, forKey: .oldHighlights)
-        try container.encode(oldShadows, forKey: .oldShadows)
-        try container.encode(oldBlacks, forKey: .oldBlacks)
-        try container.encode(oldWhites, forKey: .oldWhites)
-        try container.encode(oldWarmth, forKey: .oldWarmth)
-        try container.encode(oldVibrance, forKey: .oldVibrance)
-        try container.encode(oldHue, forKey: .oldHue)
-        try container.encode(oldSharpness, forKey: .oldSharpness)
-        try container.encode(oldGaussianBlurRadius, forKey: .oldGaussianBlurRadius)
-        try container.encode(oldVignette, forKey: .oldVignette)
-        try container.encode(oldBloom, forKey: .oldBloom)
-        try container.encode(oldGrain, forKey: .oldGrain)
-        try container.encode(oldFade, forKey: .oldFade)
-        try container.encode(oldChromaticAberration, forKey: .oldChromaticAberration)
-        try container.encode(oldTintIntensity, forKey: .oldTintIntensity)
-        try container.encode(newImageData, forKey: .newImageData)
-        try container.encode(newOriginalImageIdentifier, forKey: .newOriginalImageIdentifier)
-        try container.encode(newHasAppliedUpscale, forKey: .newHasAppliedUpscale)
-
-        try container.encode(oldTintColor != nil, forKey: .hasOldTintColor)
-        if let oldTintColor = oldTintColor {
-            let colorData = try NSKeyedArchiver.archivedData(withRootObject: oldTintColor, requiringSecureCoding: false)
-            try container.encode(colorData, forKey: .oldTintColorData)
-        }
-
-        try container.encodeIfPresent(oldAppliedFilterRecipe, forKey: .oldAppliedFilterRecipe)
-        try container.encodeIfPresent(oldAppliedFilterPresetId, forKey: .oldAppliedFilterPresetId)
-    }
-
-    /// デコード処理（UIColorの復元を含む）
-    /// - Parameters:
-    ///   - decoder: デコーダー
-    /// - Returns: なし
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        timestamp = try container.decode(Date.self, forKey: .timestamp)
-        elementId = try container.decode(UUID.self, forKey: .elementId)
-        oldImageData = try container.decodeIfPresent(Data.self, forKey: .oldImageData)
-        oldImageFileName = try container.decodeIfPresent(String.self, forKey: .oldImageFileName)
-        oldOriginalImageURL = try container.decodeIfPresent(URL.self, forKey: .oldOriginalImageURL)
-        oldOriginalImagePath = try container.decodeIfPresent(String.self, forKey: .oldOriginalImagePath)
-        oldOriginalImageIdentifier = try container.decodeIfPresent(String.self, forKey: .oldOriginalImageIdentifier)
-        oldHasAppliedUpscale = try container.decodeIfPresent(Bool.self, forKey: .oldHasAppliedUpscale) ?? false
-        oldToneCurveData = try container.decode(ToneCurveData.self, forKey: .oldToneCurveData)
-        oldSaturation = try container.decode(CGFloat.self, forKey: .oldSaturation)
-        oldBrightness = try container.decode(CGFloat.self, forKey: .oldBrightness)
-        oldContrast = try container.decode(CGFloat.self, forKey: .oldContrast)
-        oldHighlights = try container.decode(CGFloat.self, forKey: .oldHighlights)
-        oldShadows = try container.decode(CGFloat.self, forKey: .oldShadows)
-        oldBlacks = try container.decodeIfPresent(CGFloat.self, forKey: .oldBlacks) ?? 0.0
-        oldWhites = try container.decodeIfPresent(CGFloat.self, forKey: .oldWhites) ?? 0.0
-        oldWarmth = try container.decodeIfPresent(CGFloat.self, forKey: .oldWarmth) ?? 0.0
-        oldVibrance = try container.decodeIfPresent(CGFloat.self, forKey: .oldVibrance) ?? 0.0
-        oldHue = try container.decode(CGFloat.self, forKey: .oldHue)
-        oldSharpness = try container.decode(CGFloat.self, forKey: .oldSharpness)
-        oldGaussianBlurRadius = try container.decode(CGFloat.self, forKey: .oldGaussianBlurRadius)
-        oldVignette = try container.decodeIfPresent(CGFloat.self, forKey: .oldVignette) ?? 0.0
-        oldBloom = try container.decodeIfPresent(CGFloat.self, forKey: .oldBloom) ?? 0.0
-        oldGrain = try container.decodeIfPresent(CGFloat.self, forKey: .oldGrain) ?? 0.0
-        oldFade = try container.decodeIfPresent(CGFloat.self, forKey: .oldFade) ?? 0.0
-        oldChromaticAberration = try container.decodeIfPresent(CGFloat.self, forKey: .oldChromaticAberration) ?? 0.0
-        oldTintIntensity = try container.decode(CGFloat.self, forKey: .oldTintIntensity)
-        newImageData = try container.decode(Data.self, forKey: .newImageData)
-        newOriginalImageIdentifier = try container.decode(String.self, forKey: .newOriginalImageIdentifier)
-        newHasAppliedUpscale = try container.decodeIfPresent(Bool.self, forKey: .newHasAppliedUpscale) ?? false
-
-        let hasOldTintColor = try container.decode(Bool.self, forKey: .hasOldTintColor)
-        oldTintColor = nil
-        if hasOldTintColor {
-            let colorData = try container.decode(Data.self, forKey: .oldTintColorData)
-            oldTintColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: colorData)
-        }
-
-        // フィルタープリセット（旧データ互換: nil = フィルター未適用）
-        oldAppliedFilterRecipe = try container.decodeIfPresent(FilterRecipe.self, forKey: .oldAppliedFilterRecipe)
-        oldAppliedFilterPresetId = try container.decodeIfPresent(String.self, forKey: .oldAppliedFilterPresetId)
-    }
-
     /// 画像内容を差し替える
     /// - Parameters:
     ///   - project: 対象プロジェクト
@@ -2189,8 +1582,6 @@ struct ImageContentReplacedEvent: EditorEvent {
 
 /// 画像フレーム表示変更イベント
 struct ImageShowFrameChangedEvent: EditorEvent {
-    var eventName = "ImageShowFrameChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldValue: Bool
     let newValue: Bool
@@ -2216,63 +1607,12 @@ struct ImageShowFrameChangedEvent: EditorEvent {
 
 /// 画像フレーム色変更イベント
 struct ImageFrameColorChangedEvent: EditorEvent {
-    let eventName = "ImageFrameColorChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldColor: UIColor
     let newColor: UIColor
     
     var description: String {
         return "画像のフレーム色を変更しました"
-    }
-    
-    // Codable対応のためのプロパティ
-    private enum CodingKeys: String, CodingKey {
-        case timestamp, elementId
-        case oldColorData, newColorData
-    }
-    
-    // カスタムエンコーダー
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encode(elementId, forKey: .elementId)
-        
-        // UIColorのエンコード
-        let oldColorData = try NSKeyedArchiver.archivedData(withRootObject: oldColor, requiringSecureCoding: false)
-        let newColorData = try NSKeyedArchiver.archivedData(withRootObject: newColor, requiringSecureCoding: false)
-        
-        try container.encode(oldColorData, forKey: .oldColorData)
-        try container.encode(newColorData, forKey: .newColorData)
-    }
-    
-    // カスタムデコーダー
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        timestamp = try container.decode(Date.self, forKey: .timestamp)
-        elementId = try container.decode(UUID.self, forKey: .elementId)
-        
-        // UIColorのデコード
-        let oldColorData = try container.decode(Data.self, forKey: .oldColorData)
-        let newColorData = try container.decode(Data.self, forKey: .newColorData)
-        
-        guard let decodedOldColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: oldColorData),
-              let decodedNewColor = try NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: newColorData) else {
-            throw DecodingError.dataCorrupted(DecodingError.Context(
-                codingPath: container.codingPath,
-                debugDescription: "Failed to decode UIColor"
-            ))
-        }
-        
-        oldColor = decodedOldColor
-        newColor = decodedNewColor
-    }
-    
-    // 通常のイニシャライザ
-    init(elementId: UUID, oldColor: UIColor, newColor: UIColor) {
-        self.elementId = elementId
-        self.oldColor = oldColor
-        self.newColor = newColor
     }
     
     func apply(to project: LogoProject) {
@@ -2292,8 +1632,6 @@ struct ImageFrameColorChangedEvent: EditorEvent {
 
 /// 画像フレーム太さ変更イベント
 struct ImageFrameWidthChangedEvent: EditorEvent {
-    var eventName = "ImageFrameWidthChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldWidth: CGFloat
     let newWidth: CGFloat
@@ -2319,8 +1657,6 @@ struct ImageFrameWidthChangedEvent: EditorEvent {
 
 /// 画像フレームスタイル変更イベント
 struct ImageFrameStyleChangedEvent: EditorEvent {
-    var eventName = "ImageFrameStyleChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldStyle: ImageFrameStyle
     let newStyle: ImageFrameStyle
@@ -2346,8 +1682,6 @@ struct ImageFrameStyleChangedEvent: EditorEvent {
 
 /// 画像フレームの表示・スタイル・色をまとめて変更するイベント
 struct ImageFrameAppearanceChangedEvent: EditorEvent {
-    var eventName = "ImageFrameAppearanceChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldShowFrame: Bool
     let newShowFrame: Bool
@@ -2399,8 +1733,6 @@ struct ImageFrameAppearanceChangedEvent: EditorEvent {
 
 /// 画像角丸設定変更イベント
 struct ImageRoundedCornersChangedEvent: EditorEvent {
-    var eventName = "ImageRoundedCornersChanged"
-    var timestamp = Date()
     let elementId: UUID
     let wasRounded: Bool
     let isRounded: Bool
@@ -2436,8 +1768,6 @@ struct ImageRoundedCornersChangedEvent: EditorEvent {
 
 /// プロジェクト名変更イベント
 struct ProjectNameChangedEvent: EditorEvent {
-    var eventName = "ProjectNameChanged"
-    var timestamp = Date()
     let oldName: String
     let newName: String
     
@@ -2456,8 +1786,6 @@ struct ProjectNameChangedEvent: EditorEvent {
 
 /// キャンバスサイズ変更イベント
 struct CanvasSizeChangedEvent: EditorEvent {
-    var eventName = "CanvasSizeChanged"
-    var timestamp = Date()
     let oldSize: CGSize
     let newSize: CGSize
     
@@ -2476,8 +1804,6 @@ struct CanvasSizeChangedEvent: EditorEvent {
 
 /// 要素の複合変更イベント（移動 + サイズ変更 + 回転）
 struct ElementTransformedEvent: EditorEvent {
-    var eventName = "ElementTransformed"
-    var timestamp = Date()
     let elementId: UUID
     let oldPosition: CGPoint?
     let newPosition: CGPoint?
@@ -2528,69 +1854,13 @@ struct ElementTransformedEvent: EditorEvent {
     }
 }
 
-/// 要素のZ-Index変更イベント
-struct ElementZIndexChangedEvent: EditorEvent {
-    var eventName = "ElementZIndexChanged"
-    var timestamp = Date()
-    let elementId: UUID
-    let oldZIndex: Int
-    let newZIndex: Int
-
-    var description: String {
-        return "要素の描画順序を変更しました"
-    }
-
-    func apply(to project: LogoProject) {
-        guard let element = project.element(for: elementId) else { return }
-        element.zIndex = newZIndex
-    }
-
-    func revert(from project: LogoProject) {
-        guard let element = project.element(for: elementId) else { return }
-        element.zIndex = oldZIndex
-    }
-}
-
 /// 画像要素の並び順一括変更イベント（画像一覧レールでのドラッグ並べ替え用）
 struct ImageOrderChangedEvent: EditorEvent {
-    var eventName = "ImageOrderChanged"
-    var timestamp = Date()
     /// 変更対象: (要素ID, 旧zIndex, 新zIndex)
     let changes: [(elementId: UUID, oldZIndex: Int, newZIndex: Int)]
 
     var description: String {
         return "画像の並び順を変更しました"
-    }
-
-    // Codable対応用の内部構造体
-    private struct ZIndexChange: Codable {
-        let elementId: UUID
-        let oldZIndex: Int
-        let newZIndex: Int
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case eventName, timestamp, changes
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(eventName, forKey: .eventName)
-        try container.encode(timestamp, forKey: .timestamp)
-        let codableChanges = changes.map { ZIndexChange(elementId: $0.elementId, oldZIndex: $0.oldZIndex, newZIndex: $0.newZIndex) }
-        try container.encode(codableChanges, forKey: .changes)
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        eventName = try container.decode(String.self, forKey: .eventName)
-        timestamp = try container.decode(Date.self, forKey: .timestamp)
-        let codableChanges = try container.decode([ZIndexChange].self, forKey: .changes)
-        changes = codableChanges.map { ($0.elementId, $0.oldZIndex, $0.newZIndex) }
-    }
-
-    init(changes: [(elementId: UUID, oldZIndex: Int, newZIndex: Int)]) {
-        self.changes = changes
     }
 
     func apply(to project: LogoProject) {
@@ -2612,8 +1882,6 @@ struct ImageOrderChangedEvent: EditorEvent {
 
 /// 背景ぼかしマスク変更イベント
 struct ImageBackgroundBlurMaskChangedEvent: EditorEvent {
-    var eventName = "ImageBackgroundBlurMaskChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldMaskData: Data?
     let newMaskData: Data?
@@ -2643,8 +1911,6 @@ struct ImageBackgroundBlurMaskChangedEvent: EditorEvent {
 
 /// 背景ぼかし半径変更イベント
 struct ImageBackgroundBlurRadiusChangedEvent: EditorEvent {
-    var eventName = "ImageBackgroundBlurRadiusChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldRadius: CGFloat
     let newRadius: CGFloat
@@ -2672,8 +1938,6 @@ struct ImageBackgroundBlurRadiusChangedEvent: EditorEvent {
 
 /// フィルタープリセット変更イベント
 struct FilterPresetChangedEvent: EditorEvent {
-    var eventName = "FilterPresetChanged"
-    var timestamp = Date()
     let elementId: UUID
     let oldRecipe: FilterRecipe?
     let newRecipe: FilterRecipe?
