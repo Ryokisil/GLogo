@@ -10,7 +10,7 @@ final class ImageSaveViewModel: ObservableObject {
 
     private let saver: any PhotoLibrarySaving
 
-    init(saver: any PhotoLibrarySaving = SaveImageCoordinator()) {
+    init(saver: any PhotoLibrarySaving) {
         self.saver = saver
     }
 

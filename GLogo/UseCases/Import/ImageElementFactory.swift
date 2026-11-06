@@ -11,9 +11,9 @@ struct ImageElementFactory {
     private let previewService: any ImagePreviewing
 
     init(
-        loader: any ImageInitializationLoading = ImageInitializationLoader(),
-        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
-        previewService: any ImagePreviewing = ImagePreviewService.shared
+        loader: any ImageInitializationLoading,
+        sourceResolver: any ImageSourceResolving,
+        previewService: any ImagePreviewing
     ) {
         self.loader = loader
         self.sourceResolver = sourceResolver

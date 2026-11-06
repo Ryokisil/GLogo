@@ -42,7 +42,9 @@ final class BackgroundBlurCoordinateIntegrationTests: XCTestCase {
             let resolver = BlurEditingResolver(proxy: proxy)
             var outputMask: Data?
             let viewModel = BackgroundBlurMaskEditViewModel(imageElement: element, initialMaskData: nil,
-                blurRadius: 6, completion: { outputMask = $0 }, imageSourceResolver: resolver)
+                blurRadius: 6, completion: { outputMask = $0 },
+                manualBackgroundBlurUseCase: AppComposition.makeManualBackgroundBlurUseCase(),
+                backgroundRemovalUseCase: AppComposition.makeBackgroundRemover(), imageSourceResolver: resolver)
             let size = viewModel.originalImage.size
             let point = CGPoint(x: size.width * 0.7, y: size.height * 0.25)
             viewModel.setBrushSize(30)
@@ -66,7 +68,9 @@ final class BackgroundBlurCoordinateIntegrationTests: XCTestCase {
             try assertBlurLocation(composite, original: original)
             let reopened = BackgroundBlurMaskEditViewModel(imageElement: reloaded,
                 initialMaskData: reloaded.backgroundBlurMaskData, blurRadius: 6,
-                completion: { _ in }, imageSourceResolver: resolver)
+                completion: { _ in },
+                manualBackgroundBlurUseCase: AppComposition.makeManualBackgroundBlurUseCase(),
+                backgroundRemovalUseCase: AppComposition.makeBackgroundRemover(), imageSourceResolver: resolver)
             XCTAssertEqual(try XCTUnwrap(reopened.state.maskImage).size, reopened.originalImage.size)
             reopened.setBrushSize(30)
             reopened.toggleMode()

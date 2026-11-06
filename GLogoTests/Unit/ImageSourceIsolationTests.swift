@@ -131,7 +131,7 @@ final class ImageSourceIsolationTests: XCTestCase {
         for canvas in [nil, CGSize(width: 800, height: 600)] as [CGSize?] {
             let resolver = SourceResolverSpy(image: snapshotImage(.yellow))
             let coordinator = ImageImportCoordinator(useCase: ImageImportUseCase(
-                elementBuilder: ImageImportElementBuilder(sourceResolver: resolver)))
+                elementBuilder: ImageImportElementBuilder(elementFactory: ImageElementFactory(sourceResolver: resolver))))
             let result = try XCTUnwrap(coordinator.importImage(
                 source: .imageData(snapshotImage(.red).pngData()!), project: LogoProject(),
                 viewportSize: CGSize(width: 320, height: 640), assetIdentifier: nil, canvasSize: canvas))

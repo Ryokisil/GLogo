@@ -12,7 +12,7 @@ import UIKit
 struct ManualBackgroundBlurUseCase {
     private let renderer: any BackgroundBlurRendering
 
-    init(renderer: any BackgroundBlurRendering = CoreImageBackgroundBlurRenderer()) {
+    init(renderer: any BackgroundBlurRendering) {
         self.renderer = renderer
     }
 

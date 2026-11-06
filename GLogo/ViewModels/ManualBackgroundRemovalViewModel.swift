@@ -57,8 +57,8 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
         imageElement: ImageElement,
         completion: @escaping (UIImage) -> Void,
         useCase: ManualBackgroundRemovalUseCase = ManualBackgroundRemovalUseCase(),
-        backgroundRemovalUseCase: any BackgroundRemovalProcessing = VisionBackgroundRemover(),
-        imageSourceResolver: ImageSourceResolving = ImageSourceResolver()
+        backgroundRemovalUseCase: any BackgroundRemovalProcessing,
+        imageSourceResolver: ImageSourceResolving
     ) {
         self.completion = completion
         self.useCase = useCase

@@ -25,8 +25,8 @@ struct ImageUpscaleUseCase: Sendable {
     ///   - realESRGANPipeline: Real-ESRGAN 用パイプライン
     /// - Returns: 生成されたユースケース
     init(
-        lanczosPipeline: any ImageUpscalingPipeline = LanczosUpscalePipeline(),
-        realESRGANPipeline: any ImageUpscalingPipeline = RealESRGANPipeline()
+        lanczosPipeline: any ImageUpscalingPipeline,
+        realESRGANPipeline: any ImageUpscalingPipeline
     ) {
         self.lanczosPipeline = lanczosPipeline
         self.realESRGANPipeline = realESRGANPipeline

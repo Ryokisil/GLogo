@@ -27,14 +27,23 @@ struct ManualBackgroundRemovalView: View {
     @State private var guideStepIndex = 0
 
     /// 背景除去モード用イニシャライザ
+    /// 依存は画面を開くたびに作る。作る関数は StateObject が ViewModel を作るときにだけ呼ばれ、再描画では呼ばれない。
     /// - Parameters:
     ///   - imageElement: 編集対象の画像要素
+    ///   - makeBackgroundRemover: AI背景除去を作る
+    ///   - makeImageSourceResolver: 編集用画像の取得を作る
     ///   - onComplete: 編集完了時の処理（背景除去後の画像を返す）
-    /// - Returns: なし
-    init(imageElement: ImageElement, onComplete: @escaping (UIImage) -> Void = { _ in }) {
+    init(
+        imageElement: ImageElement,
+        makeBackgroundRemover: @escaping @MainActor () -> any BackgroundRemovalProcessing,
+        makeImageSourceResolver: @escaping @MainActor () -> any ImageSourceResolving,
+        onComplete: @escaping (UIImage) -> Void = { _ in }
+    ) {
         self._viewModel = StateObject(wrappedValue: ManualBackgroundRemovalViewModel(
             imageElement: imageElement,
-            completion: onComplete
+            completion: onComplete,
+            backgroundRemovalUseCase: makeBackgroundRemover(),
+            imageSourceResolver: makeImageSourceResolver()
         ))
     }
 
@@ -246,6 +255,7 @@ struct ManualBackgroundRemovalView: View {
                         viewModel.cancel()
                         presentationMode.wrappedValue.dismiss()
                     }
+                    .accessibilityIdentifier("editor.manualRemoval.cancelButton")
                 }
 
                 ToolbarItem(placement: .principal) {
@@ -306,8 +316,12 @@ struct ManualBackgroundRemovalView: View {
 struct ManualBackgroundRemovalView_Previews: PreviewProvider {
     static var previews: some View {
         let sampleImageData = UIImage(systemName: "photo")?.pngData() ?? Data()
-        let imageElement = ImageElementFactory().makeElement(imageData: sampleImageData)
-        
-        ManualBackgroundRemovalView(imageElement: imageElement)
+        let imageElement = AppComposition.makeElementFactory().makeElement(imageData: sampleImageData)
+
+        ManualBackgroundRemovalView(
+            imageElement: imageElement,
+            makeBackgroundRemover: AppComposition.makeBackgroundRemover,
+            makeImageSourceResolver: AppComposition.makeImageSourceResolver
+        )
     }
 }

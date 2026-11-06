@@ -193,6 +193,7 @@ struct AIToolsPanelView: View {
                 .controlSize(.small)
                 .buttonBorderShape(.roundedRectangle(radius: 10))
                 .disabled(!hasSelectedImage || isProcessingAnyAITask)
+                .accessibilityIdentifier("editor.aiTools.manualEditButton")
             }
         }
     }
@@ -276,6 +277,7 @@ struct AIToolsPanelView: View {
                 .controlSize(.small)
                 .buttonBorderShape(.roundedRectangle(radius: 10))
                 .disabled(!hasSelectedImage)
+                .accessibilityIdentifier("editor.aiTools.editMaskButton")
             }
 
             Button {

@@ -11,7 +11,7 @@ import SwiftUI
 struct GLogoApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @AppStorage(AppLanguage.storageKey) private var appLanguageRawValue = AppLanguage.system.rawValue
-    @StateObject private var editorViewModel = EditorViewModel()
+    @StateObject private var editorViewModel = AppComposition.makeEditorViewModel()
 
     init() {
         #if DEBUG
@@ -24,7 +24,7 @@ struct GLogoApp: App {
             EditorView(viewModel: editorViewModel)
                 .environment(\.locale, AppLanguage.from(rawValue: appLanguageRawValue).resolvedLocale)
                 #if DEBUG
-                .onAppear { editorViewModel.applyUITestFixtureIfNeeded() }
+                .onAppear { editorViewModel.applyUITestFixtureIfNeeded(makeElementFactory: AppComposition.makeElementFactory) }
                 #endif
         }
     }

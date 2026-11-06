@@ -587,6 +587,6 @@ struct CanvasViewRepresentable: UIViewRepresentable {
 /// プレビュー
 struct CanvasView_Previews: PreviewProvider {
     static var previews: some View {
-        EditorView(viewModel: EditorViewModel())
+        EditorView(viewModel: AppComposition.makeEditorViewModel())
     }
 }

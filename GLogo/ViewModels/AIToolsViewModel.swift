@@ -33,8 +33,8 @@ final class AIToolsViewModel: ObservableObject {
     /// 加工結果の適用先は edits が非所有で参照し、親の寿命を延長しない。
     init(
         edits: any AIImageEditApplying,
-        backgroundRemovalUseCase: any BackgroundRemovalProcessing = VisionBackgroundRemover(),
-        imageUpscaleUseCase: ImageUpscaleUseCase = ImageUpscaleUseCase(),
+        backgroundRemovalUseCase: any BackgroundRemovalProcessing,
+        imageUpscaleUseCase: ImageUpscaleUseCase,
         selection: AnyPublisher<LogoElement?, Never>,
         changes: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher()
     ) {

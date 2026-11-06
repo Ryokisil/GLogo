@@ -34,6 +34,7 @@ final class ManualBackgroundRemovalCoordinateIntegrationTests: XCTestCase {
         let viewModel = ManualBackgroundRemovalViewModel(
             imageElement: element,
             completion: { completedImage = $0 },
+            backgroundRemovalUseCase: AppComposition.makeBackgroundRemover(),
             imageSourceResolver: EditingResolutionResolver(usesProxy: usesProxy)
         )
         let label = "\(type.identifier), EXIF=\(orientation), proxy=\(usesProxy)"

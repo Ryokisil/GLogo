@@ -179,6 +179,7 @@ final class AIToolsViewModelTests: XCTestCase {
         let pipeline = FailingUpscalePipeline()
         let tools = AIToolsViewModel(
             edits: ImageEditUseCase(target: target),
+            backgroundRemovalUseCase: AppComposition.makeBackgroundRemover(),
             imageUpscaleUseCase: ImageUpscaleUseCase(lanczosPipeline: pipeline, realESRGANPipeline: pipeline),
             selection: selection.eraseToAnyPublisher()
         )

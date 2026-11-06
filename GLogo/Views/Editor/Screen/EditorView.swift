@@ -237,7 +237,11 @@ struct EditorView: View {
             // 手動背景除去画面への遷移
             .navigationDestination(isPresented: $isNavigatingToManualRemoval) {
                 if let imageElement = viewModel.selectedImageElement {
-                    ManualBackgroundRemovalView(imageElement: imageElement) { editedImage in
+                    ManualBackgroundRemovalView(
+                        imageElement: imageElement,
+                        makeBackgroundRemover: viewModel.dependencies.makeBackgroundRemover,
+                        makeImageSourceResolver: viewModel.dependencies.makeImageSourceResolver
+                    ) { editedImage in
                         viewModel.aiTools.applyManualBackgroundRemovalResult(editedImage, to: imageElement)
                     }
                 }
@@ -251,7 +255,10 @@ struct EditorView: View {
                     BackgroundBlurMaskEditView(
                         imageElement: imageElement,
                         initialMaskData: imageElement.backgroundBlurMaskData,
-                        blurRadius: imageElement.backgroundBlurRadius
+                        blurRadius: imageElement.backgroundBlurRadius,
+                        makeManualBackgroundBlurUseCase: viewModel.dependencies.makeManualBackgroundBlurUseCase,
+                        makeBackgroundRemover: viewModel.dependencies.makeBackgroundRemover,
+                        makeImageSourceResolver: viewModel.dependencies.makeImageSourceResolver
                     ) { maskData in
                         viewModel.aiTools.applyBackgroundBlurMaskResult(maskData, to: imageElement)
                     }
@@ -469,6 +476,6 @@ private extension View {
 /// プレビュー
 struct EditorView_Previews: PreviewProvider {
     static var previews: some View {
-        EditorView(viewModel: EditorViewModel())
+        EditorView(viewModel: AppComposition.makeEditorViewModel())
     }
 }

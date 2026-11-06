@@ -99,7 +99,7 @@ final class ImagePreviewDependencyTests: XCTestCase {
     func test_importBuilder_propagatesDependency() throws {
         let service = PreviewDependencySpy(color: .yellow)
         let importer = ImageImportCoordinator(useCase: ImageImportUseCase(
-            elementBuilder: ImageImportElementBuilder(previewService: service)))
+            elementBuilder: ImageImportElementBuilder(elementFactory: ImageElementFactory(previewService: service))))
         let data = try XCTUnwrap(snapshotImage(.green).pngData())
         for canvas in [nil, CGSize(width: 800, height: 600)] as [CGSize?] {
             let result = try XCTUnwrap(importer.importImage(

@@ -8,7 +8,7 @@ import UIKit
 struct ImageImportCoordinator: ImageImporting {
     private let useCase: ImageImportUseCase
 
-    init(useCase: ImageImportUseCase = ImageImportUseCase()) {
+    init(useCase: ImageImportUseCase) {
         self.useCase = useCase
     }
 

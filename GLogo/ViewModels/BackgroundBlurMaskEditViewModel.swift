@@ -68,9 +68,9 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
         blurRadius: CGFloat,
         completion: @escaping (Data?) -> Void,
         useCase: ManualBackgroundRemovalUseCase = ManualBackgroundRemovalUseCase(),
-        manualBackgroundBlurUseCase: ManualBackgroundBlurUseCase = ManualBackgroundBlurUseCase(),
-        backgroundRemovalUseCase: any BackgroundRemovalProcessing = VisionBackgroundRemover(),
-        imageSourceResolver: ImageSourceResolving = ImageSourceResolver()
+        manualBackgroundBlurUseCase: ManualBackgroundBlurUseCase,
+        backgroundRemovalUseCase: any BackgroundRemovalProcessing,
+        imageSourceResolver: ImageSourceResolving
     ) {
         self.originalMaskData = initialMaskData
         self.blurRadius = blurRadius

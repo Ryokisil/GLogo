@@ -15,8 +15,8 @@ struct SaveImageCoordinator: PhotoLibrarySaving, Sendable {
     init(
         policy: SaveImagePolicy = SaveImagePolicy(),
         selectionService: any ImageSelecting = ImageSelectionService(),
-        processingService: any ImageProcessing = ImageProcessingService(),
-        writer: any PhotoLibraryWriting = PhotoLibraryWriter()
+        processingService: any ImageProcessing,
+        writer: any PhotoLibraryWriting
     ) {
         self.policy = policy
         self.selectionService = selectionService

@@ -216,6 +216,6 @@ struct ProjectSettingsView: View {
 /// プレビュー
 struct ProjectSettingsView_Previews: PreviewProvider {
     static var previews: some View {
-        ProjectSettingsView(viewModel: EditorViewModel())
+        ProjectSettingsView(viewModel: AppComposition.makeEditorViewModel())
     }
 }

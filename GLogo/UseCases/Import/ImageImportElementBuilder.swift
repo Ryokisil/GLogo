@@ -8,11 +8,10 @@ import UIKit
 struct ImageImportElementBuilder {
     private let elementFactory: ImageElementFactory
 
-    init(
-        sourceResolver: any ImageSourceResolving = ImageSourceResolver(),
-        previewService: any ImagePreviewing = ImagePreviewService.shared
-    ) {
-        elementFactory = ImageElementFactory(sourceResolver: sourceResolver, previewService: previewService)
+    /// - Parameters:
+    ///   - elementFactory: 取り込んだ画像の要素を作る。画像の取得先と描画サービスはここで決まる
+    init(elementFactory: ImageElementFactory) {
+        self.elementFactory = elementFactory
     }
 
     func build(from source: ImageImportSource, context: ImageImportContext) -> ImageElement? {

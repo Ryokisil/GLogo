@@ -25,7 +25,7 @@ final class PhotoLibrarySaveTests: XCTestCase {
     @MainActor
     func testSaveFailsWhenNoImageElements() async {
         // 要素なしの契約をOSの権限状態から切り離し、無人実行でダイアログを待たない。
-        let viewModel = EditorViewModel(photoLibrarySaver: SaveImageCoordinator(writer: NoImagePhotoWriter()))
+        let viewModel = EditorViewModel(photoLibrarySaver: SaveImageCoordinator(processingService: ImageProcessingService(), writer: NoImagePhotoWriter()))
 
         // テキスト要素のみ追加（画像要素は追加しない）
         let textElement = TextElement(text: "テスト")

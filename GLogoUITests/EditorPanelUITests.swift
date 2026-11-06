@@ -157,6 +157,58 @@ final class EditorPanelUITests: XCTestCase {
         XCTAssertFalse(enhanceButton.isEnabled, "高画質化済みではEnhanceボタンが無効化されるべき")
     }
 
+    /// AI Tools から手動背景除去の画面を開き、キャンセルで戻ったあと開き直せる
+    @MainActor
+    func testEditor_ManualRemovalScreen_OpensAndCancels() throws {
+        launchApp(fixture: "selectedImage")
+        assertScreenOpensAndCancels(
+            tab: "backgroundRemoval",
+            openButtonID: "editor.aiTools.manualEditButton",
+            cancelButtonID: "editor.manualRemoval.cancelButton"
+        )
+    }
+
+    /// AI Tools から背景ぼかしマスクの画面を開き、キャンセルで戻ったあと開き直せる
+    @MainActor
+    func testEditor_BlurMaskScreen_OpensAndCancels() throws {
+        launchApp(fixture: "selectedImage")
+        assertScreenOpensAndCancels(
+            tab: "backgroundBlur",
+            openButtonID: "editor.aiTools.editMaskButton",
+            cancelButtonID: "editor.blurMaskEdit.cancelButton"
+        )
+    }
+
+    /// 編集画面を2回開いて閉じる。画面ごとの依存は開くたびに作られるため、開き直しも確認する。
+    @MainActor
+    private func assertScreenOpensAndCancels(tab: String, openButtonID: String, cancelButtonID: String) {
+        for attempt in 1...2 {
+            let openButton = app.buttons[openButtonID]
+            if !openButton.exists {
+                openAIToolsTab(tab)
+            }
+            XCTAssertTrue(openButton.waitForExistence(timeout: 3), "\(attempt)回目: 開くボタンが表示されるべき")
+            openButton.tap()
+
+            let cancelButton = app.buttons[cancelButtonID]
+            XCTAssertTrue(cancelButton.waitForExistence(timeout: 5), "\(attempt)回目: 編集画面が開くべき")
+            cancelButton.tap()
+            XCTAssertTrue(cancelButton.waitForNonExistence(timeout: 5), "\(attempt)回目: キャンセルで編集画面を閉じるべき")
+        }
+    }
+
+    /// AI Tools パネルを開き、指定したタブへ切り替える
+    @MainActor
+    private func openAIToolsTab(_ tab: String) {
+        let aiToolButton = app.buttons["editor.bottomTool.magicStudio"]
+        XCTAssertTrue(aiToolButton.waitForExistence(timeout: 5))
+        aiToolButton.tap()
+
+        let tabButton = app.buttons["editor.aiToolsTab.\(tab)"]
+        XCTAssertTrue(tabButton.waitForExistence(timeout: 3), "\(tab) タブが表示されるべき")
+        tabButton.tap()
+    }
+
     // MARK: - Text パネルテスト
 
     /// Text ツールタップ後に主要タブが表示される

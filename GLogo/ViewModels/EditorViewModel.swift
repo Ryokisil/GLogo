@@ -87,6 +87,8 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         editor: self, selection: $selectedElement.eraseToAnyPublisher()
     )
     private var transformObservation: AnyCancellable?
+    /// ここから開く画面へ渡す外部処理。画面ごとに作るものは、開くたびに呼ぶ関数として持つ。
+    let dependencies: EditorDependencies
     private let backgroundRemovalUseCase: any BackgroundRemovalProcessing
     private let imageUpscaleUseCase: ImageUpscaleUseCase
     private var aiToolsObservation: AnyCancellable?
@@ -119,20 +121,21 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     // MARK: - イニシャライザ
     
     /// 新しいプロジェクトでエディタを初期化
+    /// - Parameters:
+    ///   - dependencies: 保存・インポート・AI の外部処理。実装は Composition Root が組み立てる
     init(
         project: LogoProject = LogoProject(),
-        backgroundRemovalUseCase: any BackgroundRemovalProcessing = VisionBackgroundRemover(),
-        photoLibrarySaver: any PhotoLibrarySaving = SaveImageCoordinator(),
-        imageImporter: any ImageImporting = ImageImportCoordinator(),
-        viewportSizeProvider: @escaping @MainActor () -> CGSize = { UIScreen.main.bounds.size },
-        imageUpscaleUseCase: ImageUpscaleUseCase = ImageUpscaleUseCase()
+        dependencies: EditorDependencies,
+        viewportSizeProvider: @escaping @MainActor () -> CGSize = { UIScreen.main.bounds.size }
     ) {
         self.project = project
-        self.backgroundRemovalUseCase = backgroundRemovalUseCase
-        self.imageUpscaleUseCase = imageUpscaleUseCase
-        self.imageImporter = imageImporter
+        self.dependencies = dependencies
+        // AI ツールと共有する背景除去は、従来どおりエディタの初期化時に1つ作る。
+        self.backgroundRemovalUseCase = dependencies.makeBackgroundRemover()
+        self.imageUpscaleUseCase = dependencies.imageUpscaleUseCase
+        self.imageImporter = dependencies.imageImporter
         self.viewportSizeProvider = viewportSizeProvider
-        imageSaveViewModel = ImageSaveViewModel(saver: photoLibrarySaver)
+        imageSaveViewModel = ImageSaveViewModel(saver: dependencies.photoLibrarySaver)
         
         // 履歴管理の初期化
         history = EditorHistory(project: project)
@@ -614,7 +617,9 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     private var hasAppliedUITestFixture = false
 
     /// launch argument で指定された fixture を適用する（一度だけ）
-    func applyUITestFixtureIfNeeded() {
+    /// - Parameters:
+    ///   - makeElementFactory: fixture の画像要素を作る Factory。適用するときだけ呼ぶ
+    func applyUITestFixtureIfNeeded(makeElementFactory: () -> ImageElementFactory) {
         guard !hasAppliedUITestFixture else { return }
         let args = ProcessInfo.processInfo.arguments
         guard let index = args.firstIndex(of: "-uiTestFixture"),
@@ -625,14 +630,14 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         hasAppliedUITestFixture = true
         switch fixture {
         case .selectedImage:
-            applySelectedImageFixture(enhanced: false)
+            applySelectedImageFixture(enhanced: false, elementFactory: makeElementFactory())
         case .enhancedImage:
-            applySelectedImageFixture(enhanced: true)
+            applySelectedImageFixture(enhanced: true, elementFactory: makeElementFactory())
         }
     }
 
     /// ダミー画像要素を追加・選択する fixture
-    private func applySelectedImageFixture(enhanced: Bool) {
+    private func applySelectedImageFixture(enhanced: Bool, elementFactory: ImageElementFactory) {
         // 1x1 赤ピクセルの最小 PNG を生成（アセット不要）
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64))
         let image = renderer.image { ctx in
@@ -641,7 +646,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         }
         guard let data = image.pngData() else { return }
 
-        let imageElement = ImageElementFactory().makeElement(imageData: data, canvasSize: project.canvasSize)
+        let imageElement = elementFactory.makeElement(imageData: data, canvasSize: project.canvasSize)
         imageElement.position = CGPoint(
             x: project.canvasSize.width / 2,
             y: project.canvasSize.height / 2

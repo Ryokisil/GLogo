@@ -11,7 +11,7 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
     func test_authorizationWait_freezesBothSaveEntries() async throws {
         for composite in [false, true] {
             let writer = SnapshotWriter()
-            let coordinator = SaveImageCoordinator(writer: writer)
+            let coordinator = SaveImageCoordinator(processingService: ImageProcessingService(), writer: writer)
             let (project, image) = makeProject()
             let expected = try XCTUnwrap(composite
                 ? ImageProcessingService().makeCompositeImage(baseElement: image, project: project)
@@ -93,7 +93,7 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
         image.brightnessAdjustment = 0.2
         let expected = try XCTUnwrap(ImageProcessingService().applyFilters(to: image))
         let editor = EditorViewModel(project: project, backgroundRemovalUseCase: ai,
-                                     photoLibrarySaver: SaveImageCoordinator(writer: writer))
+                                     photoLibrarySaver: SaveImageCoordinator(processingService: ImageProcessingService(), writer: writer))
         let aiFinished = expectation(description: "AI 完了")
         let observation = editor.aiTools.$isProcessingAI.dropFirst().filter { !$0 }.sink { _ in aiFinished.fulfill() }
         editor.aiTools.requestAIBackgroundRemoval(for: image)
@@ -125,7 +125,7 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
         var project: LogoProject? = makeProject().0
         weak var source = project
         let completed = expectation(description: "画面解放後の保存完了")
-        SaveImageCoordinator(writer: writer).save(project: project!) { result in
+        SaveImageCoordinator(processingService: ImageProcessingService(), writer: writer).save(project: project!) { result in
             if case .failure(let error) = result { XCTFail("\(error)") }
             completed.fulfill()
         }
