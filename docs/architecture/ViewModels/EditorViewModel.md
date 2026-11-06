@@ -1,6 +1,6 @@
 # EditorViewModelの責務と分割候補
 
-この文書は、編集全体を管理するViewModelの現状と、機能別ViewModelへ分ける境界を記録します。調査日: 2026-10-18。2026-10-25 に保存状態と要素別イベント生成、2026-10-26 に AI・変形操作の状態と受付を分離しました。
+この文書は、編集全体を管理するViewModelの現状と、機能別ViewModelへ分ける境界を記録します。調査日: 2026-10-18。2026-10-25 に保存状態と要素別イベント生成、2026-10-26 に AI・変形操作の状態と受付を分離しました。2026-11-06 の段階3・第9回で、依存を Composition Root から受け取る形にしました。
 
 - 対象: [EditorViewModel.swift](../../../GLogo/ViewModels/EditorViewModel.swift)
 - 全体方針: [比較と責務分離方針](../README.md)
@@ -250,3 +250,52 @@ Codegraphで `EditorViewModel → ImageImportCoordinator → ImageImportUseCase 
 結果: `/tmp/glogo-stage2-di-20261101.xcresult`、ログ: `/tmp/glogo-stage2-di-20261101.log`。今回の対象実行ではCoordinator・ImportUseCase・配置計算は各100%、Builderは22 / 23行（95.7%）を実行しています。全体カバレッジの再測定ではありません。
 
 **段階2は、計画した機能別ViewModel分離と入口DIの範囲で完了**です。すべての内部依存や既存不具合が解消した意味ではありません。次の着手は段階3の `ImageElement` の画像取得依存です。
+
+## 段階3・第9回：Composition Root と入口の依存（2026-11-06）
+
+### 計画と確認した経路
+
+UseCases に11型、ViewModels に4型、初期化引数の既定値に Infrastructure の具体型が残っていました。アプリの入口は `EditorViewModel()` を引数なしで作り、既定値の連鎖で Infrastructure まで届いていました。依存の通り道で2回に分け、第9回は入口から EditorViewModel が受け取る依存と、そこから開く2つの編集画面（手動背景除去・背景ぼかしマスク）を扱いました。編集パネル側（メタデータの保存先・描画の間引き・プレビューサービス）は第10回です。計画は Codex のレビューで補正しました。
+
+| 仮説・リスク | 確認・対応 |
+| --- | --- |
+| 生成の場所を移すと、生成の単位やタイミングも変わる | 単位とタイミングは変えない。エディタで共有するものは値、画面ごとに作るものは「作る関数」で渡す |
+| 画面用の「作る関数」が SwiftUI の再描画のたびに呼ばれる | StateObject が ViewModel を作る式の中でだけ呼ぶ。実際に表示して、再描画では作らず、開き直すと作ることをテストで確認 |
+| `ImageSourceResolver` の既定値を外すと Model に波及する | Model（`ImageElement`）の Decoder が `ImageSourceResolver()` を呼ぶため、今回は既定値を残した。Decoder の依存注入を扱う回で外す |
+| 既定値を外すとテストの生成箇所（EditorViewModel と ImageElementFactory で約200か所）が壊れる | テストターゲットの専用ファイル [LiveDependencyDefaults](../../../GLogoTests/Unit/LiveDependencyDefaults.swift) に生成口を置き、既存の呼び出しを保った。明示した偽物はそのまま渡る |
+
+### 変更した境界
+
+- [AppComposition](../../../GLogo/App/AppComposition.swift)（Composition Root）：第9回で移行した依存（入口・保存・インポート・AI・2つの編集画面）を組み立てる場所です。編集パネル側の依存（第10回の対象）と Model 側の参照は、まだここを通りません。アプリの入口（`GLogoApp`）とプレビューはここからエディタを作ります。
+- [EditorDependencies](../../../GLogo/ViewModels/EditorDependencies.swift)：エディタ1つ分の依存です。境界の Protocol と UseCase だけを持ち、Infrastructure の具体型は含めません。
+- `EditorViewModel` は `init(project:dependencies:viewportSizeProvider:)` だけになりました。UI テストの起動用データで使う Factory は、入口から関数で受け取ります。
+- `AIToolsViewModel`・`ImageSaveViewModel`・2つの編集画面の ViewModel、`SaveImageCoordinator`（保存処理・写真への書き込み）・`ImageUpscaleUseCase`・インポートの3型・`ImageElementFactory`・`ManualBackgroundBlurUseCase` から、Infrastructure を指す既定値を外しました。インポートの Builder は要素の Factory を受け取る形にしました。
+- 2つの編集画面は、依存一式ではなく、それぞれが必要な「作る関数」だけを `EditorView` から受け取ります。
+- UI テスト用に、AI ツールの2つのボタンと、2つの画面のキャンセルボタンへ識別子を付けました（見た目と動作は変えていません）。
+
+**生成の単位とタイミング（変えていません）**
+
+| 実装 | 単位 |
+| --- | --- |
+| 背景除去 | エディタの初期化時に1つ作り、AI ツールと共有。編集画面を開くたびにも1つ作る |
+| 編集用画像の取得・手動の背景ぼかし | 編集画面を開くたびに作る |
+| 高画質化 | エディタごとに1組を作り、AI ツールと共有。Core ML のモデルは最初の高画質化で読み込んで保持 |
+| 保存・インポート | エディタごとに1つ。描画サービスとアセットの読み込みは共有インスタンスを渡す |
+
+アプリから見た挙動、保存形式、履歴、キャッシュの無効化範囲は変えていません。
+
+### 検証と変更後レビュー
+
+- **Critical／Warning**: 指摘なし。
+- **Info**: `EditorViewModel.dependencies` を内部公開にしたため、エディタを持つ側から依存を参照できます。今は `EditorView` が2つの画面用の「作る関数」を読むだけです。子が必要な依存を自由に取り出す使い方は避け、受け取るものは初期化で明示します。
+- **Info**: View からアプリの組み立て（`AppComposition`）を使うのは、プレビューだけです。
+- **Info**: テスト側の生成口は以前の初期化と同じ呼び方なので、本番に既定値が残っているように見えます。ファイル冒頭に理由を書きました。今回追加したテストは、本番の初期化 `EditorViewModel(dependencies:)` を直接使います。
+- **Test Coverage**: [EditorDependenciesTests](../../../GLogoTests/Integration/EditorDependenciesTests.swift) 5件で、注入した保存・インポート・背景除去・高画質化が実際の操作から呼ばれること、初期化時に作るのはエディタで共有する背景除去だけであること、2回の高画質化が同じ実行器へ届くことを確認しました。[AppCompositionTests](../../../GLogoTests/Integration/AppCompositionTests.swift) 2件で、アプリと同じ組み立てのインポートが共有の描画サービスを渡すことと、画面用の依存を呼ぶたびに作ることを確認しました。[MaskEditingScreenDependencyTests](../../../GLogoTests/Integration/MaskEditingScreenDependencyTests.swift) 2件は、2つの画面を実際に表示し、画面の値を作るだけでは依存を作らず、表示で1回、再描画では作らず、開き直すと作ることを確認します。UI テストに、2つの画面を2回ずつ開いてキャンセルで閉じる2件を追加しました。
+- **回帰テスト棚卸し**: 既存テストの期待値は変えていません。既定値に頼っていた数か所（保存処理の省略4か所、背景除去などの省略4か所、インポートの Builder 2か所）は、以前の既定値と同じ実装を明示する形にしました。偽物を渡すテストは、そのまま偽物が届きます。
+- **Verification**: GLogoTests 387件中384件成功（失敗1件は既知の `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用）。UI テストは起動（表示条件4通り）・画面の基本表示・AI ツール・追加した2件の計8件が成功しました。`rg` で、ViewModels に Infrastructure の型名がなく、UseCases に残るのは第10回の5型と `ImageSourceResolver` の既定値だけであることを確認しました。変更したファイルからの新しいビルド警告はありません（`ImageSourceIsolationTests` の既存の Sendable 警告は残っています）。`git diff --check`（新規ファイルを含む）と文書の相対リンクも確認しました。iPhone 17 Pro／iOS 26.1 Simulator、`-parallel-testing-enabled NO`。実機は未実施です。SwiftFormatは未導入のため実行できません。Codegraph は未接続のため、参照の確認は `rg` とコンパイラで行いました。
+
+### 残り
+
+- 第10回：編集パネル側の依存（`ImageMetadataEditUseCase`・`ImageElementMetadataRevertUseCase` のメタデータの保存先、`ImageRenderRefreshUseCase` の描画の間引き、`FilterPreviewUseCase`・`ImageCacheReleaseUseCase` のプレビューサービス）と、Revert イベントの中での生成。
+- `ImageSourceResolver` の既定値（`ImageAssetRepository.shared`）は、Model の Decoder の依存注入を扱う回まで残る例外です。第10回のあとも残っていれば、初期化引数の既定値の問題を「すべて解消」とは扱いません。
+- Model から Infrastructure への参照（描画、`copy()` などでの読み込み、Decoder の既定値、背景設定のアセット読み込み）は、段階3の描画・キャッシュの移動とあわせて扱います。
