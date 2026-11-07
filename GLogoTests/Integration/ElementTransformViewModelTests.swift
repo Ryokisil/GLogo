@@ -89,8 +89,9 @@ final class ElementTransformViewModelTests: XCTestCase {
         transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: nil, ended: true)
         XCTAssertTrue(image.image === fullQualityMarker)
         XCTAssertTrue(editor.isProjectModified)
-        // SwiftUI 側は従来どおり変更フラグのみ。履歴方針の統合はこの分離の範囲外。
-        XCTAssertFalse(editor.canUndo)
+        // 同時に動かした回転と拡大縮小は、最後の終了で1件にまとまる。
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+        XCTAssertTrue(editor.canUndo)
     }
 
     @MainActor
@@ -222,6 +223,207 @@ final class ElementTransformViewModelTests: XCTestCase {
         editor.transform.endManipulation()
         XCTAssertFalse(editor.canUndo)
         XCTAssertFalse(editor.isProjectModified)
+    }
+
+    // MARK: - ジェスチャーの履歴
+
+    @MainActor
+    func test_gesture_recordsOneEntry() {
+        let (editor, shape) = makeEditorWithSelectedShape()
+        let transform = editor.transform
+        // 指を置いた直後の移動量ゼロの通知に、ドラッグの変化が続く（実際の UI で観測した順）。
+        move(transform, 0, 0)
+        move(transform, 30, 40)
+        move(transform, 50, 60)
+        XCTAssertTrue(editor.getHistoryDescriptions().isEmpty, "操作中は履歴を積まない")
+        end(transform, .move)
+        XCTAssertEqual(shape.position, CGPoint(x: 60, y: 80))
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+        editor.undo()
+        XCTAssertEqual(shape.position, CGPoint(x: 10, y: 20))
+        editor.redo()
+        XCTAssertEqual(shape.position, CGPoint(x: 60, y: 80))
+        XCTAssertEqual(shape.size, CGSize(width: 100, height: 80), "動かしていない属性は変えない")
+    }
+
+    @MainActor
+    func test_simultaneousGestures_recordOneEntry() {
+        let (editor, shape) = makeEditorWithSelectedShape()
+        let transform = editor.transform
+        // 2本指のピンチと回転は交互に届き、最後の指を離すまで続く。
+        magnify(transform, 1.5)
+        rotate(transform, 0.3)
+        magnify(transform, 1.6)
+        end(transform, .rotate)
+        XCTAssertTrue(editor.getHistoryDescriptions().isEmpty, "拡大縮小が続くあいだは確定しない")
+        magnify(transform, 1.8)
+        end(transform, .magnify)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+        XCTAssertEqual(shape.size.width, 180, accuracy: 0.0001)
+        XCTAssertEqual(shape.size.height, 144, accuracy: 0.0001)
+        XCTAssertEqual(shape.rotation, 0.5, accuracy: 0.0001)
+        editor.undo()
+        XCTAssertEqual(shape.size, CGSize(width: 100, height: 80))
+        XCTAssertEqual(shape.rotation, 0.2, accuracy: 0.0001)
+        XCTAssertEqual(shape.position, CGPoint(x: 10, y: 20))
+    }
+
+    @MainActor
+    func test_restartedDrag_staysInOneEntry() {
+        let (editor, shape) = makeEditorWithSelectedShape()
+        let transform = editor.transform
+        move(transform, 30, 0)
+        // 1本目のドラッグ中に2本目の指を置くと、終了通知なしで移動量ゼロからやり直す（実際の UI で観測）。
+        move(transform, 0, 0)
+        move(transform, 40, 0)
+        end(transform, .move)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+        // やり直し後も最初の基準値を使う既存の挙動（要素が飛ぶ不具合は README の残件で扱う）。
+        XCTAssertEqual(shape.position, CGPoint(x: 50, y: 20))
+        editor.undo()
+        XCTAssertEqual(shape.position, CGPoint(x: 10, y: 20))
+    }
+
+    @MainActor
+    func test_tapGesture_recordsNothing() {
+        let (editor, _) = makeEditorWithSelectedShape()
+        let transform = editor.transform
+        move(transform, 0, 0)
+        XCTAssertFalse(transform.hasPendingGestureTransform, "しきい値未満の通知では操作を始めない")
+        end(transform, .move)
+        XCTAssertFalse(editor.canUndo)
+        XCTAssertFalse(editor.isProjectModified)
+    }
+
+    @MainActor
+    func test_duplicateEnded_recordsOnce() {
+        let (editor, shape) = makeEditorWithSelectedShape()
+        let transform = editor.transform
+        end(transform, .magnify)
+        move(transform, 30, 0)
+        end(transform, .move)
+        end(transform, .move)
+        end(transform, .rotate)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+        XCTAssertEqual(shape.position, CGPoint(x: 40, y: 20))
+    }
+
+    @MainActor
+    func test_undoRedo_blockedWhilePending() {
+        let (editor, shape) = makeEditorWithSelectedShape()
+        let transform = editor.transform
+        // 履歴2件のうち1件を取り消し、Undo と Redo の両方が使える状態にする。
+        move(transform, 10, 0)
+        end(transform, .move)
+        move(transform, 10, 0)
+        end(transform, .move)
+        editor.undo()
+        XCTAssertTrue(editor.canUndo)
+        XCTAssertTrue(editor.canRedo)
+        XCTAssertEqual(shape.position, CGPoint(x: 20, y: 20))
+
+        move(transform, 0, 0)
+        XCTAssertTrue(editor.canUndo, "指を置いただけでは止めない")
+        move(transform, 15, 0)
+        XCTAssertFalse(editor.canUndo, "変化が始まった時点で表示を止める")
+        XCTAssertFalse(editor.canRedo)
+        editor.undo()
+        editor.redo()
+        XCTAssertEqual(shape.position, CGPoint(x: 35, y: 20), "操作中の Undo／Redo は実行しない")
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+
+        // 通常の入力はしきい値のため開始値ちょうどに戻せない。ほかの経路で値が戻った場合を模擬し、変化なしで終える。
+        shape.position = CGPoint(x: 20, y: 20)
+        end(transform, .move)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1, "変化がなければ記録しない")
+        XCTAssertTrue(editor.canUndo, "変化なしで終わっても使える状態に戻る")
+        XCTAssertTrue(editor.canRedo, "記録がなければ Redo の履歴も残る")
+
+        move(transform, 5, 0)
+        end(transform, .move)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 2)
+        XCTAssertTrue(editor.canUndo)
+        XCTAssertFalse(editor.canRedo, "新しい操作の記録で Redo の履歴は消える")
+    }
+
+    @MainActor
+    func test_resetRotation_blockedWhilePending() {
+        let (editor, shape) = makeEditorWithSelectedShape()
+        let transform = editor.transform
+        rotate(transform, 0.3)
+        // 操作中に2本目の指のタップでダブルタップが発火しても、操作中の要素は変えない。
+        transform.resetRotation()
+        XCTAssertEqual(shape.rotation, 0.5, accuracy: 0.0001)
+        end(transform, .rotate)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+        transform.resetRotation()
+        XCTAssertEqual(shape.rotation, 0, accuracy: 0.0001)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 2)
+    }
+
+    @MainActor
+    func test_removedOverlay_endsOnlyCurrentGesture() {
+        let (editor, shape) = makeEditorWithSelectedShape()
+        let transform = editor.transform
+        move(transform, 30, 0)
+        transform.endGesturesForRemovedOverlay(showing: UUID())
+        XCTAssertTrue(transform.hasPendingGestureTransform, "別の要素を表示していた選択枠の通知では終えない")
+        // 表示中の選択枠が消えると終了通知は届かないため、ここで終える。
+        transform.endGesturesForRemovedOverlay(showing: shape.id)
+        XCTAssertFalse(transform.hasPendingGestureTransform)
+        XCTAssertFalse(editor.canUndo)
+        move(transform, 5, 0)
+        end(transform, .move)
+        XCTAssertEqual(shape.position, CGPoint(x: 45, y: 20), "次の操作は現在の位置から始まる")
+    }
+
+    @MainActor
+    func test_gestureEntry_includesOnlyMovedAttributes() {
+        let (editor, shape) = makeEditorWithSelectedShape()
+        let transform = editor.transform
+        move(transform, 30, 0)
+        // 操作中に、ほかの編集が同じ要素のサイズを変えた場合を模擬する。
+        shape.size = CGSize(width: 150, height: 80)
+        end(transform, .move)
+        editor.undo()
+        XCTAssertEqual(shape.position, CGPoint(x: 10, y: 20))
+        XCTAssertEqual(shape.size, CGSize(width: 150, height: 80), "移動の履歴はサイズを戻さない")
+    }
+
+    /// 位置 (10, 20)・サイズ 100×80・回転 0.2 の図形を選択したエディタ。履歴は空。
+    @MainActor
+    private func makeEditorWithSelectedShape() -> (EditorViewModel, ShapeElement) {
+        let shape = ShapeElement(shapeType: .rectangle)
+        shape.position = CGPoint(x: 10, y: 20)
+        shape.size = CGSize(width: 100, height: 80)
+        shape.rotation = 0.2
+        let project = LogoProject()
+        project.addElement(shape)
+        let editor = EditorViewModel(project: project)
+        editor.selectElement(shape)
+        return (editor, shape)
+    }
+
+    @MainActor
+    private func move(_ transform: ElementTransformViewModel, _ dx: CGFloat, _ dy: CGFloat) {
+        transform.applyGestureTransform(
+            kind: .move, translation: CGSize(width: dx, height: dy), scale: nil, rotation: nil, ended: false
+        )
+    }
+
+    @MainActor
+    private func magnify(_ transform: ElementTransformViewModel, _ scale: CGFloat) {
+        transform.applyGestureTransform(kind: .magnify, translation: nil, scale: scale, rotation: nil, ended: false)
+    }
+
+    @MainActor
+    private func rotate(_ transform: ElementTransformViewModel, _ rotation: CGFloat) {
+        transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: rotation, ended: false)
+    }
+
+    @MainActor
+    private func end(_ transform: ElementTransformViewModel, _ kind: ElementGestureTransformKind) {
+        transform.applyGestureTransform(kind: kind, translation: nil, scale: nil, rotation: nil, ended: true)
     }
 
     private func makeImageElement() throws -> ImageElement {

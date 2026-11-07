@@ -165,7 +165,13 @@ struct ElementSelectionView: View {
                         onRotateGestureEnded?()
                     }
             )
-            
+#if DEBUG
+            // UI テストが、対象要素の位置・サイズ・回転を Undo／Redo の前後で比べるための値。
+            .accessibilityElement()
+            .accessibilityIdentifier("editor.canvas.selection")
+            .accessibilityValue(Self.debugTransformValue(for: element))
+#endif
+
             // 要素がロックされていなければハンドルを表示
             // ハンドルUIは非表示（ジェスチャー操作に統一）
             if element.isLocked {
@@ -198,6 +204,18 @@ struct ElementSelectionView: View {
     private func getHandleTypes() -> [HandleType] {
         []
     }
+
+#if DEBUG
+    /// UI テスト用の値。キャンバス座標の位置・サイズと回転（ラジアン）を、比較しやすい固定の書式で返す。
+    static func debugTransformValue(for element: LogoElement) -> String {
+        String(
+            format: "x=%.2f y=%.2f w=%.2f h=%.2f r=%.4f",
+            element.position.x, element.position.y,
+            element.size.width, element.size.height,
+            element.rotation
+        )
+    }
+#endif
 }
 
 /// 選択ボーダーを表示するビュー

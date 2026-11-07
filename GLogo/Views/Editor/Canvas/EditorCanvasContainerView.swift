@@ -154,6 +154,10 @@ struct EditorCanvasContainerView: View {
                         }
                     }
                 )
+                // 選択枠が消えると、操作中のジェスチャーは終了通知なしで消える。表示していた要素の ID で終了を伝える。
+                .onDisappear { [selectedID = selected.id] in
+                    elementViewModel.transform.endGesturesForRemovedOverlay(showing: selectedID)
+                }
             }
 
             if viewModel.isEditingText,

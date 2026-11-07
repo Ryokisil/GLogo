@@ -20,6 +20,20 @@ struct ElementTransformUseCase {
         )
     }
 
+    /// ジェスチャーで動かした種類の属性だけを履歴へ含める。
+    /// 操作中にほかの編集が同じ要素の別の属性を変えても、その変更は変形の履歴に含めず、元の編集の履歴に任せる。
+    func commitEvent(
+        from start: ElementTransformState,
+        to element: LogoElement,
+        limitedTo kinds: Set<ElementGestureTransformKind>
+    ) -> ElementTransformedEvent? {
+        var limitedStart = ElementTransformState(element)
+        if kinds.contains(.move) { limitedStart.position = start.position }
+        if kinds.contains(.magnify) { limitedStart.size = start.size }
+        if kinds.contains(.rotate) { limitedStart.rotation = start.rotation }
+        return commitEvent(from: limitedStart, to: element)
+    }
+
     func resetRotationEvent(for element: LogoElement) -> ElementRotatedEvent? {
         guard !element.isLocked, abs(element.rotation) > 0.001 else { return nil }
         return ElementRotatedEvent(elementId: element.id, oldRotation: element.rotation, newRotation: 0)

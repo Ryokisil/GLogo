@@ -1,4 +1,4 @@
-// 座標操作と同時ジェスチャーの開始値・プレビュー・終了処理を管理する。
+// 座標操作と同時ジェスチャーの開始値・プレビュー・終了処理を管理し、ジェスチャー1回分の変形を履歴1件にまとめる。
 
 import Combine
 import UIKit
@@ -8,6 +8,8 @@ import UIKit
 final class ElementTransformViewModel: ObservableObject {
     @Published private(set) var element: LogoElement?
     @Published private(set) var manipulationType: ElementManipulationType = .none
+    /// ジェスチャーの変形が未確定のあいだ true。Undo／Redo と回転リセットを止める判定に使う。
+    @Published private(set) var hasPendingGestureTransform = false
 
     private weak var editor: (any ElementTransformApplying)?
     private var selectionObservation: AnyCancellable?
@@ -16,7 +18,12 @@ final class ElementTransformViewModel: ObservableObject {
     private var gestureBasePosition: CGPoint?
     private var gestureBaseSize: CGSize?
     private var gestureBaseRotation: CGFloat?
+    /// しきい値を超える変化が届き、まだ終了していない種類。画像の操作中描画の切り替えに使う。
     private var activeGestureKinds = Set<ElementGestureTransformKind>()
+    /// 変化の通知が届き（しきい値未満を含む）、まだ終了していない種類。すべて終わった時点で履歴を確定する。
+    private var ongoingGestureKinds = Set<ElementGestureTransformKind>()
+    /// 確定前のジェスチャー操作。最初の変化の直前の値と対象の要素を、確定まで保持する。
+    private var gestureSession: GestureTransformSession?
     private weak var renderingProject: LogoProject?
     private let transformUseCase = ElementTransformUseCase()
     private let manipulationRenderingUseCase = ManipulationRenderingUseCase()
@@ -78,7 +85,15 @@ final class ElementTransformViewModel: ObservableObject {
         renderingProject = nil
         manipulationType = .none
         manipulationStartState = nil
+        discardGestureSession()
         clearGestureTransformState()
+    }
+
+    /// 選択枠が消えたときに呼ぶ。消えた選択枠からは終了通知が届かないため、進行中のジェスチャーを終える。
+    /// 選択中の要素と別の要素を表示していた選択枠の通知（古い選択枠から遅れて届いたもの）は無視する。
+    func endGesturesForRemovedOverlay(showing elementId: UUID) {
+        guard element == nil || element?.id == elementId else { return }
+        cancelManipulation()
     }
 
     func prepareImageRenderingForManipulation(in project: LogoProject?, highResolutionThreshold: CGFloat) -> Bool {
@@ -110,8 +125,10 @@ final class ElementTransformViewModel: ObservableObject {
         publishPreview(element)
     }
 
+    /// ジェスチャーの変形が未確定のあいだは受け付けない。2本目の指のタップでダブルタップが発火しても、操作中の要素を変えないため。
     func resetRotation() {
-        guard canEdit, let element, let event = transformUseCase.resetRotationEvent(for: element) else { return }
+        guard canEdit, !hasPendingGestureTransform, let element,
+              let event = transformUseCase.resetRotationEvent(for: element) else { return }
         editor?.applyEvent(event)
     }
 
@@ -121,6 +138,10 @@ final class ElementTransformViewModel: ObservableObject {
     }
 
     /// ジェスチャーによる変形（移動・拡大縮小・回転）
+    ///
+    /// 最初にしきい値を超える変化が届いた時点から、通知が届いた種類がすべて終了するまでを1回の操作とし、履歴1件にまとめる。
+    /// 指の本数は見ていない。SwiftUI のピンチ・回転は最後の指を離すまで続き、1本目のドラッグ中に2本目の指を置くと、
+    /// ドラッグは終了通知なしで2本目の指を追い直す（どちらも1回の操作に含まれる）。
     func applyGestureTransform(
         kind: ElementGestureTransformKind,
         translation: CGSize?,
@@ -128,7 +149,13 @@ final class ElementTransformViewModel: ObservableObject {
         rotation: CGFloat?,
         ended: Bool
     ) {
+        if ended {
+            // 終了通知は値を変えないため、保存中や未選択でも後片付けを行う。
+            finishGesture(kind)
+            return
+        }
         guard canEdit, let element else { return }
+        ongoingGestureKinds.insert(kind)
 
         let hasMeaningfulInput: Bool = {
             switch kind {
@@ -145,35 +172,17 @@ final class ElementTransformViewModel: ObservableObject {
         }()
 
         // ジェスチャー中で入力が実質ゼロなら無視（選択タップ時の副作用を抑制）
-        if !ended && !hasMeaningfulInput { return }
+        guard hasMeaningfulInput else { return }
 
-        // 終了イベントだけ飛んできたケースは無視（未開始ジェスチャーの終了）
-        if ended, !hasGestureBase(for: kind) {
-            return
+        if gestureSession == nil {
+            gestureSession = GestureTransformSession(elementId: element.id, start: ElementTransformState(element))
+            hasPendingGestureTransform = true
         }
+        gestureSession?.changedKinds.insert(kind)
 
+        activeGestureKinds.insert(kind)
         if let imageElement = element as? ImageElement {
-            if ended {
-                activeGestureKinds.remove(kind)
-                if activeGestureKinds.isEmpty {
-                    imageEditingSessionUseCase.applyManipulationState(to: imageElement, ended: true)
-                }
-            } else {
-                activeGestureKinds.insert(kind)
-                imageEditingSessionUseCase.applyManipulationState(to: imageElement, ended: false)
-            }
-        } else if ended {
-            activeGestureKinds.remove(kind)
-        } else {
-            activeGestureKinds.insert(kind)
-        }
-
-        if ended {
-            clearGestureBase(for: kind)
-            if activeGestureKinds.isEmpty {
-                editor?.markProjectModified()
-            }
-            return
+            imageEditingSessionUseCase.applyManipulationState(to: imageElement, ended: false)
         }
 
         switch kind {
@@ -197,6 +206,34 @@ final class ElementTransformViewModel: ObservableObject {
         publishPreview(element)
     }
 
+    /// 終了通知を処理する。通知の届いていない種類と、重複した終了通知は無視する。
+    private func finishGesture(_ kind: ElementGestureTransformKind) {
+        guard ongoingGestureKinds.remove(kind) != nil else { return }
+        clearGestureBase(for: kind)
+        if activeGestureKinds.remove(kind) != nil, activeGestureKinds.isEmpty,
+           let imageElement = element as? ImageElement {
+            imageEditingSessionUseCase.applyManipulationState(to: imageElement, ended: true)
+        }
+        guard ongoingGestureKinds.isEmpty, gestureSession != nil else { return }
+        commitGestureSession()
+        editor?.markProjectModified()
+    }
+
+    /// 未確定の変形を、動かした種類の属性だけの履歴1件にする。変化がなければ記録しない。
+    private func commitGestureSession() {
+        guard let session = gestureSession else { return }
+        discardGestureSession()
+        guard let element, element.id == session.elementId,
+              let event = transformUseCase.commitEvent(
+                  from: session.start, to: element, limitedTo: session.changedKinds
+              ) else { return }
+        editor?.applyEvent(event)
+    }
+
+    private func discardGestureSession() {
+        gestureSession = nil
+        hasPendingGestureTransform = false
+    }
 
     /// ジェスチャー変形の保持状態を初期化
     private func clearGestureTransformState() {
@@ -204,6 +241,7 @@ final class ElementTransformViewModel: ObservableObject {
         gestureBaseSize = nil
         gestureBaseRotation = nil
         activeGestureKinds.removeAll()
+        ongoingGestureKinds.removeAll()
     }
 
     /// 指定ジェスチャーに対応する基準値を破棄
@@ -217,16 +255,11 @@ final class ElementTransformViewModel: ObservableObject {
             gestureBaseRotation = nil
         }
     }
+}
 
-    /// 指定ジェスチャーの基準値が開始済みかを返す
-    private func hasGestureBase(for kind: ElementGestureTransformKind) -> Bool {
-        switch kind {
-        case .move:
-            return gestureBasePosition != nil
-        case .magnify:
-            return gestureBaseSize != nil
-        case .rotate:
-            return gestureBaseRotation != nil
-        }
-    }
+/// 確定前のジェスチャー操作。区間中に動かした種類だけを履歴に含める。
+private struct GestureTransformSession {
+    let elementId: UUID
+    let start: ElementTransformState
+    var changedKinds = Set<ElementGestureTransformKind>()
 }

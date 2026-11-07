@@ -421,7 +421,8 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     
     /// アンドゥ操作
     func undo() {
-        if history.canUndo {
+        // ボタンの無効化に加えて、キーボードショートカットや直接の呼び出しでも止めるため、`canUndo` で判定する。
+        if canUndo {
             history.undo()
             // 履歴移動で描画要求が失効しても、選択中のプレビュー状態を残さない。
             (selectedElement as? ImageElement)?.endEditing()
@@ -445,7 +446,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
 
     /// リドゥ操作
     func redo() {
-        if history.canRedo {
+        if canRedo {
             history.redo()
             (selectedElement as? ImageElement)?.endEditing()
 
@@ -464,15 +465,15 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
             objectWillChange.send()
         }
     }
-    
-    /// アンドゥが可能かどうか
+
+    /// アンドゥが可能かどうか。ジェスチャーの変形が未確定のあいだは、履歴を動かすと開始値と食い違うため不可とする。
     var canUndo: Bool {
-        return history.canUndo
+        return history.canUndo && !transform.hasPendingGestureTransform
     }
-    
-    /// リドゥが可能かどうか
+
+    /// リドゥが可能かどうか。未確定の変形があるあいだは不可とする（`canUndo` と同じ理由）。
     var canRedo: Bool {
-        return history.canRedo
+        return history.canRedo && !transform.hasPendingGestureTransform
     }
     
     // MARK: - イベント適用
@@ -612,6 +613,8 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         case selectedImage
         /// 高画質化済み画像要素を追加・選択した状態
         case enhancedImage
+        /// 画像要素を画面内に置いて選択した状態（キャンバス上のジェスチャーの UI テスト用）
+        case onScreenImage
     }
 
     /// fixture 適用済みフラグ（重複投入防止）
@@ -634,11 +637,21 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
             applySelectedImageFixture(enhanced: false, elementFactory: makeElementFactory())
         case .enhancedImage:
             applySelectedImageFixture(enhanced: true, elementFactory: makeElementFactory())
+        case .onScreenImage:
+            applySelectedImageFixture(
+                enhanced: false,
+                elementFactory: makeElementFactory(),
+                // ほかの fixture はキャンバス中央（画面外）に置く。UI テストのピンチは、選択枠の矩形（キャンバス全体）の
+                // 中心で行われるため、画面内に置き、iPhone のキャンバスの中心を十分に含む大きさにする。
+                frame: CGRect(x: 40, y: 100, width: 320, height: 440)
+            )
         }
     }
 
     /// ダミー画像要素を追加・選択する fixture
-    private func applySelectedImageFixture(enhanced: Bool, elementFactory: ImageElementFactory) {
+    /// - Parameters:
+    ///   - frame: 指定した場合は、キャンバス座標の位置とサイズで置く。省略時はキャンバス中央
+    private func applySelectedImageFixture(enhanced: Bool, elementFactory: ImageElementFactory, frame: CGRect? = nil) {
         // 1x1 赤ピクセルの最小 PNG を生成（アセット不要）
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64))
         let image = renderer.image { ctx in
@@ -652,6 +665,10 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
             x: project.canvasSize.width / 2,
             y: project.canvasSize.height / 2
         )
+        if let frame {
+            imageElement.position = frame.origin
+            imageElement.size = frame.size
+        }
         if enhanced {
             imageElement.hasAppliedUpscale = true
         }
