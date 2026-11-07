@@ -8,16 +8,23 @@ import UIKit
 final class ImageAdjustmentViewModel: ObservableObject {
     @Published private(set) var imageElement: ImageElement?
     private let edits: ImageEditUseCase
-    private let imageRenderRefreshUseCase: ImageRenderRefreshUseCase
+    /// フィルターと共有する描画の更新。共有関係をテストで照合するため内部公開にしている。
+    let imageRenderRefreshUseCase: ImageRenderRefreshUseCase
     private let imageEditingSessionUseCase = ImageEditingSessionUseCase()
     private var selectionObservation: AnyCancellable?
     private let imageAdjustmentUseCase = ImageAdjustmentUseCase()
-    private let metadataEditUseCase = ImageMetadataEditUseCase()
+    private let metadataEditUseCase: ImageMetadataEditUseCase
 
     /// refresh は画像調整とフィルターで共有する。selection は MainActor 上で同期通知する。
-    init(edits: ImageEditUseCase, refresh: ImageRenderRefreshUseCase, selection: AnyPublisher<LogoElement?, Never>) {
+    init(
+        edits: ImageEditUseCase,
+        refresh: ImageRenderRefreshUseCase,
+        metadataEdits: ImageMetadataEditUseCase,
+        selection: AnyPublisher<LogoElement?, Never>
+    ) {
         self.edits = edits
         imageRenderRefreshUseCase = refresh
+        metadataEditUseCase = metadataEdits
         selectionObservation = selection.sink { [weak self] element in
             self?.updateSelection(element as? ImageElement)
         }

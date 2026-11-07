@@ -12,7 +12,7 @@ import UIKit
 
 /// 調整値リセットとRevert可否判定の初期スナップショット運用を検証する回帰テスト
 final class RevertSnapshotRegressionTests: XCTestCase {
-    private let metadataRevertUseCase = ImageElementMetadataRevertUseCase()
+    private let metadataRevertUseCase = ImageElementMetadataRevertUseCase(store: AppComposition.metadataStore)
 
     // MARK: - Revert Availability
 

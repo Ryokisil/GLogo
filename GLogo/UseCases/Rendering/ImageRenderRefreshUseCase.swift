@@ -27,7 +27,7 @@ final class ImageRenderRefreshUseCase {
     }
 
     init(
-        renderScheduler: any RenderScheduling = RenderScheduler(),
+        renderScheduler: any RenderScheduling,
         renderFullQuality: @escaping @MainActor (ImageElement) async -> UIImage? = { image in
             await image.renderFullQualityImageAsync()
         }

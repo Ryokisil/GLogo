@@ -8,7 +8,8 @@ import UIKit
 final class FilterPanelViewModel: ObservableObject {
     @Published private(set) var imageElement: ImageElement?
     private let edits: ImageEditUseCase
-    private let imageRenderRefreshUseCase: ImageRenderRefreshUseCase
+    /// 調整と共有する描画の更新。共有関係をテストで照合するため内部公開にしている。
+    let imageRenderRefreshUseCase: ImageRenderRefreshUseCase
     private let imageEditingSessionUseCase = ImageEditingSessionUseCase()
     private var selectionObservation: AnyCancellable?
     private let filterPresetUseCase = FilterPresetUseCase()

@@ -98,7 +98,13 @@ struct EditorView: View {
     init(viewModel: EditorViewModel) {
         self.viewModel = viewModel
         // 注入された EditorViewModel を使って要素編集用 StateObject を構築する。
-        _elementViewModel = StateObject(wrappedValue: ElementViewModel(editorViewModel: viewModel))
+        // 描画の更新は StateObject の生成時にだけ2つ作る（調整・フィルターの共有分と、フレーム用）。
+        _elementViewModel = StateObject(wrappedValue: ElementViewModel(
+            editorViewModel: viewModel,
+            imageRefresh: viewModel.dependencies.makeImageRenderRefresh(),
+            frameImageRefresh: viewModel.dependencies.makeImageRenderRefresh(),
+            metadataStore: viewModel.dependencies.metadataStore
+        ))
     }
     
     // MARK: - ボディ

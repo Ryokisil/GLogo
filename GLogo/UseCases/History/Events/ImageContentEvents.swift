@@ -6,6 +6,8 @@ import UIKit
 struct ImageRevertedToInitialStateEvent: EditorEvent {
     let elementId: UUID
     private let beforeState: ImageEditState
+    /// メタデータ履歴の巻き戻し先。適用（Redo を含む）のときだけ使う
+    private let metadataStore: any ImageMetadataStoring
 
     var description: String {
         "画像を初期状態に戻しました"
@@ -14,10 +16,11 @@ struct ImageRevertedToInitialStateEvent: EditorEvent {
     /// 初期化
     /// - Parameters:
     ///   - element: Revert対象画像要素
-    /// - Returns: なし
-    init(element: ImageElement) {
+    ///   - metadataStore: メタデータ履歴の巻き戻し先
+    init(element: ImageElement, metadataStore: any ImageMetadataStoring) {
         self.elementId = element.id
         self.beforeState = element.editState
+        self.metadataStore = metadataStore
     }
 
     /// Revert操作を適用する
@@ -28,10 +31,10 @@ struct ImageRevertedToInitialStateEvent: EditorEvent {
         guard let element = project.element(for: elementId, as: ImageElement.self) else {
             return
         }
-        ImageElementMetadataRevertUseCase().revertToInitialState(element)
+        ImageElementMetadataRevertUseCase(store: metadataStore).revertToInitialState(element)
     }
 
-    /// Revert適用前の状態に戻す
+    /// Revert適用前の状態に戻す。メタデータの保存先は操作せず、編集値の復元と表示の失効だけを行う。
     /// - Parameters:
     ///   - project: 対象プロジェクト
     /// - Returns: なし

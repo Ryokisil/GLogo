@@ -98,7 +98,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     private let imageImporter: any ImageImporting
     private let viewportSizeProvider: @MainActor () -> CGSize
     private let imageRoleUseCase = ImageRoleUseCase()
-    private let imageElementMetadataRevertUseCase = ImageElementMetadataRevertUseCase()
+    private let imageElementMetadataRevertUseCase: ImageElementMetadataRevertUseCase
     
     /// 次に作成する図形のタイプ
     var nextShapeType: ShapeType = .rectangle
@@ -134,6 +134,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         self.backgroundRemovalUseCase = dependencies.makeBackgroundRemover()
         self.imageUpscaleUseCase = dependencies.imageUpscaleUseCase
         self.imageImporter = dependencies.imageImporter
+        self.imageElementMetadataRevertUseCase = ImageElementMetadataRevertUseCase(store: dependencies.metadataStore)
         self.viewportSizeProvider = viewportSizeProvider
         imageSaveViewModel = ImageSaveViewModel(saver: dependencies.photoLibrarySaver)
         
@@ -163,7 +164,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
 
     /// メモリ警告を受けた際にキャッシュを解放する
     private func handleMemoryWarning() {
-        ImageCacheReleaseUseCase.releaseCaches(in: project.elements)
+        ImageCacheReleaseUseCase.releaseCaches(in: project.elements, defaultService: dependencies.previewService)
     }
     
     // MARK: - プロジェクト操作
@@ -366,7 +367,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
             return
         }
 
-        let event = ImageRevertedToInitialStateEvent(element: imageElement)
+        let event = ImageRevertedToInitialStateEvent(element: imageElement, metadataStore: dependencies.metadataStore)
         imageElement.endEditing()
         applyEventAndRefreshSelection(event, elementId: imageElement.id)
     }

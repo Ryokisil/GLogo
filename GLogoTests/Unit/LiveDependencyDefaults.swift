@@ -5,6 +5,33 @@
 import UIKit
 @testable import GLogo
 
+extension EditorDependencies {
+    /// アプリと同じ実装で組み立て、指定した依存だけを差し替える。
+    /// 指定しなかった依存は、以前の既定値と同じく必要になったものだけを作る。
+    @MainActor
+    static func live(
+        photoLibrarySaver: (any PhotoLibrarySaving)? = nil,
+        imageImporter: (any ImageImporting)? = nil,
+        imageUpscaleUseCase: ImageUpscaleUseCase? = nil,
+        metadataStore: (any ImageMetadataStoring)? = nil,
+        previewService: (any ImagePreviewing)? = nil,
+        makeBackgroundRemover: (@MainActor () -> any BackgroundRemovalProcessing)? = nil,
+        makeImageRenderRefresh: (@MainActor () -> ImageRenderRefreshUseCase)? = nil
+    ) -> EditorDependencies {
+        EditorDependencies(
+            photoLibrarySaver: photoLibrarySaver ?? AppComposition.makePhotoLibrarySaver(),
+            imageImporter: imageImporter ?? AppComposition.makeImageImporter(),
+            imageUpscaleUseCase: imageUpscaleUseCase ?? AppComposition.makeImageUpscaleUseCase(),
+            metadataStore: metadataStore ?? AppComposition.metadataStore,
+            previewService: previewService ?? AppComposition.previewService,
+            makeBackgroundRemover: makeBackgroundRemover ?? AppComposition.makeBackgroundRemover,
+            makeImageSourceResolver: AppComposition.makeImageSourceResolver,
+            makeManualBackgroundBlurUseCase: AppComposition.makeManualBackgroundBlurUseCase,
+            makeImageRenderRefresh: makeImageRenderRefresh ?? AppComposition.makeImageRenderRefresh
+        )
+    }
+}
+
 extension EditorViewModel {
     /// 第9回で初期化から外した既定値と同じ実装で組み立てる。
     /// 引数の並びは以前の初期化と同じにし、既存テストの呼び出しを変えずに通す。
@@ -16,21 +43,31 @@ extension EditorViewModel {
         viewportSizeProvider: @escaping @MainActor () -> CGSize = { UIScreen.main.bounds.size },
         imageUpscaleUseCase: ImageUpscaleUseCase? = nil
     ) {
-        let makeBackgroundRemover: @MainActor () -> any BackgroundRemovalProcessing
+        var makeBackgroundRemover: (@MainActor () -> any BackgroundRemovalProcessing)?
         if let backgroundRemovalUseCase {
             makeBackgroundRemover = { backgroundRemovalUseCase }
-        } else {
-            makeBackgroundRemover = AppComposition.makeBackgroundRemover
         }
-        let dependencies = EditorDependencies(
-            photoLibrarySaver: photoLibrarySaver ?? AppComposition.makePhotoLibrarySaver(),
-            imageImporter: imageImporter ?? AppComposition.makeImageImporter(),
-            imageUpscaleUseCase: imageUpscaleUseCase ?? AppComposition.makeImageUpscaleUseCase(),
-            makeBackgroundRemover: makeBackgroundRemover,
-            makeImageSourceResolver: AppComposition.makeImageSourceResolver,
-            makeManualBackgroundBlurUseCase: AppComposition.makeManualBackgroundBlurUseCase
+        let dependencies = EditorDependencies.live(
+            photoLibrarySaver: photoLibrarySaver,
+            imageImporter: imageImporter,
+            imageUpscaleUseCase: imageUpscaleUseCase,
+            makeBackgroundRemover: makeBackgroundRemover
         )
         self.init(project: project, dependencies: dependencies, viewportSizeProvider: viewportSizeProvider)
+    }
+}
+
+extension ElementViewModel {
+    /// エディタが受け取った依存から、EditorView と同じ形でパネルを組み立てる（第10回で初期化から外した既定値の代わり）。
+    /// `imageRefresh` を指定したときは、調整とフィルターがそれを共有する。フレームには別のものを作る。
+    convenience init(editorViewModel: EditorViewModel, imageRefresh: ImageRenderRefreshUseCase? = nil) {
+        let dependencies = editorViewModel.dependencies
+        self.init(
+            editorViewModel: editorViewModel,
+            imageRefresh: imageRefresh ?? dependencies.makeImageRenderRefresh(),
+            frameImageRefresh: dependencies.makeImageRenderRefresh(),
+            metadataStore: dependencies.metadataStore
+        )
     }
 }
 

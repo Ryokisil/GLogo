@@ -17,7 +17,7 @@ struct ImageElementMetadataRevertUseCase {
     /// - Parameters:
     ///   - store: メタデータ永続化と履歴操作の委譲先
     /// - Returns: なし
-    init(store: any ImageMetadataStoring = ImageMetadataManager.shared) {
+    init(store: any ImageMetadataStoring) {
         self.store = store
     }
 

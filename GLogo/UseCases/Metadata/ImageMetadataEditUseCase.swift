@@ -14,7 +14,7 @@ struct ImageMetadataEditUseCase {
     /// メタデータと編集履歴の保存先
     private let store: any ImageMetadataStoring
 
-    init(store: any ImageMetadataStoring = ImageMetadataManager.shared) {
+    init(store: any ImageMetadataStoring) {
         self.store = store
     }
 

@@ -7,7 +7,7 @@ import XCTest
 
 final class ImageAdjustmentViewModelTests: XCTestCase {
     @MainActor
-    private func makeContext(refresh: ImageRenderRefreshUseCase = ImageRenderRefreshUseCase()) throws
+    private func makeContext(refresh: ImageRenderRefreshUseCase? = nil) throws
         -> (EditorViewModel, ElementViewModel, ImageElement) {
         let bitmap = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { context in
             UIColor.red.setFill()

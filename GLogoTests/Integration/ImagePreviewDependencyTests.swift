@@ -152,12 +152,12 @@ final class ImagePreviewDependencyTests: XCTestCase {
         let unused = PreviewDependencySpy(color: .green)
         let images = try [element(service: shared), element(service: shared), element(service: separate)]
         for image in images { XCTAssertNotNil(image.image) }
-        ImageCacheReleaseUseCase.releaseCaches(in: images)
+        ImageCacheReleaseUseCase.releaseCaches(in: images, defaultService: ImagePreviewService.shared)
         for image in images { XCTAssertNil(image.cachedImage) }
         XCTAssertEqual(shared.state.resets, 1)
         XCTAssertEqual(separate.state.resets, 1)
         XCTAssertEqual(unused.state.resets, 0)
-        ImageCacheReleaseUseCase.releaseCaches(in: [])
+        ImageCacheReleaseUseCase.releaseCaches(in: [], defaultService: ImagePreviewService.shared)
         XCTAssertEqual(shared.state.resets, 1)
     }
 
@@ -174,6 +174,41 @@ final class ImagePreviewDependencyTests: XCTestCase {
         await fulfillment(of: [reset], timeout: 2)
         XCTAssertNil(image.cachedImage)
         XCTAssertEqual(service.state.resets, 1)
+        withExtendedLifetime(editor) {}
+    }
+
+    /// 注入した描画サービスを既定の解放対象にし、画像が同じサービスを使っていても1回だけ解放する。
+    /// 画像ごとの別の描画サービスも引き続き解放する。
+    @MainActor
+    func test_editorMemoryWarning_releasesInjectedDefaultOnce() async throws {
+        let released = expectation(description: "注入したサービスと画像のサービスの解放")
+        released.expectedFulfillmentCount = 2
+        let injected = PreviewDependencySpy(color: .red, onReset: { released.fulfill() })
+        let separate = PreviewDependencySpy(color: .blue, onReset: { released.fulfill() })
+        let project = LogoProject()
+        project.addElement(try element(service: injected))
+        project.addElement(try element(service: separate))
+        let editor = EditorViewModel(project: project, dependencies: .live(previewService: injected))
+
+        NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+
+        await fulfillment(of: [released], timeout: 2)
+        XCTAssertEqual(injected.state.resets, 1, "既定と画像で同じサービスは1回だけ解放する")
+        XCTAssertEqual(separate.state.resets, 1)
+        withExtendedLifetime(editor) {}
+    }
+
+    /// 画像が1枚もなくても、注入した描画サービスを解放する。
+    @MainActor
+    func test_editorMemoryWarning_releasesInjectedDefaultWithoutImages() async {
+        let released = expectation(description: "注入したサービスの解放")
+        let injected = PreviewDependencySpy(color: .red, onReset: { released.fulfill() })
+        let editor = EditorViewModel(project: LogoProject(), dependencies: .live(previewService: injected))
+
+        NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+
+        await fulfillment(of: [released], timeout: 2)
+        XCTAssertEqual(injected.state.resets, 1)
         withExtendedLifetime(editor) {}
     }
 

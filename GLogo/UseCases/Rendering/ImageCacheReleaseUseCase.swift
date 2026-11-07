@@ -9,7 +9,7 @@ enum ImageCacheReleaseUseCase {
     ///   - defaultService: 画像がない場合も解放する既定の描画サービス
     static func releaseCaches(
         in elements: [LogoElement],
-        defaultService: any ImagePreviewing = ImagePreviewService.shared
+        defaultService: any ImagePreviewing
     ) {
         // 画像のないプロジェクトでも、従来どおり既定サービスを解放する。
         var services: [any ImagePreviewing] = [defaultService]

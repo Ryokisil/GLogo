@@ -54,7 +54,17 @@ class ElementViewModel: ObservableObject {
 
     // MARK: - イニシャライザ
 
-    init(editorViewModel: EditorViewModel, imageRefresh: ImageRenderRefreshUseCase = ImageRenderRefreshUseCase()) {
+    /// - Parameters:
+    ///   - editorViewModel: 編集全体の所有者
+    ///   - imageRefresh: 調整とフィルターで共有する描画の更新。予約の取り消しを共有する
+    ///   - frameImageRefresh: フレーム用の描画の更新。調整・フィルターとは共有しない
+    ///   - metadataStore: フレームと調整のメタデータ記録の保存先
+    init(
+        editorViewModel: EditorViewModel,
+        imageRefresh: ImageRenderRefreshUseCase,
+        frameImageRefresh: ImageRenderRefreshUseCase,
+        metadataStore: any ImageMetadataStoring
+    ) {
         aiTools = editorViewModel.aiTools
         transform = editorViewModel.transform
         textEditing = TextEditingViewModel(
@@ -67,11 +77,14 @@ class ElementViewModel: ObservableObject {
         )
         imageFrame = ImageFrameViewModel(
             editor: editorViewModel.imageEdits,
+            refresh: frameImageRefresh,
+            metadataEdits: ImageMetadataEditUseCase(store: metadataStore),
             selection: editorViewModel.$selectedElement.eraseToAnyPublisher()
         )
 
         imageAdjustment = ImageAdjustmentViewModel(
             edits: editorViewModel.imageEdits, refresh: imageRefresh,
+            metadataEdits: ImageMetadataEditUseCase(store: metadataStore),
             selection: editorViewModel.$selectedElement.eraseToAnyPublisher()
         )
         filters = FilterPanelViewModel(

@@ -27,7 +27,7 @@ enum FilterPreviewUseCase {
         adjustments: ImageAdjustmentValues,
         preset: FilterPreset,
         targetSize: CGSize,
-        previewService: any ImagePreviewing = ImagePreviewService.shared
+        previewService: any ImagePreviewing
     ) async -> UIImage? {
         let preparedImage = resizedImage(sourceImage, targetSize: targetSize)
         let params = ImageFilterParamsComposer.compose(adjustments, recipe: preset.recipe)

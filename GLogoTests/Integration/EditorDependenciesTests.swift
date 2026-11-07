@@ -15,8 +15,65 @@ final class EditorDependenciesTests: XCTestCase {
         XCTAssertEqual(recorder.createdRemovers, 1)
         XCTAssertEqual(recorder.createdResolvers, 0)
         XCTAssertEqual(recorder.createdBlurUseCases, 0)
+        XCTAssertEqual(recorder.createdRefreshes, 0, "描画の更新はパネルを作るときに作る")
         _ = editor.aiTools
         XCTAssertEqual(recorder.createdRemovers, 1, "AI ツールはエディタの背景除去を共有する")
+    }
+
+    /// Revert の適用と Redo では注入した保存先でメタデータ履歴を巻き戻し、Undo では保存先を操作しない。
+    @MainActor
+    func test_revert_usesInjectedStoreOnlyWhenApplying() throws {
+        let recorder = DependencyRecorder()
+        let (editor, image) = try makeEditor(recorder: recorder)
+        image.brightnessAdjustment = 0.4
+
+        editor.revertSelectedImageToInitialState()
+        XCTAssertEqual(recorder.metadataStore.calls, ["revertMetadata"])
+
+        editor.undo()
+        XCTAssertEqual(recorder.metadataStore.calls, ["revertMetadata"], "Undo では保存先を操作しない")
+        XCTAssertEqual(image.brightnessAdjustment, 0.4, accuracy: 0.0001)
+
+        editor.redo()
+        XCTAssertEqual(recorder.metadataStore.calls, ["revertMetadata", "revertMetadata"], "Redo で同じ保存先を使う")
+    }
+
+    /// フレームと調整のメタデータ記録が、注入した保存先へ届く。
+    @MainActor
+    func test_panelMetadataEdits_reachInjectedStore() throws {
+        let recorder = DependencyRecorder()
+        let (editor, image) = try makeEditor(recorder: recorder)
+        let panels = makePanels(editor: editor)
+
+        panels.imageFrame.beginAdjustmentEditing(.frameWidth)
+        panels.imageFrame.updateAdjustment(.frameWidth, value: image.frameWidth + 2)
+        panels.imageFrame.commitAdjustmentEditing(.frameWidth)
+        panels.imageAdjustment.beginImageAdjustmentEditing(.brightness)
+        panels.imageAdjustment.updateImageAdjustment(.brightness, value: 0.2)
+        panels.imageAdjustment.commitImageAdjustmentEditing(.brightness)
+
+        let frameKey = try XCTUnwrap(ImageAdjustmentDescriptor.all[.frameWidth]).metadataKey
+        let brightnessKey = try XCTUnwrap(ImageAdjustmentDescriptor.all[.brightness]).metadataKey
+        XCTAssertEqual(recorder.metadataStore.recordedFields, [frameKey, brightnessKey])
+    }
+
+    /// 調整とフィルターは予約の取り消しを共有するため同じ描画の更新を使い、フレームは別のものを使う。
+    @MainActor
+    func test_panels_shareRefreshBetweenAdjustmentAndFilters() throws {
+        let recorder = DependencyRecorder()
+        let (editor, _) = try makeEditor(recorder: recorder)
+        let shared = AppComposition.makeImageRenderRefresh()
+        let frame = AppComposition.makeImageRenderRefresh()
+
+        let panels = ElementViewModel(
+            editorViewModel: editor, imageRefresh: shared, frameImageRefresh: frame,
+            metadataStore: recorder.metadataStore
+        )
+
+        XCTAssertTrue(panels.imageAdjustment.imageRenderRefreshUseCase === shared)
+        XCTAssertTrue(panels.filters.imageRenderRefreshUseCase === shared)
+        XCTAssertTrue(panels.imageFrame.imageRenderRefreshUseCase === frame)
+        XCTAssertFalse(shared === frame)
     }
 
     @MainActor
@@ -94,6 +151,17 @@ final class EditorDependenciesTests: XCTestCase {
         editor.selectElement(image)
         return (editor, image)
     }
+
+    /// EditorView と同じく、エディタの依存から描画の更新を2つ作ってパネルを組み立てる。
+    @MainActor
+    private func makePanels(editor: EditorViewModel) -> ElementViewModel {
+        ElementViewModel(
+            editorViewModel: editor,
+            imageRefresh: editor.dependencies.makeImageRenderRefresh(),
+            frameImageRefresh: editor.dependencies.makeImageRenderRefresh(),
+            metadataStore: editor.dependencies.metadataStore
+        )
+    }
 }
 
 // MARK: - 記録用の依存
@@ -105,15 +173,19 @@ private final class DependencyRecorder {
     let importer = ImporterSpy()
     let remover = RemoverSpy()
     let pipeline = UpscalePipelineSpy()
+    let metadataStore = RecordingMetadataStore()
     private(set) var createdRemovers = 0
     private(set) var createdResolvers = 0
     private(set) var createdBlurUseCases = 0
+    private(set) var createdRefreshes = 0
 
     func makeDependencies() -> EditorDependencies {
         EditorDependencies(
             photoLibrarySaver: saver,
             imageImporter: importer,
             imageUpscaleUseCase: ImageUpscaleUseCase(lanczosPipeline: pipeline, realESRGANPipeline: pipeline),
+            metadataStore: metadataStore,
+            previewService: AppComposition.previewService,
             makeBackgroundRemover: { [unowned self] in
                 createdRemovers += 1
                 return remover
@@ -125,8 +197,43 @@ private final class DependencyRecorder {
             makeManualBackgroundBlurUseCase: { [unowned self] in
                 createdBlurUseCases += 1
                 return AppComposition.makeManualBackgroundBlurUseCase()
+            },
+            makeImageRenderRefresh: { [unowned self] in
+                createdRefreshes += 1
+                return AppComposition.makeImageRenderRefresh()
             }
         )
+    }
+}
+
+/// メタデータの保存先への操作を順に記録する。
+private final class RecordingMetadataStore: ImageMetadataStoring {
+    private(set) var calls: [String] = []
+    private(set) var recordedFields: [String] = []
+
+    func getMetadata(for identifier: String) -> ImageMetadata? {
+        calls.append("getMetadata")
+        return nil
+    }
+
+    func saveMetadata(_ metadata: ImageMetadata, for identifier: String) -> Bool {
+        calls.append("saveMetadata")
+        return true
+    }
+
+    func hasEditHistory(for identifier: String) -> Bool {
+        calls.append("hasEditHistory")
+        return false
+    }
+
+    func addToEditHistory(identifier: String, operation: MetadataEditOperation) {
+        calls.append("addToEditHistory")
+        recordedFields.append(operation.fieldKey)
+    }
+
+    func revertMetadata(for identifier: String, to operationId: UUID?) -> MetadataOperationResult {
+        calls.append("revertMetadata")
+        return .noChanges
     }
 }
 

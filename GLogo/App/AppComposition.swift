@@ -3,9 +3,9 @@
 
 import Foundation
 
-/// エディタの入口と、そこから開く2つの編集画面（手動背景除去・背景ぼかしマスク）が使う実装を組み立てる。
+/// エディタ、その編集パネル、そこから開く2つの編集画面（手動背景除去・背景ぼかしマスク）が使う実装を組み立てる。
 /// 生成の単位は、以前の初期化引数の既定値と同じにする。
-/// 編集パネル側の一部の UseCase と Model には、まだ Infrastructure を指す既定値や直接の参照が残る
+/// `ImageSourceResolver` の既定値と Model からの直接の参照は、まだここを通らない
 /// （docs/architecture/README.md の「計画外の対応と残件」で追跡）。
 enum AppComposition {
     // MARK: - 編集画面
@@ -22,13 +22,26 @@ enum AppComposition {
             photoLibrarySaver: makePhotoLibrarySaver(),
             imageImporter: makeImageImporter(),
             imageUpscaleUseCase: makeImageUpscaleUseCase(),
+            metadataStore: metadataStore,
+            previewService: previewService,
             makeBackgroundRemover: makeBackgroundRemover,
             makeImageSourceResolver: makeImageSourceResolver,
-            makeManualBackgroundBlurUseCase: makeManualBackgroundBlurUseCase
+            makeManualBackgroundBlurUseCase: makeManualBackgroundBlurUseCase,
+            makeImageRenderRefresh: makeImageRenderRefresh
         )
     }
 
     // MARK: - 個別の実装
+
+    /// メタデータの保存先。編集の記録と Revert の巻き戻しが同じ履歴を使うよう、アプリ全体で1つを共有する。
+    static var metadataStore: any ImageMetadataStoring {
+        ImageMetadataManager.shared
+    }
+
+    /// 描画サービス。要素間でキャッシュを共有するため、共有インスタンスを使う。
+    static var previewService: any ImagePreviewing {
+        ImagePreviewService.shared
+    }
 
     static func makePhotoLibrarySaver() -> any PhotoLibrarySaving {
         SaveImageCoordinator(processingService: ImageProcessingService(), writer: PhotoLibraryWriter())
@@ -56,12 +69,18 @@ enum AppComposition {
         ManualBackgroundBlurUseCase(renderer: CoreImageBackgroundBlurRenderer())
     }
 
+    /// 描画の更新。描画の間引きは状態を持つため、呼ぶたびに新しく作る。
+    @MainActor
+    static func makeImageRenderRefresh() -> ImageRenderRefreshUseCase {
+        ImageRenderRefreshUseCase(renderScheduler: RenderScheduler())
+    }
+
     /// 画像要素の生成。描画サービスは要素間でキャッシュを共有するため、共有インスタンスを渡す。
     static func makeElementFactory() -> ImageElementFactory {
         ImageElementFactory(
             loader: ImageInitializationLoader(),
             sourceResolver: makeImageSourceResolver(),
-            previewService: ImagePreviewService.shared
+            previewService: previewService
         )
     }
 }
