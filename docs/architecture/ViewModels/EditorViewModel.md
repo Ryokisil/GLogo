@@ -462,3 +462,64 @@ UseCases に11型、ViewModels に4型、初期化引数の既定値に Infrastr
 
 - 撤廃したズーム・パンの名残（`viewTransform` と、呼び出し元のない変換関数）と、描画に使われていない `CanvasView.selectedElement`（README の残件）。
 - 2本目の指でドラッグがやり直しになり要素が飛ぶ不具合と、システムによる取り消しの扱い（第11回からの残件）。
+
+## 段階3・第13回：ジェスチャーのやり直しとアプリの中断（2026-11-07）
+
+### 計画と確認した経路
+
+第11回の残件のうち、2本目の指でドラッグがやり直しになり要素が飛ぶ不具合と、システムによる取り消しの扱いを対象にしました。計画の前に、確認用の UI テスト（XCTest の非公開 API で指ごとの経路を合成。中断は確認用ビルドでアプリを裏に回して再現。一時的なもので、コミットしない）で、第12回のコードの実際の通知を確かめました。
+
+| 操作 | 観測した通知 |
+| --- | --- |
+| 1本でドラッグ中に2本目の指を置く | 移動が終了通知なしでやり直し、2本目の指を追う。やり直しの最初の通知（移動量 0）で区間の始点（`startLocation`）が変わり、`GestureState` のリセットより先に届く。古い基準を使うため要素が飛んでいた（60→70） |
+| ピンチ中に片方の指を離して置き直す、3本目の指を置く | 拡大縮小・回転は続くが、値が不連続に跳ねる（倍率 2.0→0.2、回転 0→0.785rad）。やり直しを示す信号は出ない |
+| 操作中にアプリが裏に回る | 非アクティブになったあとも、指を離すまでジェスチャーは続き、終了通知も届く。Undo の抑止や無視の印は残らない。ただし裏に回るアニメーションで座標がずれ、跳ねた値で1件が確定していた（移動 (30,0)→(-8,-24)、倍率 1.8→3.3） |
+
+計画は Codex のレビューで補正し、次の条件を実装と検証に含めました。
+
+| 条件 | 対応 |
+| --- | --- |
+| やり直しは直前の位置から滑らかに続け、履歴は操作全体で1件 | 区間の始点が変わったら、位置の計算の基準だけを現在の位置に置き換える。Undo 用の操作の開始値は変えない |
+| ドラッグ側の判定の順序 | 保存中・中断後の抑止の判定を先に行い、移動量のしきい値の判定より前に始点の変化を扱う（移動量 0 でも基準を置き換える） |
+| 新しく持つ始点の片付け | 通常の終了・割り込み・選択枠の消滅で、始点も片付ける |
+| 中断の通知は同期で確定する | 既存のメモリ警告の監視（`Task` で遅らせる形）は流用しない。通知を受けたメインスレッドで、その場で `interruptManipulation()` を呼ぶ |
+| 中断のテスト | 通知を送った直後（待機なし）に確定済みであること、保存の受付のあとの通知、通知の重複で履歴が増えないことを確かめる |
+| ピンチ・回転の跳ね、終了通知が届かない取り消し | 今回は扱わず、残件として分ける |
+
+### 変更した境界
+
+- **やり直し**: [ElementSelectionView](../../../GLogo/Views/Editor/Canvas/ElementSelectionView.swift) が移動の通知に区間の始点を添え、[EditorCanvasContainerView](../../../GLogo/Views/Editor/Canvas/EditorCanvasContainerView.swift) が `applyGestureTransform(…, moveStart:, …)` へ渡します。[ElementTransformViewModel](../../../GLogo/ViewModels/ElementTransformViewModel.swift) は移動の区間の始点を持ち、変わったら位置の基準を現在の位置に置き換えます。割り込みの後（無視している間）のやり直しは、古い操作の続きとして無視し続けます。
+- **アプリの中断**: [EditorViewModel](../../../GLogo/ViewModels/EditorViewModel.swift) が `UIApplication.willResignActiveNotification` を `queue: nil` で受け、`MainActor.assumeIsolated` でその場で `transform.interruptManipulation()` を呼びます（第11回の保存・選択の切り替えと同じ割り込みの扱い）。非アクティブになった時点の値で1件確定し、Undo の抑止と操作中の描画を終え、ずれた続きの通知は終了まで無視します。前面に戻った時点では無視の印を外しません（指が置かれたまま戻った場合に、ずれた続きが反映されないように）。
+- 変えないもの: イベントの定義、保存形式、描画、履歴の上限。
+
+### 検証と変更後レビュー
+
+**実装後の確認（確認用 UI テスト）**: 第12回のコードと第13回のコードで、同じ fixture・シミュレーター・指の合成を使って比べました。
+
+| シナリオ | 第12回 | 第13回 |
+| --- | --- | --- |
+| ドラッグ中に2本目の指を置く | 70（飛ぶ） | 100（60 から、新しい指の 40 だけ続く） |
+| ドラッグ中にアプリが裏に回る | (21.15, 95.43) で確定（ずれた値） | (56, 120) で確定。続くずれた移動の通知8回は無視 |
+| ピンチ中にアプリが裏に回る | 幅 563.89 で確定（ずれた値） | 幅 287.87 で確定 |
+| 古い操作を無視している間にアプリが裏に回る | 変化なし | 変化なし |
+| ピンチ中の指の組み合わせの変化 | 跳ねる | 跳ねる（残件） |
+
+中断の後は、どのシナリオでも新しいドラッグが効き、Undo も使えました。アプリ側の記録では、非アクティブの通知を受けたその場で確定し、その後の移動の通知はすべて無視していました。第12回との比較（14件）では、意図どおり「ドラッグ中に2本目を置く」の1件だけ値が変わり（70→100）、ほかは要素の値・Undo／Redo・履歴が一致しました（無視した通知の回数だけは、指の合成のタイミングで揺れる）。
+
+- **Critical／Warning**: 指摘なし。
+- **Info**: 非アクティブの通知は `MainActor.assumeIsolated` で受けるため、メインスレッド以外から送られると停止します。UIKit はメインスレッドで送り、テストも MainActor 上から送ります。
+- **Info**: 前面に戻った時点では無視の印を外しません。終了通知が届かない取り消し（未観測）では、同じ種類の次の操作が終わるまで印が残る可能性があります（README の残件のまま）。
+- **Info**: やり直しを検出するのは移動だけです。拡大縮小・回転の跳ね（指の組み合わせの変化）は残件です。
+- **Info**: テストで送る非アクティブの通知は、テストを動かしているアプリの中のほかの受け口にも届きます。アプリにほかの受け口がないことを確かめました。
+- **Test Coverage**:
+  - [ElementTransformViewModelTests](../../../GLogoTests/Integration/ElementTransformViewModelTests.swift) は20件から28件になりました。やり直しは `test_restartedDrag_continuesFromCurrentPosition`（旧 `test_restartedDrag_staysInOneEntry`。飛ぶ挙動を前提にしていた期待値を、滑らかに続く形に変えた）、`test_restartBeforeMovement_startsFromCurrentPosition`、`test_sameMoveStart_keepsBase`、`test_restartWhileSuppressed_staysIgnored`。中断は `test_resignActive_commitsPendingGestureImmediately`（通知を送った直後に待たずに確定済みで、ずれた続きを無視する）、`test_resignActive_endsImagePreview`、`test_resignActive_duplicateNotificationsRecordOnce`、`test_saveThenResignActive_recordsOnce`、`test_resignActive_withoutGesture_changesNothing`。
+  - 新しい受け口で循環参照が増えていないことを、ViewModelMemoryLeakTests 3件で確かめました。
+  - 実際の2本指の操作とアプリの中断は、確認用 UI テスト（一時的なもの）で確かめました。
+- **回帰テスト棚卸し**: 期待値を変えたのは、やり直しの1件だけです（第11回で、要素が飛ぶ既存の挙動を記録していたもの）。
+- **Verification**: GLogoTests 415件中412件成功（失敗1件は既知の `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用）。UI テストは GLogoUITests 全体の30件が成功しました。1つ目のコミット単独の状態でも、関連の41件と UI テスト2件が成功しました。変更したファイルからの新しいビルド警告はありません。`git diff --check` と文書の相対リンクを確認しました。iPhone 17 Pro／iOS 26.1 Simulator、`-parallel-testing-enabled NO`。実機は未実施です。SwiftFormat は未導入のため実行できません。
+
+### 残り
+
+- ピンチ中の指の組み合わせの変化による跳ね（信頼できる検出方法を調べてから扱う）。
+- 終了通知が届かない取り消し（未観測）。
+- 次の候補は、ズーム・パンの名残と `CanvasView.selectedElement` の整理、続いて Model の Decoder の依存注入（ユーザー・Codex 合意の順）。
