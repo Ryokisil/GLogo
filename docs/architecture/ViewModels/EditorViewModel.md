@@ -117,12 +117,12 @@ UseCaseとCoordinatorへの委譲はすでに存在します。すべてを新�
 
 ### 変形操作の分離（2026-10-26）
 
-- [ElementTransformViewModel](../../../GLogo/ViewModels/ElementTransformViewModel.swift) が座標操作の開始点・変形値、同時ジェスチャーごとの基準値と進行状態を所有します。親と `ElementViewModel.transform` は同じ子を共有し、Canvas のコールバックは子へ直接接続します。親は子の通知を転送します。
-- [ElementTransformState](../../../GLogo/Models/ElementTransformState.swift) は位置・サイズ・回転だけを保持し、座標入力の変形計算を行います。開始時に画像を含む要素全体を深いコピーする処理を廃止しました。[ElementTransformUseCase](../../../GLogo/UseCases/Editing/Transform/ElementTransformUseCase.swift) は変化した属性のイベントと回転リセットのイベントを生成します。
+- [ElementTransformViewModel](../../../GLogo/ViewModels/ElementTransformViewModel.swift) が座標操作の開始点・変形値、同時ジェスチャーごとの基準値と進行状態を所有します。親と `ElementViewModel.transform` は同じ子を共有し、Canvas のコールバックは子へ直接接続します。親は子の通知を転送します。（第12回で、アプリから呼ばれていなかった Canvas の操作コールバックと座標操作を削除しました）
+- [ElementTransformState](../../../GLogo/Models/ElementTransformState.swift) は位置・サイズ・回転だけを保持し、座標入力の変形計算を行います（第12回で変形計算を削除し、ジェスチャーの開始値の保持だけが残っています）。開始時に画像を含む要素全体を深いコピーする処理を廃止しました。[ElementTransformUseCase](../../../GLogo/UseCases/Editing/Transform/ElementTransformUseCase.swift) は変化した属性のイベントと回転リセットのイベントを生成します。
 - 子は [ElementTransformApplying](../../../GLogo/UseCases/Editing/Session/ElementTransformApplying.swift) を弱参照し、共通のプレビュー・履歴・変更フラグ・保存ロックへ接続します。プロジェクトと履歴の正は親に残ります。
 - 選択通知は同期で受け、別 ID・未選択への変更で両入力の開始値を破棄します。同じ ID のプレビュー更新では基準値を維持します。`ElementViewModel` の遅れた選択通知が、再選択済みの画像の新しい変形を終了させない条件も追加しました。（第11回で変更：ジェスチャーは、切り替え前の差分を前の要素の履歴1件として確定し、続きの通知を終了まで無視します）
 - `prepareForImageSave` は子の両入力を停止してから、従来どおり全画像の編集用描画を終了します。保存中は座標入力・SwiftUI ジェスチャー・直接変形・回転リセットを共通で抑止します。プレビュー値を巻き戻したり、保存開始で履歴を追加したりはしません。（第11回で変更：保存の受付で、未確定のジェスチャーの差分を履歴1件として確定します。座標入力は従来どおり開始値だけを破棄します）
-- 高解像度画像の準備・終了は既存 `ManipulationRenderingUseCase`、同時ジェスチャーの描画切り替えは既存 `ImageEditingSessionUseCase` を再利用します。準備したプロジェクトは弱参照で、選択変更・保存時も描画状態を終了します。
+- 高解像度画像の準備・終了は既存 `ManipulationRenderingUseCase`、同時ジェスチャーの描画切り替えは既存 `ImageEditingSessionUseCase` を再利用します。準備したプロジェクトは弱参照で、選択変更・保存時も描画状態を終了します。（第12回で `ManipulationRenderingUseCase` を削除しました。呼び出し元は座標操作の経路だけでした）
 - 履歴仕様の前提: 座標操作は終了時に一つの `ElementTransformedEvent`、回転リセットは `ElementRotatedEvent` を記録します。現在の SwiftUI オーバーレイは従来どおりプレビューと変更フラグのみで、ジェスチャー自体の確定履歴は追加していません。この2経路の履歴方針統合は別の変更として扱います。保存形式・Codable・イベント定義・メタデータ・画像合成は変更していません。（第11回で変更：ジェスチャーも1回の操作を1件として記録します。座標操作の経路は 2025-12-22 以降アプリから呼ばれていないことが分かり、次の回で削除します）
 - `EditorViewModel.swift` は 951 → 813 行、`ElementViewModel.swift` は 754 → 598 行です。
 
@@ -387,7 +387,7 @@ UseCases に11型、ViewModels に4型、初期化引数の既定値に Infrastr
 | Undo／Redo | 未確定の変形があるあいだは受け付けません（ボタン・キーボードショートカット・直接の呼び出し） |
 | 回転リセット | 未確定の変形があるあいだと、割り込み後の古い操作が続くあいだは受け付けません |
 
-- [ElementTransformViewModel](../../../GLogo/ViewModels/ElementTransformViewModel.swift): 区間の開始値・動かした種類、通知の届いた種類、無視している種類を持ちます。保存・選択・削除の境界は `interruptManipulation()`、選択枠の消滅は `endGesturesForRemovedOverlay(showing:)` です。座標操作（UIKit の経路）は従来どおり開始値だけを破棄し、次の回（第12回の候補）で削除します。
+- [ElementTransformViewModel](../../../GLogo/ViewModels/ElementTransformViewModel.swift): 区間の開始値・動かした種類、通知の届いた種類、無視している種類を持ちます。保存・選択・削除の境界は `interruptManipulation()`、選択枠の消滅は `endGesturesForRemovedOverlay(showing:)` です。座標操作（UIKit の経路）は従来どおり開始値だけを破棄し、次の回（第12回の候補）で削除します（第12回で削除済み）。
 - [ElementTransformUseCase](../../../GLogo/UseCases/Editing/Transform/ElementTransformUseCase.swift): 動かした種類の属性だけを含める `commitEvent(from:to:limitedTo:)` を加えました（中は既存の `commitEvent`）。イベントの定義・保存形式・描画は変えていません。
 - [EditorViewModel](../../../GLogo/ViewModels/EditorViewModel.swift): 保存の準備・削除から境界の処理を呼び、`canUndo`／`canRedo` と `undo()`／`redo()` で未確定の変形を判定します。UI テスト用の fixture `onScreenImage`（DEBUG）を加えました。
 - View: [EditorCanvasContainerView](../../../GLogo/Views/Editor/Canvas/EditorCanvasContainerView.swift) が選択枠の消滅を伝えます。[ElementSelectionView](../../../GLogo/Views/Editor/Canvas/ElementSelectionView.swift) は DEBUG ビルドだけ、UI テスト用の識別子と要素の値を公開します。Undo／Redo ボタンに識別子を付けました。
@@ -412,3 +412,53 @@ UseCases に11型、ViewModels に4型、初期化引数の既定値に Infrastr
 - 使われていない UIKit キャンバスの座標操作の経路（次の回で削除）。
 - 2本目の指でドラッグがやり直しになり要素が飛ぶ不具合、システムによる取り消しで終了通知が届かない場合の扱い（どちらも、選択枠からジェスチャーの終了・やり直しを伝える仕組みで扱う）。
 - 2本目のタップで動作が2回呼ばれる現象は、非公開 API の合成で観測したものとして記録だけ残します。
+
+## 段階3・第12回：使われていない UIKit キャンバスの座標操作の経路の削除（2026-11-07）
+
+### 計画と確認した経路
+
+第11回の計画で見つけた、アプリから呼ばれていない UIKit キャンバスの座標操作の経路と、それを消すと連鎖して使われなくなる型・関数を削除しました。挙動を変えないリファクタリングです。参照元は `rg` とコンパイラで確認し、Codex は Serena でも確認しました。
+
+計画は Codex のレビューで補正し、次の条件を実装と検証に含めました。
+
+| 条件 | 対応 |
+| --- | --- |
+| 比較元は第11回完了後のコードにし、同じ fixture・シミュレーターで削除前後を比べる | 確認用 UI テスト（v3、14件）を、第11回のコミット（`a4711b5`）と削除後のコードで実行し、要素の値・Undo／Redo・履歴の並びと件数・割り込み後の再開・節目の回数を突き合わせた |
+| 通常のタップとダブルタップも確認する | 選択中の要素のタップで履歴が増えないこと、別の要素・空き領域のタップでの選択と解除、ダブルタップの回転リセットと Undo／Redo を比較に含めた。`SelectionBorder` の `contentShape` と位置の指定は残した |
+| 書き直すテストは、現在の契約に合わせる | 描画のテストは「選択中の画像の操作中描画が、選択の変更で終わること」だけを守る（全画像の準備・終了は削除対象）。保存のテストは、保存完了後も古い操作が終わるまでは無視し、その後の新しい操作は受け付ける第11回の契約を保った |
+
+### 変更した範囲
+
+| 層 | 削除したもの |
+| --- | --- |
+| View | `CanvasView` の操作コールバック3つと Coordinator での接続、`isReducingQualityDuringManipulation`（常に false）、`highResolutionThreshold`、選択枠・ハンドル・ロックの描画（`drawSelectionHandles`・`drawHandle`・`drawLockIcon`）と、そこでだけ使う定数5つ |
+| View | `ElementSelectionView` の `HandleType`・`SelectionHandle`・`getHandleTypes`、使われていないプロパティ3つ、枠ドラッグ用の引数3つ。`SelectionBorder` のドラッグのコールバックとドラッグのジェスチャー（枠の描画・`contentShape`・位置の指定は残す）。`EditorCanvasContainerView` が渡していた `nil` の引数3つ |
+| ViewModel | `ElementTransformViewModel` の `startManipulation`／`continueManipulation`／`endManipulation`、`manipulationType`、開始点・開始値、描画の準備・終了（`prepareImageRenderingForManipulation`／`finishImageRenderingAfterManipulation`）、`updatePosition`／`updateSize`／`updateRotation` |
+| Model | `ElementTransformState.applying` と `ElementManipulationType`。`ElementTransformState` 本体（ジェスチャーの開始値）と `ElementGestureTransformKind` は残す |
+| UseCase | `ManipulationRenderingUseCase`（ファイルごと）。高解像度画像の操作中に描画を軽くする仕組みだったが、呼び出し元は上の描画の準備・終了だけだった。いまのジェスチャーの経路では、`ImageEditingSessionUseCase` が選択中の画像の描画を切り替える |
+
+行数は、`CanvasView` 592→421、`ElementSelectionView` 338→154、`ElementTransformViewModel` 295→223、`ElementTransformState` 49→21 です（差分全体で 75行追加・672行削除）。
+
+### 検証と変更後レビュー
+
+**削除の前後の比較（確認用 UI テスト v3）**: 同じ fixture（要素2つ）・同じシミュレーター・同じ指の合成で、第11回のコミット（`a4711b5`）と削除後のコードを実行し、結果を突き合わせました。確認用 UI テストは非公開 API を使う一時的なもので、テストとしては残していません。
+
+| 分類 | シナリオ | 結果 |
+| --- | --- | --- |
+| 基準の操作 | ドラッグ、2本のピンチ、ピンチ中に片指を離して移動、ドラッグ中に2本目を置く、回転とピンチ、ずらして離す | 6件とも、最終の位置・サイズ・角度、Undo／Redo の後の値とボタンの状態、履歴の並びと件数、終了などの節目の回数が一致 |
+| 割り込み | 空き領域のタップで選択を解除、別の要素のタップで切り替え、操作中の Undo、画像一覧からの選択、保存 | 5件とも、要素の値・履歴・割り込み後の新しいドラッグによる再開が一致。保存の1件だけ、無視した通知の回数が37回と36回で異なったが、変化の通知の回数（61回と60回）と同じく指の合成のタイミングによる揺れで、値と履歴は一致 |
+| タップ | 選択中の要素のタップ、別の要素・空き領域・元の要素の順のタップ、回転後のダブルタップ（2回目は角度0の状態） | 3件とも一致。タップで履歴は増えず、選択と解除、ダブルタップの回転リセットとその Undo／Redo は従来どおり |
+
+- **Critical／Warning**: 指摘なし。
+- **Info**: `ManipulationRenderingUseCase` の削除で、高解像度画像の操作中に描画を軽くする仕組み（使われていなかった）がなくなりました。ジェスチャーの操作中に高解像度画像の描画が重くなる場合は、ジェスチャーの経路に合わせて別に設計します。
+- **Info**: `SelectionBorder` からドラッグのジェスチャーを取り除いたため、同じ枠に付く移動・拡大縮小・回転のジェスチャーの組み合わせが変わりました。上の比較で、通知の順と結果が変わらないことを確かめました。実機では確かめていません。
+- **Test Coverage**:
+  - 削除: 座標操作の経路のテスト4件（`test_manipulations_preserveUndoRedo`・`test_selection_discardsPendingManipulationImmediately`・`test_canvasCallbacks_useSharedTransform`・`test_noChange_doesNotRecordHistory`）。同じ趣旨はジェスチャーのテストが第11回から確かめています。
+  - 書き直し（現在の契約に合わせる）: `test_save_commitsGestureAndBlocksMutations`（座標操作の部分を外し、保存中に始まった操作も終わるまで適用しないことを加えた）、`test_selection_endsGesturePreview`（旧 `test_selection_finishesPreparedRendering`。選択中の画像の操作中描画が、選択の変更で終わること。全画像の準備・終了は削除した仕組みのため確かめない）、`test_sharedChild_notifiesAndDoesNotRetainEditor`（ジェスチャーで通知と解放後の入力を確かめる）、`EditorImageSaveIntegrationTests.test_save_gestureStopsUntilCompletion`（旧 `test_save_manipulation_stopsUntilCompletion`。保存完了後も古い操作が終わるまでは無視し、その後の新しい操作は受け付ける）、`OperationMemoryLeakTests.testManipulationDoesNotLeak`（ジェスチャーで確かめる）。
+- **回帰テスト棚卸し**: 第11回の記録で「次の回で経路と一緒に整理する」とした座標操作の経路のテストを、上のとおり整理しました。第11回の契約の期待値は変えていません。
+- **Verification**: GLogoTests 407件中404件成功（失敗1件は既知の `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用。削除したテスト4件の分だけ件数が減った）。UI テストは GLogoUITests 全体の30件が成功しました。変更したファイルからの新しいビルド警告はありません。`rg` で削除した名前の参照がないこと（トリミング画面の同名の別のコールバックを除く）、`git diff --check`、文書の相対リンクを確認しました。iPhone 17 Pro／iOS 26.1 Simulator、`-parallel-testing-enabled NO`。実機は未実施です。SwiftFormat は未導入のため実行できません。参照の確認は `rg` とコンパイラで行いました（Codex は Serena でも確認）。
+
+### 残り
+
+- 撤廃したズーム・パンの名残（`viewTransform` と、呼び出し元のない変換関数）と、描画に使われていない `CanvasView.selectedElement`（README の残件）。
+- 2本目の指でドラッグがやり直しになり要素が飛ぶ不具合と、システムによる取り消しの扱い（第11回からの残件）。

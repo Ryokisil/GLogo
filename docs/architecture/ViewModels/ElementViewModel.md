@@ -33,7 +33,7 @@
 | `ImageAdjustmentViewModel`（実装済み） | 調整スライダー・トーンカーブの入力と編集セッション | 既存の調整・セッション・描画更新UseCase |
 | `ImageFrameViewModel`（実装済み） | 枠の色・種類・幅・角丸と操作途中の状態 | Frameパネル、`ImageFrameEditApplying`、既存の調整・メタデータUseCase |
 | `FilterPanelViewModel`（実装済み） | プリセット選択、プレビュー要求と選択参照 | `FilterPresetUseCase`、共有の `ImageRenderRefreshUseCase` |
-| `ElementTransformViewModel`（実装済み） | 移動・拡縮・回転の基準値と同時ジェスチャーの状態 | Canvas、`ElementTransformState`、`ElementTransformUseCase`、既存の描画 UseCase |
+| `ElementTransformViewModel`（実装済み） | 移動・拡縮・回転の基準値と同時ジェスチャーの状態 | Canvas、`ElementTransformState`、`ElementTransformUseCase`、既存の描画 UseCase（第12回で Canvas の操作コールバックと `ManipulationRenderingUseCase` を削除。いまは選択枠のジェスチャーと `ImageEditingSessionUseCase` を使う） |
 
 AIの表示状態は共有の `AIToolsViewModel` に集約済みです。既存パネルは `ElementViewModel` の計算プロパティと操作入口を通じて子を参照し、子の `objectWillChange` は同期転送します。選択変更時のエラークリアも子が担当します。詳細と検証は [EditorViewModel の記録](EditorViewModel.md)を参照してください。共通属性の操作は現在の `ElementViewModel` に残しています。
 
