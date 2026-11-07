@@ -39,25 +39,10 @@ class CanvasView: UIView {
     
     /// タッチ開始時のポイント
     private var touchStartPoint: CGPoint = .zero
-    
-    /// 操作中に品質を下げるかのフラグ（4K+画像対応）
-    var isReducingQualityDuringManipulation = false
-    
-    /// 4K超え解像度の閾値（8.3メガピクセル）
-    let highResolutionThreshold: CGFloat = 8300000
-    
+
     /// 要素を選択したときのコールバック
     var onElementSelected: (@MainActor (LogoElement?) -> Void)?
-    
-    /// 要素の操作を開始するときのコールバック
-    var onManipulationStarted: (@MainActor (ElementManipulationType, CGPoint) -> Void)?
-    
-    /// 要素の操作中のコールバック
-    var onManipulationChanged: (@MainActor (CGPoint) -> Void)?
-    
-    /// 要素の操作を終了するときのコールバック
-    var onManipulationEnded: (@MainActor () -> Void)?
-    
+
     /// 新しい要素を作成するときのコールバック
     var onCreateElement: (@MainActor (CGPoint) -> Void)?
     
@@ -69,22 +54,7 @@ class CanvasView: UIView {
     
     /// 表示用の変換行列（ズーム/パン撤廃に伴い恒等）
     private var viewTransform: CGAffineTransform = .identity
-    
-    /// 操作ハンドルの半径
-    private let handleRadius: CGFloat = 10.0
-    
-    /// 選択ハンドルの色
-    private let handleColor: UIColor = .systemBlue
-    
-    /// 選択ボーダーの色
-    private let selectionBorderColor: UIColor = .systemBlue
-    
-    /// 選択ボーダーの幅
-    private let selectionBorderWidth: CGFloat = 2.0
-    
-    /// 選択ボーダーの破線パターン
-    private let selectionBorderPattern: [CGFloat] = [6, 3]
-    
+
     /// グリッドのサイズ
     private let gridSize: CGFloat = 20.0
     
@@ -124,12 +94,7 @@ class CanvasView: UIView {
 
     override func draw(_ rect: CGRect) {
         guard let context = UIGraphicsGetCurrentContext() else { return }
-        
-        // 4K+画像の操作中品質低下の設定
-        if isReducingQualityDuringManipulation {
-            context.interpolationQuality = .low
-        }
-        
+
         // 背景の描画
         drawBackground(in: context)
         
@@ -223,110 +188,6 @@ class CanvasView: UIView {
         shadowPath.fill()
         
         context.restoreGState()
-    }
-    
-    /// 選択ハンドルの描画
-    private func drawSelectionHandles(for element: LogoElement, in context: CGContext) {
-        context.saveGState()
-        
-        // 選択枠の描画
-        let frame = element.frame
-        context.setStrokeColor(selectionBorderColor.cgColor)
-        context.setLineWidth(selectionBorderWidth)
-        context.setLineDash(phase: 0, lengths: selectionBorderPattern)
-        context.stroke(frame)
-        
-        // 要素がロックされている場合は、ロックアイコンを描画して終了
-        if element.isLocked {
-            drawLockIcon(for: element, in: context)
-            context.restoreGState()
-            return
-        }
-        
-        // 操作ハンドルの描画
-        context.setLineDash(phase: 0, lengths: [])
-        
-        // 移動ハンドル（中央）
-        drawHandle(at: CGPoint(x: frame.midX, y: frame.midY), in: context)
-        
-        // リサイズハンドル（四隅と辺の中点）
-        drawHandle(at: CGPoint(x: frame.minX, y: frame.minY), in: context) // 左上
-        drawHandle(at: CGPoint(x: frame.maxX, y: frame.minY), in: context) // 右上
-        drawHandle(at: CGPoint(x: frame.minX, y: frame.maxY), in: context) // 左下
-        drawHandle(at: CGPoint(x: frame.maxX, y: frame.maxY), in: context) // 右下
-        
-        drawHandle(at: CGPoint(x: frame.midX, y: frame.minY), in: context) // 上中央
-        drawHandle(at: CGPoint(x: frame.midX, y: frame.maxY), in: context) // 下中央
-        drawHandle(at: CGPoint(x: frame.minX, y: frame.midY), in: context) // 左中央
-        drawHandle(at: CGPoint(x: frame.maxX, y: frame.midY), in: context) // 右中央
-        
-        // 回転ハンドル（上部中央から少し上）
-        let rotationHandlePosition = CGPoint(x: frame.midX, y: frame.minY - 30)
-        drawHandle(at: rotationHandlePosition, in: context)
-        
-        // 回転ハンドルへの線
-        context.setStrokeColor(selectionBorderColor.cgColor)
-        context.setLineWidth(1.0)
-        context.move(to: CGPoint(x: frame.midX, y: frame.minY))
-        context.addLine(to: rotationHandlePosition)
-        context.strokePath()
-        
-        context.restoreGState()
-    }
-    
-    /// ハンドルの描画
-    private func drawHandle(at point: CGPoint, in context: CGContext) {
-        // ハンドルの塗りつぶし
-        context.setFillColor(handleColor.cgColor)
-        let handleRect = CGRect(
-            x: point.x - handleRadius,
-            y: point.y - handleRadius,
-            width: handleRadius * 2,
-            height: handleRadius * 2
-        )
-        context.fillEllipse(in: handleRect)
-        
-        // ハンドルの枠線
-        context.setStrokeColor(UIColor.white.cgColor)
-        context.setLineWidth(1.0)
-        context.strokeEllipse(in: handleRect)
-    }
-    
-    /// ロックアイコンの描画
-    private func drawLockIcon(for element: LogoElement, in context: CGContext) {
-        // 鍵アイコンを描画（簡易的な実装）
-        let frame = element.frame
-        let iconSize: CGFloat = 20
-        let iconRect = CGRect(
-            x: frame.maxX - iconSize - 5,
-            y: frame.minY + 5,
-            width: iconSize,
-            height: iconSize
-        )
-        
-        // 鍵のボディ
-        context.setFillColor(UIColor.systemRed.withAlphaComponent(0.7).cgColor)
-        let bodyRect = CGRect(
-            x: iconRect.minX + 3,
-            y: iconRect.minY + 8,
-            width: iconRect.width - 6,
-            height: iconRect.height - 8
-        )
-        context.fill(bodyRect)
-        
-        // 鍵の弧
-        context.setStrokeColor(UIColor.systemRed.withAlphaComponent(0.7).cgColor)
-        context.setLineWidth(2.0)
-        let arcRadius = (iconRect.width - 6) / 2
-        let arcCenter = CGPoint(x: iconRect.midX, y: iconRect.minY + 8)
-        context.addArc(
-            center: arcCenter,
-            radius: arcRadius,
-            startAngle: .pi,
-            endAngle: 0,
-            clockwise: false
-        )
-        context.strokePath()
     }
     
     // MARK: - タッチイベント処理
@@ -491,38 +352,6 @@ struct CanvasViewRepresentable: UIViewRepresentable {
                 }
             }
             
-            // 操作開始時のコールバック
-            canvasView.onManipulationStarted = { [weak canvasView, weak self] type, point in
-                // 4K+画像の操作中品質低下判定と設定
-                if let canvasView = canvasView {
-                    canvasView.isReducingQualityDuringManipulation = self?.parent.viewModel
-                        .transform.prepareImageRenderingForManipulation(
-                            in: canvasView.project,
-                            highResolutionThreshold: canvasView.highResolutionThreshold
-                        ) ?? false
-                    canvasView.setNeedsDisplay()
-                }
-                
-                self?.parent.viewModel.transform.startManipulation(type, at: point)
-            }
-            
-            // 操作中のコールバック
-            canvasView.onManipulationChanged = { [viewModel = parent.viewModel] point in
-                viewModel.transform.continueManipulation(at: point)
-            }
-            
-            // 操作終了時のコールバック
-            canvasView.onManipulationEnded = { [weak canvasView, weak self] in
-                // 4K+画像の操作中品質低下を解除
-                if let canvasView = canvasView {
-                    canvasView.isReducingQualityDuringManipulation = false
-                    self?.parent.viewModel.transform.finishImageRenderingAfterManipulation(in: canvasView.project)
-                    canvasView.setNeedsDisplay()
-                }
-                
-                self?.parent.viewModel.transform.endManipulation()
-            }
-        
             // 要素作成時のコールバック
             canvasView.onCreateElement = { [viewModel = parent.viewModel] point in
                 switch viewModel.editorMode {

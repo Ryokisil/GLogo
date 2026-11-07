@@ -1,4 +1,4 @@
-// 座標操作と同時ジェスチャーの開始値・プレビュー・終了処理を管理し、ジェスチャー1回分の変形を履歴1件にまとめる。
+// 同時ジェスチャーの開始値・プレビュー・終了処理を管理し、ジェスチャー1回分の変形を履歴1件にまとめる。
 
 import Combine
 import UIKit
@@ -8,14 +8,11 @@ import UIKit
 @MainActor
 final class ElementTransformViewModel: ObservableObject {
     @Published private(set) var element: LogoElement?
-    @Published private(set) var manipulationType: ElementManipulationType = .none
     /// ジェスチャーの変形が未確定のあいだ true。Undo／Redo と回転リセットを止める判定に使う。
     @Published private(set) var hasPendingGestureTransform = false
 
     private weak var editor: (any ElementTransformApplying)?
     private var selectionObservation: AnyCancellable?
-    private var manipulationStartPoint: CGPoint = .zero
-    private var manipulationStartState: ElementTransformState?
     private var gestureBasePosition: CGPoint?
     private var gestureBaseSize: CGSize?
     private var gestureBaseRotation: CGFloat?
@@ -27,9 +24,7 @@ final class ElementTransformViewModel: ObservableObject {
     private var gestureSession: GestureTransformSession?
     /// 割り込みの後、古い操作の終了を待っている種類。空でないあいだは、どの種類の変化も適用しない。
     private var suppressedGestureKinds = Set<ElementGestureTransformKind>()
-    private weak var renderingProject: LogoProject?
     private let transformUseCase = ElementTransformUseCase()
-    private let manipulationRenderingUseCase = ManipulationRenderingUseCase()
     private let imageEditingSessionUseCase = ImageEditingSessionUseCase()
 
     private var canEdit: Bool { editor.map { !$0.isSavingImage } ?? false }
@@ -47,40 +42,8 @@ final class ElementTransformViewModel: ObservableObject {
         }
     }
 
-    func startManipulation(_ type: ElementManipulationType, at point: CGPoint) {
-        guard canEdit, let element else { return }
-        manipulationType = type
-        manipulationStartPoint = point
-        manipulationStartState = ElementTransformState(element)
-    }
-
-    func continueManipulation(at point: CGPoint) {
-        guard canEdit, let element, let start = manipulationStartState,
-              manipulationType != .none else { return }
-        let state = start.applying(manipulationType, from: manipulationStartPoint, to: point,
-                                   current: ElementTransformState(element))
-        switch manipulationType {
-        case .move: element.position = state.position
-        case .resize: element.size = state.size
-        case .rotate: element.rotation = state.rotation
-        case .none: break
-        }
-        publishPreview(element)
-    }
-
-    func endManipulation() {
-        defer {
-            manipulationType = .none
-            manipulationStartState = nil
-        }
-        guard canEdit, let element, let start = manipulationStartState,
-              let event = transformUseCase.commitEvent(from: start, to: element) else { return }
-        editor?.applyEvent(event)
-    }
-
     /// 保存の受付・選択の切り替え・削除で呼ぶ。画面に残る変化も Undo できるよう、未確定のジェスチャーの差分を1件として確定する。
     /// 古い操作の続き（あとから始まった種類を含む）は、すべて終わるまで無視する。
-    /// 座標操作（UIKit の経路）は従来どおり、表示したプレビューを維持して開始値だけを破棄する。
     func interruptManipulation() {
         commitGestureSession()
         suppressedGestureKinds.formUnion(ongoingGestureKinds)
@@ -102,43 +65,8 @@ final class ElementTransformViewModel: ObservableObject {
         if !activeGestureKinds.isEmpty, let image = element as? ImageElement {
             imageEditingSessionUseCase.applyManipulationState(to: image, ended: true)
         }
-        if let renderingProject {
-            manipulationRenderingUseCase.finish(in: renderingProject)
-        }
-        renderingProject = nil
-        manipulationType = .none
-        manipulationStartState = nil
         discardGestureSession()
         clearGestureTransformState()
-    }
-
-    func prepareImageRenderingForManipulation(in project: LogoProject?, highResolutionThreshold: CGFloat) -> Bool {
-        guard canEdit else { return false }
-        renderingProject = project
-        return manipulationRenderingUseCase.prepare(in: project, highResolutionThreshold: highResolutionThreshold)
-    }
-
-    func finishImageRenderingAfterManipulation(in project: LogoProject?) {
-        manipulationRenderingUseCase.finish(in: project)
-        renderingProject = nil
-    }
-
-    func updatePosition(_ position: CGPoint) {
-        guard canEdit, let element else { return }
-        element.position = position
-        publishPreview(element)
-    }
-
-    func updateSize(_ size: CGSize) {
-        guard canEdit, let element else { return }
-        element.size = size
-        publishPreview(element)
-    }
-
-    func updateRotation(_ rotation: CGFloat) {
-        guard canEdit, let element else { return }
-        element.rotation = rotation
-        publishPreview(element)
     }
 
     /// ジェスチャーの変形が未確定のあいだと、割り込み後に古い操作が続いているあいだは受け付けない。

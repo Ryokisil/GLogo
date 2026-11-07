@@ -1,77 +1,11 @@
-// 変形の共有状態、履歴、選択・保存境界と Canvas 接続を検証する。
+// 変形の共有状態、ジェスチャーの履歴、選択・保存・削除の境界を検証する。
 
 import Combine
-import SwiftUI
+import UIKit
 import XCTest
 @testable import GLogo
 
 final class ElementTransformViewModelTests: XCTestCase {
-    @MainActor
-    func test_manipulations_preserveUndoRedo() {
-        let cases: [(ElementManipulationType, CGPoint, CGPoint, CGPoint, CGSize, CGFloat)] = [
-            (.move, .zero, CGPoint(x: 30, y: 40), CGPoint(x: 40, y: 60), CGSize(width: 100, height: 80), 0.2),
-            (.resize, .zero, CGPoint(x: -200, y: 20), CGPoint(x: 10, y: 20), CGSize(width: 10, height: 100), 0.2),
-            (.rotate, CGPoint(x: 110, y: 60), CGPoint(x: 60, y: 110), CGPoint(x: 10, y: 20), CGSize(width: 100, height: 80), 0.2 + .pi / 2)
-        ]
-        for (kind, start, end, position, size, rotation) in cases {
-            let element = ShapeElement(shapeType: .rectangle)
-            element.position = CGPoint(x: 10, y: 20)
-            element.size = CGSize(width: 100, height: 80)
-            element.rotation = 0.2
-            let project = LogoProject()
-            project.addElement(element)
-            let editor = EditorViewModel(project: project)
-            editor.selectElement(element)
-            editor.transform.startManipulation(kind, at: start)
-            editor.transform.continueManipulation(at: end)
-            editor.transform.continueManipulation(at: end)
-            XCTAssertEqual(element.position, position)
-            XCTAssertEqual(element.size, size)
-            XCTAssertEqual(element.rotation, rotation, accuracy: 0.0001)
-            XCTAssertFalse(editor.canUndo, "プレビュー中は履歴を積まない")
-            editor.transform.endManipulation()
-            editor.transform.endManipulation()
-            XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
-            XCTAssertEqual(editor.transform.manipulationType, .none)
-            editor.undo()
-            XCTAssertEqual(element.position, CGPoint(x: 10, y: 20))
-            XCTAssertEqual(element.size, CGSize(width: 100, height: 80))
-            XCTAssertEqual(element.rotation, 0.2)
-            editor.redo()
-            XCTAssertEqual(element.position, position)
-            XCTAssertEqual(element.size, size)
-            XCTAssertEqual(element.rotation, rotation, accuracy: 0.0001)
-        }
-    }
-
-    @MainActor
-    func test_selection_discardsPendingManipulationImmediately() {
-        let first = ShapeElement(shapeType: .rectangle)
-        let second = ShapeElement(shapeType: .circle)
-        second.position = CGPoint(x: 200, y: 300)
-        let project = LogoProject()
-        project.addElement(first)
-        project.addElement(second)
-        let editor = EditorViewModel(project: project)
-        editor.selectElement(first)
-        editor.transform.startManipulation(.move, at: .zero)
-        editor.transform.continueManipulation(at: CGPoint(x: 20, y: 20))
-        editor.selectElement(second)
-        editor.transform.continueManipulation(at: CGPoint(x: 50, y: 50))
-        editor.transform.endManipulation()
-        XCTAssertEqual(second.position, CGPoint(x: 200, y: 300))
-        XCTAssertFalse(editor.canUndo)
-        editor.transform.startManipulation(.move, at: .zero)
-        editor.transform.continueManipulation(at: CGPoint(x: 10, y: 15))
-        editor.transform.endManipulation()
-        XCTAssertEqual(second.position, CGPoint(x: 210, y: 315))
-        editor.undo()
-        XCTAssertEqual(second.position, CGPoint(x: 200, y: 300))
-        editor.clearSelection()
-        editor.transform.startManipulation(.move, at: .zero)
-        XCTAssertEqual(editor.transform.manipulationType, .none)
-    }
-
     @MainActor
     func test_concurrentGestures_finishRenderingAfterLastEnd() throws {
         let image = try makeImageElement()
@@ -106,28 +40,33 @@ final class ElementTransformViewModelTests: XCTestCase {
         let transform = editor.transform
         var historyCountAtSave: Int?
         saver.onSave = { [weak editor] in historyCountAtSave = editor?.getHistoryDescriptions().count }
-        transform.startManipulation(.move, at: .zero)
-        transform.continueManipulation(at: CGPoint(x: 5, y: 8))
         transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: 0.3, ended: false)
         editor.saveToPhotoLibrary { _ in }
-        // 保存入力を受け取る前に、未確定の回転を1件にする。座標操作（UIKit の経路）は従来どおり開始値だけを破棄する。
+        // 保存入力を受け取る前に、未確定の回転を1件にする。
         XCTAssertEqual(historyCountAtSave, 1)
-        transform.continueManipulation(at: CGPoint(x: 50, y: 80))
+        // 保存中は、続きの操作・保存中に始まった操作・回転リセットを受け付けない。
         transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: 1, ended: false)
+        transform.applyGestureTransform(
+            kind: .move, translation: CGSize(width: 50, height: 80), scale: nil, rotation: nil, ended: false
+        )
         transform.resetRotation()
-        transform.updatePosition(.zero)
-        transform.endManipulation()
-        XCTAssertEqual(image.position, CGPoint(x: 5, y: 8))
+        XCTAssertEqual(image.position, .zero)
         XCTAssertEqual(image.rotation, 0.3)
         XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+        // 保存の受付で、操作中の描画は通常の描画に戻っている。
         let marker = makeImage()
         image.cachedImage = marker
         XCTAssertTrue(image.image === marker)
-        XCTAssertFalse(transform.prepareImageRenderingForManipulation(in: project, highResolutionThreshold: 1))
         saver.finish(.success(()))
         transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: 0.2, ended: false)
         XCTAssertEqual(image.rotation, 0.3, accuracy: 0.0001, "保存前から続く操作は、終わるまで適用しない")
         transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: nil, ended: true)
+        transform.applyGestureTransform(
+            kind: .move, translation: CGSize(width: 60, height: 90), scale: nil, rotation: nil, ended: false
+        )
+        XCTAssertEqual(image.position, .zero, "保存中に始まった操作も、終わるまで適用しない")
+        transform.applyGestureTransform(kind: .move, translation: nil, scale: nil, rotation: nil, ended: true)
+        // 古い操作がすべて終わった後の新しい操作は受け付ける。
         transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: 0.2, ended: false)
         XCTAssertEqual(image.rotation, 0.5, accuracy: 0.0001, "保存前の累積基準を再利用しない")
         transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: nil, ended: true)
@@ -138,7 +77,7 @@ final class ElementTransformViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_selection_finishesPreparedRendering() throws {
+    func test_selection_endsGesturePreview() throws {
         let first = try makeImageElement()
         let second = try makeImageElement()
         let project = LogoProject()
@@ -146,16 +85,14 @@ final class ElementTransformViewModelTests: XCTestCase {
         project.addElement(second)
         let editor = EditorViewModel(project: project)
         editor.selectElement(first)
-        XCTAssertTrue(editor.transform.prepareImageRenderingForManipulation(in: project, highResolutionThreshold: 1))
-        editor.transform.startManipulation(.move, at: .zero)
+        // 選択中の画像は、ジェスチャーのあいだ操作中の描画になる。
+        editor.transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: 0.3, ended: false)
         let marker = makeImage()
         first.cachedImage = marker
-        second.cachedImage = marker
         XCTAssertFalse(first.image === marker)
+        // 選択を切り替えると、切り替え前の画像の操作中の描画を終える。
         editor.selectElement(second)
         XCTAssertTrue(first.image === marker)
-        XCTAssertTrue(second.image === marker)
-        XCTAssertEqual(editor.transform.manipulationType, .none)
     }
 
     @MainActor
@@ -192,49 +129,20 @@ final class ElementTransformViewModelTests: XCTestCase {
         editor?.addElement(shape)
         var notifications = 0
         let observation = editor!.objectWillChange.sink { notifications += 1 }
-        transform.startManipulation(.move, at: .zero)
+        transform.applyGestureTransform(
+            kind: .move, translation: CGSize(width: 10, height: 0), scale: nil, rotation: nil, ended: false
+        )
         XCTAssertGreaterThan(notifications, 0)
         let isReleased = { [weak editor] in editor == nil }
         editor = nil
         XCTAssertTrue(isReleased())
+        // エディタが解放された後の入力は、要素を変えない。
         let oldPosition = shape.position
-        transform.continueManipulation(at: CGPoint(x: 100, y: 100))
+        transform.applyGestureTransform(
+            kind: .move, translation: CGSize(width: 100, height: 100), scale: nil, rotation: nil, ended: false
+        )
         XCTAssertEqual(shape.position, oldPosition)
         withExtendedLifetime(observation) {}
-    }
-
-    @MainActor
-    func test_canvasCallbacks_useSharedTransform() {
-        let editor = EditorViewModel()
-        let shape = ShapeElement(shapeType: .rectangle)
-        shape.position = .zero
-        editor.addElement(shape)
-        let representable = CanvasViewRepresentable(viewModel: editor, deleteEffect: .constant(DeleteEffectState()))
-        let coordinator = CanvasViewRepresentable.Coordinator(representable)
-        let canvas = CanvasView(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
-        canvas.project = editor.project
-        coordinator.setupCallbacks(canvasView: canvas)
-        let historyCount = editor.getHistoryDescriptions().count
-        canvas.onManipulationStarted?(.move, .zero)
-        canvas.onManipulationChanged?(CGPoint(x: 20, y: 30))
-        canvas.onManipulationEnded?()
-        XCTAssertEqual(shape.position, CGPoint(x: 20, y: 30))
-        XCTAssertEqual(editor.getHistoryDescriptions().count, historyCount + 1)
-        editor.undo()
-        XCTAssertEqual(shape.position, .zero)
-    }
-
-    @MainActor
-    func test_noChange_doesNotRecordHistory() {
-        let shape = ShapeElement(shapeType: .rectangle)
-        let project = LogoProject()
-        project.addElement(shape)
-        let editor = EditorViewModel(project: project)
-        editor.selectElement(shape)
-        editor.transform.startManipulation(.move, at: .zero)
-        editor.transform.endManipulation()
-        XCTAssertFalse(editor.canUndo)
-        XCTAssertFalse(editor.isProjectModified)
     }
 
     // MARK: - ジェスチャーの履歴

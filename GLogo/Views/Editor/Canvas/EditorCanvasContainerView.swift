@@ -78,9 +78,6 @@ struct EditorCanvasContainerView: View {
                let selected = viewModel.selectedElement {
                 ElementSelectionView(
                     element: selected,
-                    onManipulationStarted: nil,
-                    onManipulationChanged: nil,
-                    onManipulationEnded: nil,
                     onMagnifyChanged: { scale in
                         elementViewModel.transform.applyGestureTransform(
                             kind: .magnify,

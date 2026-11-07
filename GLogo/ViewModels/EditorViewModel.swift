@@ -82,7 +82,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         selection: $selectedElement.eraseToAnyPublisher(),
         changes: objectWillChange.eraseToAnyPublisher()
     )
-    /// UIKit と SwiftUI の変形入力が同じ選択と開始値の所有者を使う。
+    /// キャンバスのジェスチャーの開始値と未確定の変形を持つ。`ElementViewModel.transform` と同じものを共有する。
     private(set) lazy var transform = ElementTransformViewModel(
         editor: self, selection: $selectedElement.eraseToAnyPublisher()
     )

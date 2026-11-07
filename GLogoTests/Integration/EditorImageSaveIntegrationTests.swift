@@ -36,25 +36,38 @@ final class EditorImageSaveIntegrationTests: XCTestCase {
     }
 
     @MainActor
-    func test_save_manipulation_stopsUntilCompletion() {
+    func test_save_gestureStopsUntilCompletion() throws {
         let saver = PhotoLibrarySavingStub()
         let editor = EditorViewModel(photoLibrarySaver: saver)
         editor.addTextElement(position: .zero)
-        editor.transform.startManipulation(.move, at: .zero)
-        XCTAssertEqual(editor.transform.manipulationType, .move)
-        let historyBeforeSave = editor.getHistoryDescriptions()
+        let element = try XCTUnwrap(editor.selectedElement)
+        let transform = editor.transform
+        transform.applyGestureTransform(
+            kind: .move, translation: CGSize(width: 10, height: 0), scale: nil, rotation: nil, ended: false
+        )
+        let historyCountBeforeSave = editor.getHistoryDescriptions().count
 
         editor.saveToPhotoLibrary { _ in }
         XCTAssertTrue(saver.projects.first === editor.project)
-        XCTAssertEqual(editor.transform.manipulationType, .none)
-        editor.transform.startManipulation(.move, at: .zero)
-        XCTAssertEqual(editor.transform.manipulationType, .none)
-        editor.transform.endManipulation()
-        XCTAssertEqual(editor.getHistoryDescriptions(), historyBeforeSave)
+        // 保存の受付で未確定の移動を1件にし、保存中は入力を止める。
+        XCTAssertEqual(editor.getHistoryDescriptions().count, historyCountBeforeSave + 1)
+        let positionAtSave = element.position
+        transform.applyGestureTransform(
+            kind: .move, translation: CGSize(width: 40, height: 0), scale: nil, rotation: nil, ended: false
+        )
+        XCTAssertEqual(element.position, positionAtSave)
 
         saver.finish(.success(()))
-        editor.transform.startManipulation(.move, at: .zero)
-        XCTAssertEqual(editor.transform.manipulationType, .move)
+        // 保存完了後も、古い操作が終わるまでは適用しない。終わった後の新しい操作は受け付ける。
+        transform.applyGestureTransform(
+            kind: .move, translation: CGSize(width: 50, height: 0), scale: nil, rotation: nil, ended: false
+        )
+        XCTAssertEqual(element.position, positionAtSave)
+        transform.applyGestureTransform(kind: .move, translation: nil, scale: nil, rotation: nil, ended: true)
+        transform.applyGestureTransform(
+            kind: .move, translation: CGSize(width: 5, height: 0), scale: nil, rotation: nil, ended: false
+        )
+        XCTAssertEqual(element.position.x, positionAtSave.x + 5, accuracy: 0.0001)
     }
 
     @MainActor

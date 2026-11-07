@@ -24,9 +24,12 @@ final class OperationMemoryLeakTests: XCTestCase {
             viewModel.addElement(element)
             viewModel.selectElement(element)
 
-            viewModel.transform.startManipulation(.move, at: CGPoint(x: 0, y: 0))
-            viewModel.transform.continueManipulation(at: CGPoint(x: 100, y: 100))
-            viewModel.transform.endManipulation()
+            let transform = viewModel.transform
+            transform.applyGestureTransform(kind: .move, translation: .zero, scale: nil, rotation: nil, ended: false)
+            transform.applyGestureTransform(
+                kind: .move, translation: CGSize(width: 100, height: 100), scale: nil, rotation: nil, ended: false
+            )
+            transform.applyGestureTransform(kind: .move, translation: nil, scale: nil, rotation: nil, ended: true)
         }
 
         XCTAssertNil(weakViewModel, "操作処理中にメモリリークが発生しています")
