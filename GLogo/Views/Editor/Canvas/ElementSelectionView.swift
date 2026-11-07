@@ -25,8 +25,8 @@ struct ElementSelectionView: View {
     /// ダブルタップで回転を初期化
     var onResetRotation: (() -> Void)?
 
-    /// ドラッグで位置変更（ジェスチャーベース）
-    var onMoveChanged: ((CGSize) -> Void)?
+    /// ドラッグで位置変更（ジェスチャーベース）。2つ目の値は区間の始点で、やり直しの検出に使う
+    var onMoveChanged: ((CGSize, CGPoint) -> Void)?
     var onMoveEnded: (() -> Void)?
 
     /// タップで選択を切り替えるためのコールバック（座標付き）
@@ -40,7 +40,8 @@ struct ElementSelectionView: View {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
-                        onMoveChanged?(value.translation)
+                        // 2本目の指を置くと、終了通知なしで別の指を追い直す。そのとき始点が変わる。
+                        onMoveChanged?(value.translation, value.startLocation)
                     }
                     .onEnded { _ in
                         onMoveEnded?()

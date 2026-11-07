@@ -189,19 +189,68 @@ final class ElementTransformViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_restartedDrag_staysInOneEntry() {
+    func test_restartedDrag_continuesFromCurrentPosition() {
         let (editor, shape) = makeEditorWithSelectedShape()
         let transform = editor.transform
-        move(transform, 30, 0)
-        // 1本目のドラッグ中に2本目の指を置くと、終了通知なしで移動量ゼロからやり直す（実際の UI で観測）。
-        move(transform, 0, 0)
-        move(transform, 40, 0)
+        let first = CGPoint(x: 115, y: 319)
+        let second = CGPoint(x: 185, y: 319)
+        move(transform, 0, 0, start: first)
+        move(transform, 30, 0, start: first)
+        XCTAssertEqual(shape.position, CGPoint(x: 40, y: 20))
+        // 1本目のドラッグ中に2本目の指を置くと、終了通知なしで、始点の変わった移動量ゼロの通知から追い直す（実際の UI で観測）。
+        move(transform, 0, 0, start: second)
+        XCTAssertEqual(shape.position, CGPoint(x: 40, y: 20), "やり直しの時点では動かない")
+        move(transform, 40, 0, start: second)
+        XCTAssertEqual(shape.position, CGPoint(x: 80, y: 20), "現在の位置から、新しい指の動きの分だけ動く")
+        XCTAssertTrue(editor.getHistoryDescriptions().isEmpty, "操作中は履歴を積まない")
+        end(transform, .move)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1, "やり直しを含めて操作全体で1件")
+        editor.undo()
+        XCTAssertEqual(shape.position, CGPoint(x: 10, y: 20), "Undo 用の開始値は、やり直しで変えない")
+        editor.redo()
+        XCTAssertEqual(shape.position, CGPoint(x: 80, y: 20))
+    }
+
+    @MainActor
+    func test_restartBeforeMovement_startsFromCurrentPosition() {
+        let (editor, shape) = makeEditorWithSelectedShape()
+        let transform = editor.transform
+        // しきい値を超える前のやり直しは、置き換える基準がまだないため、そのまま現在の位置から始まる。
+        move(transform, 0, 0, start: CGPoint(x: 100, y: 100))
+        move(transform, 0, 0, start: CGPoint(x: 160, y: 100))
+        move(transform, 20, 0, start: CGPoint(x: 160, y: 100))
+        end(transform, .move)
+        XCTAssertEqual(shape.position, CGPoint(x: 30, y: 20))
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+    }
+
+    @MainActor
+    func test_sameMoveStart_keepsBase() {
+        let (editor, shape) = makeEditorWithSelectedShape()
+        let transform = editor.transform
+        let start = CGPoint(x: 115, y: 319)
+        move(transform, 30, 0, start: start)
+        // 同じ区間で指を戻しただけなら、やり直しではない。基準はそのままで、移動量どおりに戻る。
+        move(transform, 10, 0, start: start)
+        XCTAssertEqual(shape.position, CGPoint(x: 20, y: 20))
         end(transform, .move)
         XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
-        // やり直し後も最初の基準値を使う既存の挙動（要素が飛ぶ不具合は README の残件で扱う）。
-        XCTAssertEqual(shape.position, CGPoint(x: 50, y: 20))
-        editor.undo()
-        XCTAssertEqual(shape.position, CGPoint(x: 10, y: 20))
+    }
+
+    @MainActor
+    func test_restartWhileSuppressed_staysIgnored() {
+        let (editor, _, second) = makeEditorWithTwoShapes()
+        let transform = editor.transform
+        move(transform, 30, 0, start: CGPoint(x: 115, y: 319))
+        editor.selectElement(second)
+        // 割り込みの後のやり直しは、古い操作の続きとして無視し続ける（古い操作から編集を再開しない）。
+        move(transform, 0, 0, start: CGPoint(x: 185, y: 319))
+        move(transform, 40, 0, start: CGPoint(x: 185, y: 319))
+        XCTAssertEqual(second.position, CGPoint(x: 200, y: 300))
+        end(transform, .move)
+        move(transform, 10, 0, start: CGPoint(x: 300, y: 400))
+        end(transform, .move)
+        XCTAssertEqual(second.position, CGPoint(x: 210, y: 300), "古い操作が終わった後の新しい操作は効く")
     }
 
     @MainActor
@@ -467,6 +516,15 @@ final class ElementTransformViewModelTests: XCTestCase {
         let editor = EditorViewModel(project: project, photoLibrarySaver: saver)
         editor.selectElement(first)
         return (editor, first, second)
+    }
+
+    /// 区間の始点を添えた移動の通知（選択枠の DragGesture と同じ形）
+    @MainActor
+    private func move(_ transform: ElementTransformViewModel, _ dx: CGFloat, _ dy: CGFloat, start: CGPoint) {
+        transform.applyGestureTransform(
+            kind: .move, translation: CGSize(width: dx, height: dy), scale: nil, rotation: nil,
+            moveStart: start, ended: false
+        )
     }
 
     @MainActor

@@ -14,6 +14,8 @@ final class ElementTransformViewModel: ObservableObject {
     private weak var editor: (any ElementTransformApplying)?
     private var selectionObservation: AnyCancellable?
     private var gestureBasePosition: CGPoint?
+    /// 移動の区間の始点。終了通知なしで別の指を追い直す（やり直し）と変わるため、その検出に使う。
+    private var moveSegmentStart: CGPoint?
     private var gestureBaseSize: CGSize?
     private var gestureBaseRotation: CGFloat?
     /// しきい値を超える変化が届き、まだ終了していない種類。画像の操作中描画の切り替えに使う。
@@ -87,11 +89,14 @@ final class ElementTransformViewModel: ObservableObject {
     /// 最初にしきい値を超える変化が届いた時点から、通知が届いた種類がすべて終了するまでを1回の操作とし、履歴1件にまとめる。
     /// 指の本数は見ていない。SwiftUI のピンチ・回転は最後の指を離すまで続き、1本目のドラッグ中に2本目の指を置くと、
     /// ドラッグは終了通知なしで2本目の指を追い直す（どちらも1回の操作に含まれる）。
+    /// - Parameters:
+    ///   - moveStart: 移動の区間の始点。変わったらやり直しとみなし、現在の位置から続ける。省略時はやり直しを検出しない
     func applyGestureTransform(
         kind: ElementGestureTransformKind,
         translation: CGSize?,
         scale: CGFloat?,
         rotation: CGFloat?,
+        moveStart: CGPoint? = nil,
         ended: Bool
     ) {
         if ended {
@@ -112,6 +117,10 @@ final class ElementTransformViewModel: ObservableObject {
         }
         guard let element else { return }
         ongoingGestureKinds.insert(kind)
+        // やり直しの最初の通知は移動量 0 のため、しきい値の判定より前に扱う。
+        if kind == .move, let moveStart {
+            restartMoveIfNeeded(from: moveStart, element: element)
+        }
 
         let hasMeaningfulInput: Bool = {
             switch kind {
@@ -162,6 +171,15 @@ final class ElementTransformViewModel: ObservableObject {
         publishPreview(element)
     }
 
+    /// 移動の区間の始点が変わったら（やり直し）、位置の基準を現在の位置に置き換え、新しい指の動きの分だけ動かす。
+    /// 置き換えるのは位置の計算の基準だけで、Undo 用の操作の開始値（gestureSession.start）は変えないため、
+    /// 操作全体で履歴1件のまま、Undo で操作前の位置に戻る。
+    private func restartMoveIfNeeded(from start: CGPoint, element: LogoElement) {
+        defer { moveSegmentStart = start }
+        guard let previous = moveSegmentStart, previous != start, gestureBasePosition != nil else { return }
+        gestureBasePosition = element.position
+    }
+
     /// 終了通知を処理する。通知の届いていない種類と、重複した終了通知は無視する。
     private func finishGesture(_ kind: ElementGestureTransformKind) {
         // 割り込み後の古い操作の終了。何も確定せず、無視の印だけを外す。
@@ -196,6 +214,7 @@ final class ElementTransformViewModel: ObservableObject {
     /// ジェスチャー変形の保持状態を初期化
     private func clearGestureTransformState() {
         gestureBasePosition = nil
+        moveSegmentStart = nil
         gestureBaseSize = nil
         gestureBaseRotation = nil
         activeGestureKinds.removeAll()
@@ -207,6 +226,7 @@ final class ElementTransformViewModel: ObservableObject {
         switch kind {
         case .move:
             gestureBasePosition = nil
+            moveSegmentStart = nil
         case .magnify:
             gestureBaseSize = nil
         case .rotate:
