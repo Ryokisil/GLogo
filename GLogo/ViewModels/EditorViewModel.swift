@@ -49,6 +49,33 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         }
     }
 
+    /// アプリが非アクティブになる通知の受け口。通知を送ったメインスレッドで、その場で同期に処理する。
+    /// 非アクティブになった時点の値でジェスチャーを確定するため、Task などで遅らせない。遅らせると、その間に届く
+    /// 後続のジェスチャーの通知で、裏に回るアニメーションでずれた値が反映されることがある。
+    private final class ResignActiveObserver {
+        typealias Handler = @MainActor @Sendable () -> Void
+        private var token: NSObjectProtocol?
+
+        init(handler: @escaping Handler) {
+            token = NotificationCenter.default.addObserver(
+                forName: UIApplication.willResignActiveNotification,
+                object: nil,
+                queue: nil
+            ) { _ in
+                // UIKit はこの通知をメインスレッドで送る。queue を指定せず、送った側のスレッドで同期に受ける。
+                MainActor.assumeIsolated {
+                    handler()
+                }
+            }
+        }
+
+        deinit {
+            if let token {
+                NotificationCenter.default.removeObserver(token)
+            }
+        }
+    }
+
     // MARK: - プロパティ
     
     /// 現在のプロジェクト
@@ -118,6 +145,9 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     /// メモリ警告監視
     private var memoryWarningObserver: MemoryWarningObserver?
 
+    /// アプリが非アクティブになったときに、操作中のジェスチャーを確定する
+    private var resignActiveObserver: ResignActiveObserver?
+
     // MARK: - イニシャライザ
     
     /// 新しいプロジェクトでエディタを初期化
@@ -157,6 +187,12 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
 
         memoryWarningObserver = MemoryWarningObserver { [weak self] in
             self?.handleMemoryWarning()
+        }
+
+        // 操作中にアプリが非アクティブになったら（ホームへのスワイプなど）、その時点の値でジェスチャーを1件として確定し、
+        // 裏に回るアニメーションで座標がずれた続きの通知は、終了まで無視する（保存・選択の切り替えと同じ割り込みの扱い）。
+        resignActiveObserver = ResignActiveObserver { [weak self] in
+            self?.transform.interruptManipulation()
         }
     }
 

@@ -482,6 +482,98 @@ final class ElementTransformViewModelTests: XCTestCase {
         XCTAssertEqual(shape.size, CGSize(width: 150, height: 80), "移動の履歴はサイズを戻さない")
     }
 
+    // MARK: - アプリの中断
+
+    @MainActor
+    func test_resignActive_commitsPendingGestureImmediately() {
+        let (editor, shape) = makeEditorWithSelectedShape()
+        let transform = editor.transform
+        let start = CGPoint(x: 115, y: 319)
+        move(transform, 30, 0, start: start)
+        XCTAssertTrue(transform.hasPendingGestureTransform)
+        postWillResignActive()
+        // 通知を送った直後（待機なし）に、非アクティブになった時点の値で確定している。
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+        XCTAssertFalse(transform.hasPendingGestureTransform)
+        XCTAssertTrue(editor.canUndo)
+        // 裏に回るアニメーションで座標がずれた続きの通知（実際の UI で観測）は、終了まで無視する。
+        move(transform, -8, -24, start: start)
+        XCTAssertEqual(shape.position, CGPoint(x: 40, y: 20))
+        end(transform, .move)
+        move(transform, 10, 0, start: CGPoint(x: 200, y: 300))
+        end(transform, .move)
+        XCTAssertEqual(shape.position, CGPoint(x: 50, y: 20), "古い操作が終わった後の新しい操作は効く")
+        editor.undo()
+        editor.undo()
+        XCTAssertEqual(shape.position, CGPoint(x: 10, y: 20))
+    }
+
+    @MainActor
+    func test_resignActive_endsImagePreview() throws {
+        let image = try makeImageElement()
+        let project = LogoProject()
+        project.addElement(image)
+        let editor = EditorViewModel(project: project)
+        editor.selectElement(image)
+        editor.transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: 0.3, ended: false)
+        let marker = makeImage()
+        image.cachedImage = marker
+        XCTAssertFalse(image.image === marker)
+        postWillResignActive()
+        XCTAssertTrue(image.image === marker, "操作中の描画を終えている")
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+    }
+
+    @MainActor
+    func test_resignActive_duplicateNotificationsRecordOnce() {
+        let (editor, _) = makeEditorWithSelectedShape()
+        move(editor.transform, 30, 0, start: CGPoint(x: 115, y: 319))
+        postWillResignActive()
+        postWillResignActive()
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+        XCTAssertFalse(editor.transform.hasPendingGestureTransform)
+    }
+
+    @MainActor
+    func test_saveThenResignActive_recordsOnce() {
+        let saver = PhotoLibrarySavingStub()
+        let (editor, shape, _) = makeEditorWithTwoShapes(saver: saver)
+        let transform = editor.transform
+        let start = CGPoint(x: 115, y: 319)
+        move(transform, 30, 0, start: start)
+        editor.saveToPhotoLibrary { _ in }
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1, "保存の受付で確定する")
+        // 保存中に、権限の確認などでアプリが非アクティブになっても、もう1件は増えない。
+        postWillResignActive()
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+        move(transform, 60, 0, start: start)
+        XCTAssertEqual(shape.position, CGPoint(x: 40, y: 20))
+        saver.finish(.success(()))
+        end(transform, .move)
+        move(transform, 5, 0, start: CGPoint(x: 200, y: 300))
+        end(transform, .move)
+        XCTAssertEqual(shape.position, CGPoint(x: 45, y: 20))
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 2)
+    }
+
+    @MainActor
+    func test_resignActive_withoutGesture_changesNothing() {
+        let (editor, shape) = makeEditorWithSelectedShape()
+        postWillResignActive()
+        XCTAssertTrue(editor.getHistoryDescriptions().isEmpty)
+        XCTAssertFalse(editor.canUndo)
+        // 無視の印も残さない（次の操作がそのまま効く）。
+        move(editor.transform, 10, 0, start: CGPoint(x: 115, y: 319))
+        end(editor.transform, .move)
+        XCTAssertEqual(shape.position, CGPoint(x: 20, y: 20))
+    }
+
+    /// UIKit がメインスレッドで送るのと同じく、テストの MainActor 上から送る。
+    @MainActor
+    private func postWillResignActive() {
+        NotificationCenter.default.post(name: UIApplication.willResignActiveNotification, object: nil)
+    }
+
     /// 位置 (10, 20)・サイズ 100×80・回転 0.2 の図形を選択したエディタ。履歴は空。
     @MainActor
     private func makeEditorWithSelectedShape() -> (EditorViewModel, ShapeElement) {
