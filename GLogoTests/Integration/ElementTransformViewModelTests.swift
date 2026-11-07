@@ -95,7 +95,7 @@ final class ElementTransformViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_save_discardsBothInputsAndBlocksMutations() throws {
+    func test_save_commitsGestureAndBlocksMutations() throws {
         let saver = PhotoLibrarySavingStub()
         let image = try makeImageElement()
         image.position = .zero
@@ -104,10 +104,14 @@ final class ElementTransformViewModelTests: XCTestCase {
         let editor = EditorViewModel(project: project, photoLibrarySaver: saver)
         editor.selectElement(image)
         let transform = editor.transform
+        var historyCountAtSave: Int?
+        saver.onSave = { [weak editor] in historyCountAtSave = editor?.getHistoryDescriptions().count }
         transform.startManipulation(.move, at: .zero)
         transform.continueManipulation(at: CGPoint(x: 5, y: 8))
         transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: 0.3, ended: false)
         editor.saveToPhotoLibrary { _ in }
+        // 保存入力を受け取る前に、未確定の回転を1件にする。座標操作（UIKit の経路）は従来どおり開始値だけを破棄する。
+        XCTAssertEqual(historyCountAtSave, 1)
         transform.continueManipulation(at: CGPoint(x: 50, y: 80))
         transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: 1, ended: false)
         transform.resetRotation()
@@ -115,14 +119,22 @@ final class ElementTransformViewModelTests: XCTestCase {
         transform.endManipulation()
         XCTAssertEqual(image.position, CGPoint(x: 5, y: 8))
         XCTAssertEqual(image.rotation, 0.3)
-        XCTAssertFalse(editor.canUndo)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
         let marker = makeImage()
         image.cachedImage = marker
         XCTAssertTrue(image.image === marker)
         XCTAssertFalse(transform.prepareImageRenderingForManipulation(in: project, highResolutionThreshold: 1))
         saver.finish(.success(()))
         transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: 0.2, ended: false)
+        XCTAssertEqual(image.rotation, 0.3, accuracy: 0.0001, "保存前から続く操作は、終わるまで適用しない")
+        transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: nil, ended: true)
+        transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: 0.2, ended: false)
         XCTAssertEqual(image.rotation, 0.5, accuracy: 0.0001, "保存前の累積基準を再利用しない")
+        transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: nil, ended: true)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 2)
+        editor.undo()
+        editor.undo()
+        XCTAssertEqual(image.rotation, 0, accuracy: 0.0001, "保存の受付で確定した1件で、操作前の角度に戻る")
     }
 
     @MainActor
@@ -362,19 +374,142 @@ final class ElementTransformViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_removedOverlay_endsOnlyCurrentGesture() {
+    func test_removedOverlay_commitsOnlyCurrentGesture() {
         let (editor, shape) = makeEditorWithSelectedShape()
         let transform = editor.transform
         move(transform, 30, 0)
         transform.endGesturesForRemovedOverlay(showing: UUID())
         XCTAssertTrue(transform.hasPendingGestureTransform, "別の要素を表示していた選択枠の通知では終えない")
-        // 表示中の選択枠が消えると終了通知は届かないため、ここで終える。
+        // テキスト編集の開始などで表示中の選択枠が消えると、終了通知は届かないため、ここで1件にする。
         transform.endGesturesForRemovedOverlay(showing: shape.id)
         XCTAssertFalse(transform.hasPendingGestureTransform)
-        XCTAssertFalse(editor.canUndo)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
         move(transform, 5, 0)
         end(transform, .move)
         XCTAssertEqual(shape.position, CGPoint(x: 45, y: 20), "次の操作は現在の位置から始まる")
+        editor.undo()
+        editor.undo()
+        XCTAssertEqual(shape.position, CGPoint(x: 10, y: 20))
+    }
+
+    // MARK: - 割り込みの境界
+
+    @MainActor
+    func test_selectionChange_ignoresWholeOldGesture() {
+        let (editor, first, second) = makeEditorWithTwoShapes()
+        let transform = editor.transform
+        move(transform, 30, 0)
+        // 操作中に、2本目の指のタップで選択が切り替わる（実際の UI で観測）。
+        editor.selectElement(second)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1, "切り替え前の移動は、前の要素の1件になる")
+        XCTAssertEqual(first.position, CGPoint(x: 40, y: 20))
+        // 古い操作の続きと、あとから始まった拡大縮小・回転は、次の要素へ適用しない。
+        move(transform, 50, 50)
+        magnify(transform, 1.5)
+        rotate(transform, 0.3)
+        XCTAssertEqual(second.position, CGPoint(x: 200, y: 300))
+        XCTAssertEqual(second.size, CGSize(width: 60, height: 60))
+        XCTAssertEqual(second.rotation, 0)
+        XCTAssertFalse(transform.hasPendingGestureTransform)
+        end(transform, .move)
+        magnify(transform, 1.6)
+        XCTAssertEqual(second.size, CGSize(width: 60, height: 60), "古い操作の種類が残るあいだは適用しない")
+        end(transform, .magnify)
+        end(transform, .rotate)
+        // 古い操作がすべて終わった後の新しい操作は、次の要素の現在値から始まる。
+        move(transform, 10, 0)
+        end(transform, .move)
+        XCTAssertEqual(second.position, CGPoint(x: 210, y: 300))
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 2)
+        editor.undo()
+        XCTAssertEqual(second.position, CGPoint(x: 200, y: 300))
+        editor.undo()
+        XCTAssertEqual(first.position, CGPoint(x: 10, y: 20))
+    }
+
+    @MainActor
+    func test_save_processesEndedWhileSaving() {
+        let saver = PhotoLibrarySavingStub()
+        let (editor, shape, _) = makeEditorWithTwoShapes(saver: saver)
+        let transform = editor.transform
+        move(transform, 30, 0)
+        editor.saveToPhotoLibrary { _ in }
+        XCTAssertTrue(editor.isSavingImage)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+        // 保存中は値を変えないが、届いた終了通知では無視の印を外す。
+        end(transform, .move)
+        // 保存中に始まった操作は、保存が終わっても、その操作が終わるまで適用しない。
+        rotate(transform, 0.3)
+        saver.finish(.success(()))
+        rotate(transform, 0.4)
+        XCTAssertEqual(shape.rotation, 0.2, accuracy: 0.0001)
+        end(transform, .rotate)
+        move(transform, 5, 0)
+        XCTAssertEqual(shape.position, CGPoint(x: 45, y: 20), "保存の前後の操作が終わった後は、現在値から始まる")
+        end(transform, .move)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 2)
+    }
+
+    @MainActor
+    func test_delete_commitsGestureBeforeRemoval() {
+        let (editor, shape) = makeEditorWithSelectedShape()
+        let transform = editor.transform
+        move(transform, 30, 0)
+        editor.deleteSelectedElement()
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 2, "変形・削除の2件になる")
+        XCTAssertFalse(transform.hasPendingGestureTransform)
+        editor.undo()
+        XCTAssertTrue(editor.project.elements.contains { $0.id == shape.id })
+        XCTAssertEqual(shape.position, CGPoint(x: 40, y: 20))
+        editor.undo()
+        XCTAssertEqual(shape.position, CGPoint(x: 10, y: 20))
+    }
+
+    @MainActor
+    func test_oldOverlayRemoval_keepsNewGesture() {
+        let (editor, first, second) = makeEditorWithTwoShapes()
+        let transform = editor.transform
+        move(transform, 30, 0)
+        editor.selectElement(second)
+        end(transform, .move)
+        move(transform, 10, 0)
+        // 前の要素を表示していた選択枠の消滅が遅れて届いても、新しい操作を確定・解除しない。
+        transform.endGesturesForRemovedOverlay(showing: first.id)
+        XCTAssertTrue(transform.hasPendingGestureTransform)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+        move(transform, 20, 0)
+        XCTAssertEqual(second.position, CGPoint(x: 220, y: 300), "新しい操作の基準値が残っている")
+        end(transform, .move)
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 2)
+    }
+
+    @MainActor
+    func test_selectionCleared_overlayRemovalEndsSuppression() {
+        let (editor, first, second) = makeEditorWithTwoShapes()
+        let transform = editor.transform
+        move(transform, 30, 0)
+        editor.clearSelection()
+        XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
+        // 選択枠が消えると、古い操作の終了通知は届かない（実際の UI で観測）。消滅の通知で無視の印を外す。
+        transform.endGesturesForRemovedOverlay(showing: first.id)
+        editor.selectElement(second)
+        move(transform, 10, 0)
+        end(transform, .move)
+        XCTAssertEqual(second.position, CGPoint(x: 210, y: 300))
+    }
+
+    @MainActor
+    func test_resetRotation_blockedWhileOldGestureContinues() {
+        let (editor, _, second) = makeEditorWithTwoShapes(secondRotation: 1.0)
+        let transform = editor.transform
+        move(transform, 30, 0)
+        editor.selectElement(second)
+        // 古い操作の2本目の指のタップでダブルタップが発火しても、切り替え後の要素を変えない。
+        transform.resetRotation()
+        XCTAssertEqual(second.rotation, 1.0, accuracy: 0.0001)
+        end(transform, .move)
+        transform.resetRotation()
+        XCTAssertEqual(second.rotation, 0, accuracy: 0.0001)
     }
 
     @MainActor
@@ -402,6 +537,28 @@ final class ElementTransformViewModelTests: XCTestCase {
         let editor = EditorViewModel(project: project)
         editor.selectElement(shape)
         return (editor, shape)
+    }
+
+    /// 1つ目（位置 (10, 20)・100×80・回転 0.2）を選択し、2つ目（位置 (200, 300)・60×60）も置いたエディタ。履歴は空。
+    @MainActor
+    private func makeEditorWithTwoShapes(
+        secondRotation: CGFloat = 0,
+        saver: PhotoLibrarySavingStub? = nil
+    ) -> (EditorViewModel, ShapeElement, ShapeElement) {
+        let first = ShapeElement(shapeType: .rectangle)
+        first.position = CGPoint(x: 10, y: 20)
+        first.size = CGSize(width: 100, height: 80)
+        first.rotation = 0.2
+        let second = ShapeElement(shapeType: .circle)
+        second.position = CGPoint(x: 200, y: 300)
+        second.size = CGSize(width: 60, height: 60)
+        second.rotation = secondRotation
+        let project = LogoProject()
+        project.addElement(first)
+        project.addElement(second)
+        let editor = EditorViewModel(project: project, photoLibrarySaver: saver)
+        editor.selectElement(first)
+        return (editor, first, second)
     }
 
     @MainActor

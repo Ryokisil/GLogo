@@ -9,12 +9,15 @@ final class PhotoLibrarySavingStub: PhotoLibrarySaving {
     private(set) var projects: [LogoProject] = []
     private(set) var compositeCount = 0
     var immediateResult: PhotoLibrarySaveResult?
+    /// 保存入力を受け取った時点で呼ぶ。準備処理との前後関係を確かめるテストで使う。
+    var onSave: (() -> Void)?
     private var completion: (@MainActor @Sendable (PhotoLibrarySaveResult) -> Void)?
 
     func save(
         project: LogoProject,
         completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     ) {
+        onSave?()
         projects.append(project)
         self.completion = completion
         if let immediateResult {

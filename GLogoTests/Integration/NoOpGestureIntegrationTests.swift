@@ -130,7 +130,8 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         )
     }
 
-    /// 選択要素を切り替えた際に、前要素の回転ジェスチャー基準が次要素へ漏れないことを検証
+    /// 選択要素を切り替えた際に、前要素の回転ジェスチャー基準が次要素へ漏れないことを検証。
+    /// 切り替え前の回転は前要素の履歴1件として確定し、続きの通知は終了まで次要素へ適用しない（第11回で変更）。
     /// - Parameters: なし
     /// - Returns: なし
     @MainActor
@@ -163,6 +164,25 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         editorViewModel.selectElement(secondElement)
         waitForSelectionPropagation()
 
+        XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, 1, "切り替え前の回転は前要素の履歴1件になるべき")
+
+        // 切り替え前から続く回転の通知（終了通知の前）は、次要素へ適用しない
+        elementViewModel.transform.applyGestureTransform(
+            kind: .rotate,
+            translation: nil,
+            scale: nil,
+            rotation: 0.2,
+            ended: false
+        )
+        XCTAssertEqual(secondElement.rotation, 1.0, accuracy: 0.0001, "古い操作の続きは次要素へ適用されるべきではない")
+
+        elementViewModel.transform.applyGestureTransform(
+            kind: .rotate,
+            translation: nil,
+            scale: nil,
+            rotation: nil,
+            ended: true
+        )
         elementViewModel.transform.applyGestureTransform(
             kind: .rotate,
             translation: nil,
@@ -177,6 +197,17 @@ final class NoOpGestureIntegrationTests: XCTestCase {
             accuracy: 0.0001,
             "選択切り替え後は次要素の回転値を基準にジェスチャーを開始するべき"
         )
+
+        elementViewModel.transform.applyGestureTransform(
+            kind: .rotate,
+            translation: nil,
+            scale: nil,
+            rotation: nil,
+            ended: true
+        )
+        editorViewModel.undo()
+        editorViewModel.undo()
+        XCTAssertEqual(firstElement.rotation, 0, accuracy: 0.0001, "前要素の回転は、確定した1件で戻るべき")
     }
 
     /// ダブルタップで回転だけが0度に戻り、Undo/Redo で往復できることを検証

@@ -246,7 +246,10 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         
         // 要素のインデックスを取得
         guard let index = project.elements.firstIndex(where: { $0.id == selectedElement.id }) else { return }
-        
+
+        // 削除後に確定すると、プロジェクトにない要素の履歴になる。Undo で削除・変形の順に戻せるよう、先に確定する。
+        transform.interruptManipulation()
+
         // 削除イベントを作成して実行
         let event = ElementRemovedEvent(element: selectedElement, index: index)
         history.recordAndApply(event)
@@ -518,11 +521,12 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         )
     }
 
-    /// 保存開始前に操作状態を整える
+    /// 保存開始前に操作状態を整える。保存入力を取得する前に、未確定のジェスチャーの差分を履歴1件として確定する。
+    /// 保存される内容は画面の値のままで変わらない。
     /// - Parameters: なし
     /// - Returns: なし
     private func prepareForImageSave() {
-        transform.cancelManipulation()
+        transform.interruptManipulation()
 
         for element in project.elements {
             (element as? ImageElement)?.endEditing()

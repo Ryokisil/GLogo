@@ -3,7 +3,8 @@
 import Combine
 import UIKit
 
-/// 変形状態を親子で共有し、選択 ID と保存ロックの境界で開始値を破棄する。
+/// 変形状態を親子で共有する。選択の切り替え・保存の受付・削除の境界では、未確定のジェスチャーを1件として確定し、
+/// 古い操作の続きを終了まで無視する。
 @MainActor
 final class ElementTransformViewModel: ObservableObject {
     @Published private(set) var element: LogoElement?
@@ -24,6 +25,8 @@ final class ElementTransformViewModel: ObservableObject {
     private var ongoingGestureKinds = Set<ElementGestureTransformKind>()
     /// 確定前のジェスチャー操作。最初の変化の直前の値と対象の要素を、確定まで保持する。
     private var gestureSession: GestureTransformSession?
+    /// 割り込みの後、古い操作の終了を待っている種類。空でないあいだは、どの種類の変化も適用しない。
+    private var suppressedGestureKinds = Set<ElementGestureTransformKind>()
     private weak var renderingProject: LogoProject?
     private let transformUseCase = ElementTransformUseCase()
     private let manipulationRenderingUseCase = ManipulationRenderingUseCase()
@@ -36,8 +39,9 @@ final class ElementTransformViewModel: ObservableObject {
         self.editor = editor
         selectionObservation = selection.sink { [weak self] element in
             guard let self else { return }
+            // 選択の通知は変更前に届くため、この時点の self.element は切り替え前の要素。
             if self.element?.id != element?.id {
-                self.cancelManipulation()
+                self.interruptManipulation()
             }
             self.element = element
         }
@@ -74,8 +78,27 @@ final class ElementTransformViewModel: ObservableObject {
         editor?.applyEvent(event)
     }
 
-    /// 保存・選択変更では、既に表示したプレビューを維持して開始値だけを破棄する。
-    func cancelManipulation() {
+    /// 保存の受付・選択の切り替え・削除で呼ぶ。画面に残る変化も Undo できるよう、未確定のジェスチャーの差分を1件として確定する。
+    /// 古い操作の続き（あとから始まった種類を含む）は、すべて終わるまで無視する。
+    /// 座標操作（UIKit の経路）は従来どおり、表示したプレビューを維持して開始値だけを破棄する。
+    func interruptManipulation() {
+        commitGestureSession()
+        suppressedGestureKinds.formUnion(ongoingGestureKinds)
+        endManipulationProgress()
+    }
+
+    /// 選択枠が消えたときに呼ぶ。消えた選択枠からは終了通知が届かないため、表示していた要素の未確定の差分を確定し、
+    /// 進行状態と無視の印を消す。選択中の要素と別の要素を表示していた選択枠の通知（古い選択枠から遅れて届いたもの）は、
+    /// 新しく始まった操作を確定・解除しないよう無視する。
+    func endGesturesForRemovedOverlay(showing elementId: UUID) {
+        guard element == nil || element?.id == elementId else { return }
+        commitGestureSession()
+        suppressedGestureKinds.removeAll()
+        endManipulationProgress()
+    }
+
+    /// 進行中の操作の状態（画像の操作中描画・開始値・基準値・進行中の種類）を終える。履歴と無視の印は扱わない。
+    private func endManipulationProgress() {
         if !activeGestureKinds.isEmpty, let image = element as? ImageElement {
             imageEditingSessionUseCase.applyManipulationState(to: image, ended: true)
         }
@@ -87,13 +110,6 @@ final class ElementTransformViewModel: ObservableObject {
         manipulationStartState = nil
         discardGestureSession()
         clearGestureTransformState()
-    }
-
-    /// 選択枠が消えたときに呼ぶ。消えた選択枠からは終了通知が届かないため、進行中のジェスチャーを終える。
-    /// 選択中の要素と別の要素を表示していた選択枠の通知（古い選択枠から遅れて届いたもの）は無視する。
-    func endGesturesForRemovedOverlay(showing elementId: UUID) {
-        guard element == nil || element?.id == elementId else { return }
-        cancelManipulation()
     }
 
     func prepareImageRenderingForManipulation(in project: LogoProject?, highResolutionThreshold: CGFloat) -> Bool {
@@ -125,9 +141,10 @@ final class ElementTransformViewModel: ObservableObject {
         publishPreview(element)
     }
 
-    /// ジェスチャーの変形が未確定のあいだは受け付けない。2本目の指のタップでダブルタップが発火しても、操作中の要素を変えないため。
+    /// ジェスチャーの変形が未確定のあいだと、割り込み後に古い操作が続いているあいだは受け付けない。
+    /// 2本目の指のタップでダブルタップが発火しても、操作中の要素や切り替え後の要素を変えないため。
     func resetRotation() {
-        guard canEdit, !hasPendingGestureTransform, let element,
+        guard canEdit, !hasPendingGestureTransform, suppressedGestureKinds.isEmpty, let element,
               let event = transformUseCase.resetRotationEvent(for: element) else { return }
         editor?.applyEvent(event)
     }
@@ -154,7 +171,18 @@ final class ElementTransformViewModel: ObservableObject {
             finishGesture(kind)
             return
         }
-        guard canEdit, let element else { return }
+        // 割り込みの後は、古い操作がすべて終わるまで、どの種類の変化も適用しない。
+        // あとから始まった種類も、同じ指の操作の続きとして終了を待つ。
+        guard suppressedGestureKinds.isEmpty else {
+            suppressedGestureKinds.insert(kind)
+            return
+        }
+        // 保存中に始まった操作は、保存が終わった途端に途中から効き始めないよう、終了まで無視する。
+        guard canEdit else {
+            suppressedGestureKinds.insert(kind)
+            return
+        }
+        guard let element else { return }
         ongoingGestureKinds.insert(kind)
 
         let hasMeaningfulInput: Bool = {
@@ -208,6 +236,8 @@ final class ElementTransformViewModel: ObservableObject {
 
     /// 終了通知を処理する。通知の届いていない種類と、重複した終了通知は無視する。
     private func finishGesture(_ kind: ElementGestureTransformKind) {
+        // 割り込み後の古い操作の終了。何も確定せず、無視の印だけを外す。
+        if suppressedGestureKinds.remove(kind) != nil { return }
         guard ongoingGestureKinds.remove(kind) != nil else { return }
         clearGestureBase(for: kind)
         if activeGestureKinds.remove(kind) != nil, activeGestureKinds.isEmpty,
