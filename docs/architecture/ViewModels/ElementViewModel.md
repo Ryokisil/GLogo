@@ -236,3 +236,7 @@ Task の取消を下位処理へ伝え、不要な描画キューの計算と推
 親の選択購読に残っていた `.receive(on: RunLoop.main)` を除去しました。EditorはMainActor上で選択を発行するため、受信を次のRunLoopへ遅延させず、子ViewModelと同時に要素・種別・画像参照を更新します。これにより選択切り替え・解除・削除直後の共通属性操作が旧要素を変更する問題を修正しました。共通属性の履歴を積まない契約と、画像の計算式・保存・履歴イベントは維持しています。
 
 新規 `ElementViewModelTests` 6件と、図形パネルの変更・Undo／Redo等4件を追加しました。修正前の再現4件を含む関連59件とUI14件、計73件が成功しています。今回の対象実行で親の行カバレッジは81.9%、図形子は100%でした。全スイートの再計測値ではありません。レビュー・残件・実行条件は [補強第2回](../TestCoverage.md) を参照してください。
+
+## 依存の受け取り（段階3・第10回、2026-11-06）
+
+`ElementViewModel` は、調整・フィルターで共有する `ImageRenderRefreshUseCase`、フレーム用の `ImageRenderRefreshUseCase`、メタデータの保存先を初期化で受け取るようになりました。`EditorView` が `@StateObject` の生成時に、Composition Root から渡されたエディタの依存で作ります。共有関係（調整とフィルターは同じもの、フレームは別のもの）と作る回数は従来と同じです。詳細と検証は [EditorViewModel](EditorViewModel.md) の第10回を参照してください。

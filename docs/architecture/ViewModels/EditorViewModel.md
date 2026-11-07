@@ -299,3 +299,49 @@ UseCases に11型、ViewModels に4型、初期化引数の既定値に Infrastr
 - 第10回：編集パネル側の依存（`ImageMetadataEditUseCase`・`ImageElementMetadataRevertUseCase` のメタデータの保存先、`ImageRenderRefreshUseCase` の描画の間引き、`FilterPreviewUseCase`・`ImageCacheReleaseUseCase` のプレビューサービス）と、Revert イベントの中での生成。
 - `ImageSourceResolver` の既定値（`ImageAssetRepository.shared`）は、Model の Decoder の依存注入を扱う回まで残る例外です。第10回のあとも残っていれば、初期化引数の既定値の問題を「すべて解消」とは扱いません。
 - Model から Infrastructure への参照（描画、`copy()` などでの読み込み、Decoder の既定値、背景設定のアセット読み込み）は、段階3の描画・キャッシュの移動とあわせて扱います。
+
+## 段階3・第10回：編集パネル側の依存（2026-11-06）
+
+### 計画と確認した経路
+
+第9回の続きとして、UseCases の初期化引数に残っていた Infrastructure を指す既定値（5型）を外しました。計画は Codex のレビューで補正し、次の3点を実装と検証の条件にしました。
+
+| 条件 | 対応 |
+| --- | --- |
+| Revert の Undo で保存先への操作を増やさない | Revert イベントは保存先を受け取り、適用（Redo を含む）のたびに UseCase を作ります。Undo は従来どおり編集値の復元と表示の失効だけです |
+| 描画の更新は、作る回数と共有関係の両方を保つ | 調整とフィルターは予約の取り消しを共有するため1つを共有し、フレームは別の1つを使います。描画の間引き（`RenderScheduler`）も、その単位で分かれます |
+| 注入した描画サービスをメモリ解放の既定対象にする | 画像ごとの別の描画サービスも引き続き解放し、同じサービスは1回だけ解放します。フィルターのサムネイルは従来どおり、選んだ画像の描画サービスを使います |
+
+### 変更した境界
+
+- [EditorDependencies](../../../GLogo/ViewModels/EditorDependencies.swift) に、メタデータの保存先・描画サービス（どちらも共有インスタンス）と、描画の更新を作る関数を加えました。
+- `ImageMetadataEditUseCase`・`ImageElementMetadataRevertUseCase`（保存先）、`ImageRenderRefreshUseCase`（描画の間引き）、`FilterPreviewUseCase`・`ImageCacheReleaseUseCase`（描画サービス）から、Infrastructure を指す既定値を外しました。
+- `ElementViewModel` は、調整・フィルターで共有する描画の更新、フレーム用の描画の更新、メタデータの保存先を初期化で受け取ります。`EditorView` が `@StateObject` の生成時に、エディタの依存から作って渡します。フレームと調整の ViewModel は、描画の更新とメタデータ編集の UseCase を初期化で受け取ります。
+- 共有関係をテストで照合するため、3つのパネルの ViewModel が持つ描画の更新を内部公開にしました（読み取りのみ）。
+
+**生成の単位とタイミング（変えていません）**
+
+| 実装 | 単位 |
+| --- | --- |
+| メタデータの保存先・描画サービス | アプリ全体で共有インスタンス1つ |
+| メタデータ編集の UseCase | フレーム用と調整用に1つずつ（パネルの生成時） |
+| Revert の UseCase | エディタに1つ（Revert できるかの判定用）。Revert イベントでは適用のたびに作る |
+| 描画の更新 | パネルの生成時に2つ（調整・フィルターの共有分、フレーム用）。それぞれ描画の間引きを持つ |
+
+### 検証と変更後レビュー
+
+- **Critical／Warning**: 指摘なし。
+- **Info**: 共有関係をテストで照合するため、3つのパネルの ViewModel が持つ描画の更新を内部公開にしました。読み取りだけで、差し替えはできません。
+- **Info**: Revert イベントはメタデータの保存先への参照を持ちます。保存先はアプリ全体の共有インスタンスなので、履歴（最大100件）に残っても寿命は変わりません。
+- **Test Coverage**:
+  - [EditorDependenciesTests](../../../GLogoTests/Integration/EditorDependenciesTests.swift) に3件を追加しました。Revert の適用・Undo・Redo で保存先を操作する範囲（Undo では操作しない）、フレームと調整のメタデータ記録の届き先、調整とフィルターが同じ描画の更新を共有しフレームは別であることを確認します。初期化のテストには、描画の更新をエディタの初期化では作らないことを加えました。
+  - [AppCompositionTests](../../../GLogoTests/Integration/AppCompositionTests.swift) 1件は、描画の更新ごとに描画の間引きが分かれていること（一方の取り消しが他方の予約を消さない）を確認します。
+  - [ImagePreviewDependencyTests](../../../GLogoTests/Integration/ImagePreviewDependencyTests.swift) 2件は、メモリ警告で注入した描画サービスを既定の解放対象にし、画像と同じサービスは1回だけ、画像ごとの別のサービスも解放し、画像がなくても解放することを確認します。サムネイルが選んだ画像の描画サービスを使うことは、同じファイルの既存テストが引き続き確認しています。
+  - [EditorViewDependencyTests](../../../GLogoTests/Integration/EditorViewDependencyTests.swift) 1件はエディタ画面を実際に表示し、描画の更新を2つだけ作り、再描画では作らないことを確認します。組み立てだけのテストへの切り替えは不要でした。
+- **回帰テスト棚卸し**: 既存テストの期待値は変えていません。既定値に頼っていた数か所（フレームの ViewModel の生成1か所、描画の更新の既定値1か所、Revert の UseCase の既定値1か所、キャッシュ解放2か所）は、以前と同じ実装を明示する形にしました。`ElementViewModel` の44か所は、テスト側の生成口でエディタの依存から組み立てます。
+- **Verification**: GLogoTests 394件中391件成功（失敗1件は既知の `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用）。UI テストはパネル16件（調整・エフェクト・フィルター・フレーム・AI ツール・テキストと、第9回の2画面）・起動（表示条件4通り）・画面の基本表示の計21件が成功しました。`rg` で、ViewModels に Infrastructure の型名がなく、UseCases に残るのは `ImageSourceResolver` の既定値1か所だけであることを確認しました。変更したファイルからの新しいビルド警告はありません（既存の weak 変数の警告は残っています）。`git diff --check`（新規ファイルを含む）と文書の相対リンクも確認しました。iPhone 17 Pro／iOS 26.1 Simulator、`-parallel-testing-enabled NO`。実機は未実施です。SwiftFormatは未導入のため実行できません。Codegraph は未接続のため、参照の確認は `rg` とコンパイラで行いました。
+
+### 残り
+
+- `ImageSourceResolver` の既定値（`ImageAssetRepository.shared`）は、Model の Decoder の依存注入を扱う回まで残る例外です。初期化引数の既定値の問題は、この例外を除いて解消しましたが、「すべて解消」とは扱いません。
+- Model から Infrastructure への参照（描画、`copy()` などでの読み込み、Decoder の既定値、背景設定のアセット読み込み）は、段階3の描画・キャッシュの移動とあわせて扱います。

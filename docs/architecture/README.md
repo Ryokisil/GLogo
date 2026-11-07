@@ -5,7 +5,7 @@
 - 調査日・記録日: 2026-10-18
 - GLogoの根拠: 未コミット変更を含む、調査時点の作業ツリーのソースとテスト。
 - HandsPOSの根拠: ユーザーから共有されたアーキテクチャ・過去レビューの説明。最新ソースを直接確認したものではありません。
-- 状態: 2026-11-01 に段階2の機能別ViewModel分離と入口DIの対象範囲を完了。段階3は2026-11-06に第9回（Composition Root の新設と入口の依存）まで完了。実装した境界と検証範囲は [EditorViewModel](ViewModels/EditorViewModel.md) と [ElementViewModel](ViewModels/ElementViewModel.md) を参照してください。
+- 状態: 2026-11-01 に段階2の機能別ViewModel分離と入口DIの対象範囲を完了。段階3は2026-11-06に第10回（編集パネル側の依存を Composition Root から渡す形に）まで完了。実装した境界と検証範囲は [EditorViewModel](ViewModels/EditorViewModel.md) と [ElementViewModel](ViewModels/ElementViewModel.md) を参照してください。
 - Xcodeでの開き方: プロジェクトナビゲータの`docs → architecture → README.md`。`docs`は閲覧用の同期フォルダとして登録し、ターゲットへの所属は設定していません。
 - 初回調査の検証範囲: 構造・主要シンボル・ソース・テストの静的確認。後続のビルド・テスト・実機測定は、以下の進捗と各詳細文書に記録しています。
 
@@ -26,7 +26,7 @@
 | 対象ソース | 詳細文書 | 主な論点 |
 | --- | --- | --- |
 | `GLogo/ViewModels/EditorViewModel.swift` | [EditorViewModel](ViewModels/EditorViewModel.md) | 編集全体の所有者、保存・AI・インポートの画面状態分離 |
-| `GLogo/App/AppComposition.swift` | [EditorViewModel](ViewModels/EditorViewModel.md) の第9回 | Composition Root。第9回で移行した依存（入口・保存・インポート・AI・2つの編集画面）の組み立て |
+| `GLogo/App/AppComposition.swift` | [EditorViewModel](ViewModels/EditorViewModel.md) の第9回・第10回 | Composition Root。エディタ・編集パネル・2つの編集画面が使う実装の組み立て（`ImageSourceResolver` の既定値と Model からの参照は対象外） |
 | `GLogo/ViewModels/ElementViewModel.swift` | [ElementViewModel](ViewModels/ElementViewModel.md) | テキスト・図形・画像調整・変形のViewModel分割 |
 | `GLogo/Models/ImageElement.swift` | [ImageElement](Models/ImageElement.md) | データ、画像取得、描画、キャッシュ、Codableの境界 |
 | `GLogo/UseCases/SaveImage/SaveImageCoordinator.swift` | [SaveImageCoordinator](UseCases/SaveImage/SaveImageCoordinator.md) | 保存DI、保存対象の固定、非同期完了の所有者 |
@@ -127,16 +127,16 @@ HandsPOSの設計方式が全画面で統一されているとは確認してい
 
 現在の進捗（2026-11-06）:
 
-現在地は **段階2の対象範囲を完了し、段階3の第9回まで実装・検証済み** です。第5回でフィルターパラメータの合成規則を一本化し、第6回で使われていない処理の削除、同居していた型の分離、メタデータ復元規則のUseCaseへの移動を行いました。あわせてレイヤー配置を整理し、技術的な実装を `Infrastructure/` へ移しました。続いて残件の小物として、内側の層から Infrastructure への直接呼び出しを境界経由へ整理しました。第7回で初期化の入口を `ImageElementFactory` へ移しました。第8回で履歴イベントから使われていない処理（Codable など）を削除し、画像の編集値30項目を `ImageEditState` にまとめて Revert・画像差し替えの Undo・複製に適用したうえで、`EventSourcing.swift` を履歴管理と機能別のイベントのファイルへ分けました。あわせて、画像差し替えの Undo でフレームと背景ぼかしが戻らない不具合を、ユーザー確認のうえ別のコミットで修正しました。第9回で Composition Root（`App/AppComposition`）を新設し、保存・インポート・背景除去・高画質化と2つの編集画面の依存を、UseCases・ViewModels の初期化引数の既定値から外して、入口から渡す形にしました。生成の単位とタイミングは変えていません。GLogoTests 387件中384件成功（失敗1件は既知の4K SDR性能テスト、スキップ2件は実機専用）、UI テスト8件成功です。
+現在地は **段階2の対象範囲を完了し、段階3の第10回まで実装・検証済み** です。第5回でフィルターパラメータの合成規則を一本化し、第6回で使われていない処理の削除、同居していた型の分離、メタデータ復元規則のUseCaseへの移動を行いました。あわせてレイヤー配置を整理し、技術的な実装を `Infrastructure/` へ移しました。続いて残件の小物として、内側の層から Infrastructure への直接呼び出しを境界経由へ整理しました。第7回で初期化の入口を `ImageElementFactory` へ移しました。第8回で履歴イベントから使われていない処理（Codable など）を削除し、画像の編集値30項目を `ImageEditState` にまとめて Revert・画像差し替えの Undo・複製に適用したうえで、`EventSourcing.swift` を履歴管理と機能別のイベントのファイルへ分けました。あわせて、画像差し替えの Undo でフレームと背景ぼかしが戻らない不具合を、ユーザー確認のうえ別のコミットで修正しました。第9回で Composition Root（`App/AppComposition`）を新設し、保存・インポート・背景除去・高画質化と2つの編集画面の依存を、UseCases・ViewModels の初期化引数の既定値から外して、入口から渡す形にしました。第10回で編集パネル側の依存（メタデータの保存先・描画の間引き・描画サービス）も同じ形にし、初期化引数の既定値の問題は `ImageSourceResolver`（Decoder 対応まで残る例外）を除いて解消しました。どちらの回も、生成の単位とタイミングは変えていません。GLogoTests 394件中391件成功（失敗1件は既知の4K SDR性能テスト、スキップ2件は実機専用）、UI テスト21件成功です。
 
-**次の着手は、軽いものから**：第10回として、編集パネル側の依存（メタデータの保存先・描画の間引き・プレビューサービス）を Composition Root から渡す形にします。その後にSwiftUIオーバーレイのジェスチャー変形を履歴に積む案（下の残件）を扱います。描画・画像取得・キャッシュ保持のModel外への移動は高リスクのため後に回します。段階3の責務一覧は [ImageElement](Models/ImageElement.md) を参照してください。計画外で見つかった問題と寄り道の記録は、下の「計画外の対応と残件」で追跡します。
+**次の着手は、軽いものから**：SwiftUIオーバーレイのジェスチャー変形を履歴に積む案（下の残件。着手前にユーザーへ確認）を扱います。Model の Decoder の依存注入（`ImageSourceResolver` の既定値の解消を含む）は、描画・キャッシュの移動とあわせて検討します。描画・画像取得・キャッシュ保持のModel外への移動は高リスクのため後に回します。段階3の責務一覧は [ImageElement](Models/ImageElement.md) を参照してください。計画外で見つかった問題と寄り道の記録は、下の「計画外の対応と残件」で追跡します。
 
 | 段階 | 状態 | 完了した範囲／残り |
 | --- | --- | --- |
 | 0：状態所有・契約の整理 | 対象範囲を確認済み | 保存・テキスト・図形・フレーム・AI・変形・画像調整・フィルター・要素別イベント生成の入口、通知、履歴、寿命を確認 |
 | 1：保存とAI・描画の競合境界 | 主要対策・代表条件の検証完了 | 保存受付時の描画入力を固定し、権限待ち・加工待ち・AI 完了・Undo／Redo・削除との重なりを検証済み。背景除去・背景ぼかし・高画質化の古い結果とエラーの抑止も実装・検証済み。フィルター高品質描画と調整の遅延通知にも対象照合を追加済み。Task の取消伝達と安全な工程境界での終了、Simulator の保存入力測定まで実装・検証済み。iPhone 16 で保存入力4条件と Vision／Core ML の取消・再実行を実測。多画像・高解像度推論などの追加検証範囲は詳細文書に記録 |
 | 2：機能別ViewModel・DI | 対象範囲を完了 | 保存・テキスト・図形・フレーム・AI・変形・画像調整・フィルターとイベント生成を分離。補強第1回42件・第2回73件成功。インポート専用ViewModelは不要と判断し、既存CoordinatorをDI化。表示サイズ・高画質化も注入可能にし、関連47件成功。Model経由の取得・描画・メタデータ依存は段階3で扱う |
-| 3：ImageElement・履歴周辺 | 進行中・第9回完了 | 取得・初期化・キャッシュの分離、描画依存の要素別固定、フィルターパラメータ合成の一本化、未使用処理の削除と型の分離、初期化の入口のFactoryへの移動、履歴イベント・Revert・複製への編集値の型の適用と履歴のファイル分割に続き、Composition Rootを新設して入口と2つの編集画面の依存を外から渡す形にした。既定の描画サービス・Repositoryは共有を維持。編集パネル側の依存（第10回）、Modelの描画要求組み立て・キャッシュ保持は残る |
+| 3：ImageElement・履歴周辺 | 進行中・第10回完了 | 取得・初期化・キャッシュの分離、描画依存の要素別固定、フィルターパラメータ合成の一本化、未使用処理の削除と型の分離、初期化の入口のFactoryへの移動、履歴イベント・Revert・複製への編集値の型の適用と履歴のファイル分割に続き、Composition Rootを新設して入口・2つの編集画面（第9回）と編集パネル（第10回）の依存を外から渡す形にした。既定の描画サービス・Repositoryは共有を維持。`ImageSourceResolver` の既定値（Decoder 対応まで）、Modelの描画要求組み立て・キャッシュ保持は残る |
 
 ### 計画外の対応と残件
 
@@ -152,7 +152,7 @@ HandsPOSの設計方式が全画面で統一されているとは確認してい
 | 2026-11-03 | 図形機能（作成モード・`ShapeEditorPanel`・`ShapeEditingViewModel`・`ShapeEditUseCase`）がUIに出ていない | ディレクトリ構造の確認 | 保留（意図的）：UIの配置が決まっていないため残す |
 | 2026-11-03 | ライブラリ画面（`Views/Library`・`LibraryViewModel`）がアプリから開かれていない（Xcodeプレビューのみ） | ディレクトリ構造の確認 | **対応済み**：削除。テンプレートは仮データで適用処理も未実装、テキストスタイル・エフェクトは現行のテキストパネルへ置き換え済み、背景は編集をやめる判断と同じ扱い。図形の追加入口は、図形UIを決める際に現在の設計で作り直す。ライブラリ専用だった `updateBackgroundSettings` と、保存されない履歴イベント `BackgroundSettingsChangedEvent` も削除 |
 | 2026-11-03 | `UIColor+Extensions.swift` の `init(hue:saturation:brightness:alpha:)` がUIKit標準の初期化と同じ形で自分自身を呼び、呼ばれると無限再帰になる（コンパイラ警告あり） | 全体再コンパイル時の警告 | **対応済み**：呼び出し元がないため削除 |
-| 2026-11-03 | `Infrastructure/` 新設後も残る内側の層からの依存：①Model（`ImageElement`→描画サービス・初期化読み込み・描画処理、`BackgroundSettings`→`AssetManager`）、②境界 `ImagePreviewing` の引数に `ToneCurveFilter.Quality`、③UseCase・ViewModelの初期化引数の既定値に具体型（Composition Rootが未整備）、④境界を介さない直接呼び出し（`ManualBackgroundBlurUseCase`→`ImageFilterUtility`、メタデータUseCase→`ImageMetadataManager`、`ImageElement`拡張の `recordMetadataEdit`、`EditorViewModel`→`ToneCurveFilter.clearCache()`、`ImageCacheReleaseUseCase`→`ImagePreviewService.shared`） | ディレクトリ再配置で可視化 | ②④は**対応済み**：境界の品質型 `RenderQuality`、メモリ解放 `releaseMemory()`、保存の境界 `ImageMetadataStoring`、描画の境界 `BackgroundBlurRendering` を追加し、記録ルールをUseCaseへ移動。①は描画・キャッシュの移動（高リスクのため後回し）で扱う。①のうち初期化読み込みは第7回でFactoryへ移し、Modelには `copy()` のURL読み直しと `replaceImageSource` の寸法取得だけが残る。③は第9回でComposition Root（`App/AppComposition`）を新設し、入口・保存・インポート・AI・2つの編集画面の分を解消した（第7回の `ImageElementFactory` の既定値を含む）。編集パネル側の5型（メタデータの保存先・描画の間引き・プレビューサービス）は第10回で扱う。`ImageSourceResolver` の既定値は下の行の例外として残る |
+| 2026-11-03 | `Infrastructure/` 新設後も残る内側の層からの依存：①Model（`ImageElement`→描画サービス・初期化読み込み・描画処理、`BackgroundSettings`→`AssetManager`）、②境界 `ImagePreviewing` の引数に `ToneCurveFilter.Quality`、③UseCase・ViewModelの初期化引数の既定値に具体型（Composition Rootが未整備）、④境界を介さない直接呼び出し（`ManualBackgroundBlurUseCase`→`ImageFilterUtility`、メタデータUseCase→`ImageMetadataManager`、`ImageElement`拡張の `recordMetadataEdit`、`EditorViewModel`→`ToneCurveFilter.clearCache()`、`ImageCacheReleaseUseCase`→`ImagePreviewService.shared`） | ディレクトリ再配置で可視化 | ②④は**対応済み**：境界の品質型 `RenderQuality`、メモリ解放 `releaseMemory()`、保存の境界 `ImageMetadataStoring`、描画の境界 `BackgroundBlurRendering` を追加し、記録ルールをUseCaseへ移動。①は描画・キャッシュの移動（高リスクのため後回し）で扱う。①のうち初期化読み込みは第7回でFactoryへ移し、Modelには `copy()` のURL読み直しと `replaceImageSource` の寸法取得だけが残る。③は第9回でComposition Root（`App/AppComposition`）を新設して入口・保存・インポート・AI・2つの編集画面の分を、第10回で編集パネル側の5型（メタデータの保存先・描画の間引き・プレビューサービス）を解消した（第7回の `ImageElementFactory` の既定値を含む）。`ImageSourceResolver` の既定値だけは下の行の例外として残るため、③を「すべて解消」とは扱わない |
 | 2026-11-03 | 画像の差し替え・復元（`replaceImageSource`・`restoreImageSource`）が配置サイズを計算するが、本番の唯一の呼び出し元（`ImageContentReplacedEvent` の適用・取り消し）が直後に元のサイズへ戻している。復元時は、サイズを得るためだけに元画像をデコードする | 第7回の計画で呼び出し元を確認 | 未着手（第7回では対応しない判断）。Modelに残る `ImageInitializationLoader` 参照の1つ |
 | 2026-11-03 | インポートでメタデータを抽出・設定していない。`ImagePickerView` の結果に `metadata` はあるが、インポート経路では使っていない。意図した挙動かは未確認 | 第7回の計画で初期化入口の呼び出し元を確認 | 未着手（第7回では対応しない判断） |
 | 2026-11-03 | `LogoProject.duplicate` の呼び出し元がない（ライブラリ画面を削除した残りとみられる） | 第7回の計画で `copy()` の呼び出し元を確認 | 未着手（第7回では対応しない判断） |
