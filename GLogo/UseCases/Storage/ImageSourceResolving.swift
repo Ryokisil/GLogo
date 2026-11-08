@@ -40,6 +40,7 @@ protocol ImageSourceResolving: Sendable {
 
 
 extension CodingUserInfoKey {
-    /// プロジェクト復元時の取得先。子Decoderにも渡されるが、保存データには含まれない。
+    /// プロジェクト復元時の取得先。画像要素の復元に必須で、`ProjectDecodingDependencies.makeDecoder()` が設定する。
+    /// 子Decoderにも渡されるが、保存データには含まれない。
     static let imageSourceResolver = CodingUserInfoKey(rawValue: "GLogo.imageSourceResolver")!
 }

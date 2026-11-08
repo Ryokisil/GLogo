@@ -150,7 +150,7 @@ final class ImageElementCacheTests: XCTestCase {
             element.handleMemoryWarning()
             XCTAssertEqual(try encoder.encode(element), before)
             XCTAssertEqual(element.editRevision, revision)
-            let decoded = try JSONDecoder().decode(ImageElement.self, from: before)
+            let decoded = try JSONDecoder.live().decode(ImageElement.self, from: before)
             XCTAssertNil(decoded.cachedImage)
         }
     }

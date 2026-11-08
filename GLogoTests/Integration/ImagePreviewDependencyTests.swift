@@ -10,7 +10,7 @@ final class ImagePreviewDependencyTests: XCTestCase {
         let second = ImageElementFactory().makeElement(imageData: Data())
         XCTAssertTrue(first.previewService === second.previewService)
         XCTAssertTrue(first.previewService === ImagePreviewService.shared)
-        let decoded = try JSONDecoder().decode(ImageElement.self, from: JSONEncoder().encode(first))
+        let decoded = try JSONDecoder.live().decode(ImageElement.self, from: JSONEncoder().encode(first))
         XCTAssertTrue(decoded.previewService === first.previewService)
     }
 
@@ -84,8 +84,7 @@ final class ImagePreviewDependencyTests: XCTestCase {
         let first = PreviewDependencySpy(color: .red)
         let second = PreviewDependencySpy(color: .blue)
         for service in [first, second] {
-            let decoder = JSONDecoder()
-            decoder.userInfo[.imagePreviewService] = service
+            let decoder = JSONDecoder.live(previewService: service)
             let decoded = try decoder.decode(LogoProject.self, from: data)
             let image = try XCTUnwrap(decoded.elements.first as? ImageElement)
             XCTAssertTrue(image.previewService === service)

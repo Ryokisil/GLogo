@@ -15,7 +15,7 @@ final class ImageSourceResolver: ImageSourceResolving {
     /// - Parameters:
     ///   - assetRepository: 編集用プロキシ解決に使うリポジトリ
     /// - Returns: なし
-    init(assetRepository: EditingImageLoading = ImageAssetRepository.shared) {
+    init(assetRepository: EditingImageLoading) {
         self.assetRepository = assetRepository
     }
 

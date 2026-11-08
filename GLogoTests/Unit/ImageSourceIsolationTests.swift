@@ -108,10 +108,8 @@ final class ImageSourceIsolationTests: XCTestCase {
         let data = try JSONEncoder().encode(project)
         let firstResolver = SourceResolverSpy(image: snapshotImage(.red))
         let secondResolver = SourceResolverSpy(image: snapshotImage(.blue))
-        let firstDecoder = JSONDecoder()
-        firstDecoder.userInfo[.imageSourceResolver] = firstResolver
-        let secondDecoder = JSONDecoder()
-        secondDecoder.userInfo[.imageSourceResolver] = secondResolver
+        let firstDecoder = JSONDecoder.live(sourceResolver: firstResolver)
+        let secondDecoder = JSONDecoder.live(sourceResolver: secondResolver)
         let first = try firstDecoder.decode(LogoProject.self, from: data)
         let second = try secondDecoder.decode(LogoProject.self, from: data)
         XCTAssertTrue((first.elements.first as? ImageElement)?.originalImage === firstResolver.image)
@@ -119,7 +117,7 @@ final class ImageSourceIsolationTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         XCTAssertEqual(try encoder.encode(first), try encoder.encode(second), "取得依存を保存形式に混ぜない")
-        let normal = try JSONDecoder().decode(LogoProject.self, from: data)
+        let normal = try JSONDecoder.live().decode(LogoProject.self, from: data)
         let normalImage = try XCTUnwrap((normal.elements.first as? ImageElement)?.originalImage)
         XCTAssertFalse(normalImage === firstResolver.image)
         XCTAssertFalse(normalImage === secondResolver.image)

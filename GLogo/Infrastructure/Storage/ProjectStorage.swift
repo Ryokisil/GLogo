@@ -117,13 +117,17 @@ final class ProjectStorage: Sendable {
     
     // MARK: - プロジェクト読み込み
     
-    /// プロジェクトを読み込み
-    func loadProject(withId id: UUID, completion: @escaping @Sendable (LogoProject?) -> Void) {
+    /// プロジェクトを読み込み。画像要素には `dependencies` の取得先と描画サービスを渡す。
+    func loadProject(
+        withId id: UUID,
+        dependencies: ProjectDecodingDependencies,
+        completion: @escaping @Sendable (LogoProject?) -> Void
+    ) {
         let projectURL = url(for: id)
         DispatchQueue.global(qos: .background).async {
             do {
                 let jsonData = try Data(contentsOf: projectURL)
-                let project = try Self.makeDecoder().decode(LogoProject.self, from: jsonData)
+                let project = try dependencies.makeDecoder().decode(LogoProject.self, from: jsonData)
                 DispatchQueue.main.async { completion(project) }
             } catch {
                 self.logger.error("プロジェクト読込に失敗: id=\(id.uuidString, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
@@ -132,14 +136,14 @@ final class ProjectStorage: Sendable {
         }
     }
     
-    /// プロジェクトを非同期で読み込み（Promise風）
-    func loadProject(withId id: UUID) async throws -> LogoProject {
+    /// プロジェクトを非同期で読み込み（Promise風）。画像要素には `dependencies` の取得先と描画サービスを渡す。
+    func loadProject(withId id: UUID, dependencies: ProjectDecodingDependencies) async throws -> LogoProject {
         let projectURL = url(for: id)
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 do {
                     let jsonData = try Data(contentsOf: projectURL)
-                    let project = try Self.makeDecoder().decode(LogoProject.self, from: jsonData)
+                    let project = try dependencies.makeDecoder().decode(LogoProject.self, from: jsonData)
                     continuation.resume(returning: project)
                 } catch {
                     continuation.resume(throwing: error)
@@ -150,8 +154,11 @@ final class ProjectStorage: Sendable {
     
     // MARK: - プロジェクト一覧
     
-    /// 保存されているプロジェクト一覧を取得
-    func getProjects(completion: @escaping @Sendable ([LogoProject]) -> Void) {
+    /// 保存されているプロジェクト一覧を取得。画像要素には `dependencies` を渡し、読み込めないファイルは飛ばす。
+    func getProjects(
+        dependencies: ProjectDecodingDependencies,
+        completion: @escaping @Sendable ([LogoProject]) -> Void
+    ) {
         let projectDirectoryURL = self.projectDirectoryURL
         DispatchQueue.global(qos: .background).async {
             var projects: [LogoProject] = []
@@ -163,7 +170,7 @@ final class ProjectStorage: Sendable {
                 )
                 
                 for fileURL in fileURLs where fileURL.pathExtension == "json" {
-                    if let project = try? Self.loadProjectFromURL(fileURL) {
+                    if let project = try? Self.loadProjectFromURL(fileURL, dependencies: dependencies) {
                         projects.append(project)
                     }
                 }
@@ -178,8 +185,8 @@ final class ProjectStorage: Sendable {
         }
     }
     
-    /// プロジェクトを非同期で一覧取得（Promise風）
-    func getProjects() async -> [LogoProject] {
+    /// プロジェクトを非同期で一覧取得（Promise風）。画像要素には `dependencies` を渡し、読み込めないファイルは飛ばす。
+    func getProjects(dependencies: ProjectDecodingDependencies) async -> [LogoProject] {
         let projectDirectoryURL = self.projectDirectoryURL
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
@@ -190,7 +197,7 @@ final class ProjectStorage: Sendable {
                     )
                     var projects: [LogoProject] = []
                     for fileURL in fileURLs where fileURL.pathExtension == "json" {
-                        if let project = try? Self.loadProjectFromURL(fileURL) {
+                        if let project = try? Self.loadProjectFromURL(fileURL, dependencies: dependencies) {
                             projects.append(project)
                         }
                     }
@@ -293,9 +300,9 @@ final class ProjectStorage: Sendable {
     }
     
     /// URLからプロジェクトを読み込み
-    private static func loadProjectFromURL(_ url: URL) throws -> LogoProject {
+    private static func loadProjectFromURL(_ url: URL, dependencies: ProjectDecodingDependencies) throws -> LogoProject {
         let jsonData = try Data(contentsOf: url)
-        return try makeDecoder().decode(LogoProject.self, from: jsonData)
+        return try dependencies.makeDecoder().decode(LogoProject.self, from: jsonData)
     }
 
     /// JSONEncoder を毎回生成（スレッド競合回避）
@@ -303,10 +310,5 @@ final class ProjectStorage: Sendable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
         return encoder
-    }
-
-    /// JSONDecoder を毎回生成（スレッド競合回避）
-    private static func makeDecoder() -> JSONDecoder {
-        JSONDecoder()
     }
 }

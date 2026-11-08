@@ -57,7 +57,7 @@ final class ImageEditTokenTests: XCTestCase {
         let data = try JSONEncoder().encode(image)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertNil(json["editRevision"])
-        let restored = try JSONDecoder().decode(ImageElement.self, from: data)
+        let restored = try JSONDecoder.live().decode(ImageElement.self, from: data)
         XCTAssertEqual(restored.brightnessAdjustment, 0.4)
         let before = restored.editRevision
         restored.brightnessAdjustment = 0

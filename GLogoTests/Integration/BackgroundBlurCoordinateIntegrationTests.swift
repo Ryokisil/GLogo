@@ -54,7 +54,7 @@ final class BackgroundBlurCoordinateIntegrationTests: XCTestCase {
             element.backgroundBlurMaskData = try XCTUnwrap(outputMask)
             element.backgroundBlurRadius = 6
             // 保存対象の属性を Codable で往復し、通常レンダラーにも同じマスクを渡す。
-            let reloaded = try JSONDecoder().decode(ImageElement.self, from: JSONEncoder().encode(element))
+            let reloaded = try JSONDecoder.live().decode(ImageElement.self, from: JSONEncoder().encode(element))
             let rendered = try XCTUnwrap(reloaded.getFilteredImageForce())
             try assertBlurLocation(rendered, original: original)
             let exported = try XCTUnwrap(UIImage(data: XCTUnwrap(rendered.pngData())))

@@ -497,9 +497,17 @@ class ImageElement: LogoElement {
     }
     
     /// カスタムデコーダー
+    /// 実行時の依存（取得先・描画サービス）は保存データに含めず、`ProjectDecodingDependencies` が userInfo で渡す。
+    /// 欠けていれば既定の実装で補わず、依存の設定不足として `MissingDecodingDependencyError` で失敗させる。
     required init(from decoder: Decoder) throws {
-        sourceResolver = decoder.userInfo[.imageSourceResolver] as? any ImageSourceResolving ?? ImageSourceResolver()
-        previewService = decoder.userInfo[.imagePreviewService] as? any ImagePreviewing ?? ImagePreviewService.shared
+        guard let sourceResolver = decoder.userInfo[.imageSourceResolver] as? any ImageSourceResolving else {
+            throw MissingDecodingDependencyError(key: .imageSourceResolver)
+        }
+        guard let previewService = decoder.userInfo[.imagePreviewService] as? any ImagePreviewing else {
+            throw MissingDecodingDependencyError(key: .imagePreviewService)
+        }
+        self.sourceResolver = sourceResolver
+        self.previewService = previewService
         let container = try decoder.container(keyedBy: ImageCodingKeys.self)
         
         // インポート順番管理用のプロパティをデコード（後方互換性のためデフォルト値を提供）

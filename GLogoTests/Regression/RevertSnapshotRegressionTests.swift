@@ -102,7 +102,7 @@ final class RevertSnapshotRegressionTests: XCTestCase {
         XCTAssertFalse(metadataRevertUseCase.canRevertToInitialState(imageElement))
 
         let encoded = try JSONEncoder().encode(imageElement)
-        let decoded = try JSONDecoder().decode(ImageElement.self, from: encoded)
+        let decoded = try JSONDecoder.live().decode(ImageElement.self, from: encoded)
 
         XCTAssertFalse(metadataRevertUseCase.canRevertToInitialState(decoded))
         decoded.saturationAdjustment = 0.5
@@ -194,7 +194,7 @@ final class RevertSnapshotRegressionTests: XCTestCase {
         XCTAssertEqual(Set(stored.keys), Self.snapshotKeys)
         var json = try encodedObject(try makeImageElement())
         json["initialAdjustmentSnapshot"] = stored
-        let decoded = try JSONDecoder().decode(
+        let decoded = try JSONDecoder.live().decode(
             ImageElement.self,
             from: JSONSerialization.data(withJSONObject: json)
         )
@@ -235,7 +235,7 @@ final class RevertSnapshotRegressionTests: XCTestCase {
         imageElement.hasAppliedUpscale = true
 
         let encoded = try JSONEncoder().encode(imageElement)
-        let decoded = try JSONDecoder().decode(ImageElement.self, from: encoded)
+        let decoded = try JSONDecoder.live().decode(ImageElement.self, from: encoded)
 
         XCTAssertTrue(decoded.hasAppliedUpscale)
     }

@@ -77,6 +77,7 @@ extension ImagePreviewing {
 }
 
 extension CodingUserInfoKey {
-    /// 子Decoderへ渡す実行時の描画依存。永続化する画像属性ではない。
+    /// 子Decoderへ渡す実行時の描画依存。画像要素の復元に必須で、`ProjectDecodingDependencies.makeDecoder()` が設定する。
+    /// 永続化する画像属性ではない。
     static let imagePreviewService = CodingUserInfoKey(rawValue: "GLogo.imagePreviewService")!
 }

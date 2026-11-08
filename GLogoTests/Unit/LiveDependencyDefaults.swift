@@ -121,3 +121,34 @@ extension ImageUpscaleUseCase {
         self = AppComposition.makeImageUpscaleUseCase()
     }
 }
+
+extension ImageSourceResolver {
+    /// 第15回で初期化から外した既定値（共有の Repository）と同じ実装で作る。
+    convenience init() {
+        self.init(assetRepository: ImageAssetRepository.shared)
+    }
+}
+
+extension ProjectDecodingDependencies {
+    /// アプリと同じ実装（Composition Root の取得先と共有の描画サービス）で組み立て、指定した依存だけを差し替える。
+    static func live(
+        sourceResolver: (any ImageSourceResolving)? = nil,
+        previewService: (any ImagePreviewing)? = nil
+    ) -> ProjectDecodingDependencies {
+        ProjectDecodingDependencies(
+            sourceResolver: sourceResolver ?? AppComposition.makeImageSourceResolver(),
+            previewService: previewService ?? AppComposition.previewService
+        )
+    }
+}
+
+extension JSONDecoder {
+    /// 第15回で Decoder の既定値を外したため、既存テストの素の Decoder の代わりに使う。
+    /// アプリと同じ依存を userInfo に設定し、指定した依存だけを差し替える。
+    static func live(
+        sourceResolver: (any ImageSourceResolving)? = nil,
+        previewService: (any ImagePreviewing)? = nil
+    ) -> JSONDecoder {
+        ProjectDecodingDependencies.live(sourceResolver: sourceResolver, previewService: previewService).makeDecoder()
+    }
+}
