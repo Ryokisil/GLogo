@@ -94,7 +94,7 @@ Codegraphの結果には旧ファイル名が含まれていたため、現行�
 - `ImageElement` は `sourceResolver` を生成時に固定します。既定は従来と同じ `ImageSourceResolver`。元画像、編集用プロキシ、ソース復元がこの取得先を使います。
 - `ImageImportElementBuilder` からもResolverを注入できます。前段で作ったImporterの注入経路を通して、同じ編集セッションの生成画像へ取得先を渡せます。
 - `copy()` は新しいIDと独立したModel内キャッシュを保ち、取得先を引き継ぎます。`renderCopy()` は従来どおり受付時のUIImageを保持し、通常の保存描画で再解決しません。
-- `JSONDecoder.userInfo[.imageSourceResolver]` から、プロジェクト内の画像要素へ取得先を渡せます。未指定時は標準Resolverです。キーはデコーダー用の実行時設定で、保存JSONのキー追加ではありません。
+- `JSONDecoder.userInfo[.imageSourceResolver]` から、プロジェクト内の画像要素へ取得先を渡せます。未指定時は標準Resolverです（第15回で既定値を外し、未指定は `MissingDecodingDependencyError` で失敗する形にした）。キーはデコーダー用の実行時設定で、保存JSONのキー追加ではありません。
 - 共有依存ストアからResolverだけを除去しました。プレビューサービスのロック・共有方式は維持しています。
 
 今回の変更は取得先の束縛範囲を変えるものです。ファイルパス→URL→アセット名→Dataの優先順位、非ファイルURLの扱い、nil時のフォールバック、キャッシュを消すタイミングは維持します。Codableの保存フィールドも変更していません。
@@ -231,7 +231,7 @@ Codegraphと現行ソースで、Modelの同期／非同期描画、FilterPanelV
 - `ImageElement.previewService` はインスタンスの `let` になりました。全7種類の初期化入口から注入でき、`copy()` と `renderCopy()` も同じ依存を保持します。Model内の共有可変依存ストアは削除しました。
 - [ImagePreviewService](../../../GLogo/Infrastructure/Rendering/ImagePreviewService.swift) は不変の `static let shared` を既定値として提供します。`ImagePreviewing` は参照同一性と非同期共有のために `AnyObject & Sendable` を要求します。ファサードの依存は不変のSendable参照で、ファサードへの新しい `@unchecked Sendable` は不要です。
 - 既存のSDR／HDR実装は従来の `@unchecked Sendable` と、非同期パイプライン・PreviewCacheのロックを維持します。パイプラインの計算式・実行キュー・並列数は変えていません。テスト用サービスの可変観測値と応答キューはロックで保護しました。
-- `Decoder.userInfo[.imagePreviewService]` で子Decoderへ依存を渡せます。未指定時は共有サービスです。保存キー追加ではなく、同じプロジェクトを異なる依存で復元しても再エンコード結果は一致します。
+- `Decoder.userInfo[.imagePreviewService]` で子Decoderへ依存を渡せます。未指定時は共有サービスです（第15回で既定値を外し、必須にした）。保存キー追加ではなく、同じプロジェクトを異なる依存で復元しても再エンコード結果は一致します。
 - [ImageImportElementBuilder](../../../GLogo/UseCases/Import/ImageImportElementBuilder.swift) が描画依存を受け取り、キャンバス指定の有無にかかわらず生成要素へ渡します。
 - [FilterPreviewUseCase](../../../GLogo/UseCases/Editing/Image/Filters/FilterPreviewUseCase.swift) は描画依存を引数で受け取り、Modelのstaticプロパティに依存しません。FilterPanelViewModelは選択画像の依存を渡します。
 - [ImageCacheReleaseUseCase](../../../GLogo/UseCases/Rendering/ImageCacheReleaseUseCase.swift) は要素別キャッシュを消した後、既定サービスと要素が利用するサービスをそれぞれ一度だけリセットします。画像がない場合も既定サービスを解放します。Editorの通知経路とToneCurveFilterの解放は維持しています。
@@ -306,7 +306,7 @@ Serenaの参照検索で `ImageFilterParams` の生成元を確認し、合成�
 
 | 区分 | 責務 | 状態 |
 | --- | --- | --- |
-| Modelに残す | 画像ソースの参照と優先順位、編集値（調整・フレーム・フィルター）、役割・順序・メタデータ、`editRevision`、Revertの初期スナップショット、Codableと旧形式互換、`copy()`・`renderCopy()` | 維持。第8回で編集値を `ImageEditState` として一括で取り出し・反映できるようにした |
+| Modelに残す | 画像ソースの参照と優先順位、編集値（調整・フレーム・フィルター）、役割・順序・メタデータ、`editRevision`、Revertの初期スナップショット、Codableと旧形式互換、`copy()`・`renderCopy()` | 維持。第8回で編集値を `ImageEditState` として一括で取り出し・反映できるようにした。第15回で Decoder の実行時の依存を必須にした（既定値で補わない） |
 | 外へ出す① | 読み取り時の描画：`image` が同期でフル品質描画し、編集中は即時プレビューへ切り替える | 未着手（高リスク） |
 | 外へ出す② | キャンバス描画：`draw(in:)` が表示画像を選んで描画する | 未着手（高リスク） |
 | 外へ出す③ | 画像取得：`originalImage`・編集用プロキシを読み取り時に読み込みキャッシュする | 未着手（高リスク） |
@@ -401,10 +401,62 @@ Serenaの参照検索とソースで、7つの初期化入口の呼び出し元�
 - **Info**: 色を RGBA 成分へ変換する処理が、Model の初期スナップショット（ティント）と履歴の `RGBAColorSnapshot`（フレーム見た目のイベント）の2か所に残っています。後者は Codable の名残で、README の残件に記録しました。
 - **Info**: 画像の編集値を追加したときは、テスト用の記録型 `ImageEditStateRecord` と、初期スナップショットのキー一覧のテストにも項目を足す必要があります。手順は [EventSourcing](../UseCases/History/EventSourcing.md) の共通契約に書きました。
 - **Info**: `ImageElement.swift` は **1,054 → 1,078行** です（`copyAppearance` は短くなり、編集値との変換を追加）。
-- **Test Coverage**: 編集値の型の適用前に、固定テスト5件を追加しました（[RevertSnapshotRegressionTests](../../../GLogoTests/Regression/RevertSnapshotRegressionTests.swift) の保存キーの書き出しと、手書きの固定 JSON の読み込み、[RevertUndoSequenceIntegrationTests](../../../GLogoTests/Integration/RevertUndoSequenceIntegrationTests.swift) の30項目、[ImageContentReplacedEventTests](../../../GLogoTests/Integration/ImageContentReplacedEventTests.swift)、[ImageUndoCacheInvalidationTests](../../../GLogoTests/Unit/ImageUndoCacheInvalidationTests.swift) の Revert・差し替えのキャッシュ）。5件とも、変更前のコードで成功することを一時 worktree で確認しました。あわせて、取り出しと反映の項目漏れを確かめる [ImageEditStateTests](../../../GLogoTests/Unit/ImageEditStateTests.swift) と、Revert の Undo で色の値そのものを戻す確認を追加しました。読み込みテストは当初、値を今の書き出しの結果から作っていましたが、書き出しと読み込みを同時に変えたときの互換切れに気づけないという Codex のレビューを受けて、手書きの固定 JSON に改めました。固定したのは初期スナップショットの部分で、要素全体の旧形式の固定 JSON はまだありません。
+- **Test Coverage**: 編集値の型の適用前に、固定テスト5件を追加しました（[RevertSnapshotRegressionTests](../../../GLogoTests/Regression/RevertSnapshotRegressionTests.swift) の保存キーの書き出しと、手書きの固定 JSON の読み込み、[RevertUndoSequenceIntegrationTests](../../../GLogoTests/Integration/RevertUndoSequenceIntegrationTests.swift) の30項目、[ImageContentReplacedEventTests](../../../GLogoTests/Integration/ImageContentReplacedEventTests.swift)、[ImageUndoCacheInvalidationTests](../../../GLogoTests/Unit/ImageUndoCacheInvalidationTests.swift) の Revert・差し替えのキャッシュ）。5件とも、変更前のコードで成功することを一時 worktree で確認しました。あわせて、取り出しと反映の項目漏れを確かめる [ImageEditStateTests](../../../GLogoTests/Unit/ImageEditStateTests.swift) と、Revert の Undo で色の値そのものを戻す確認を追加しました。読み込みテストは当初、値を今の書き出しの結果から作っていましたが、書き出しと読み込みを同時に変えたときの互換切れに気づけないという Codex のレビューを受けて、手書きの固定 JSON に改めました。固定したのは初期スナップショットの部分で、要素全体の旧形式の固定 JSON はまだありません（第15回で、プロジェクト全体の新旧形式の固定 JSON を追加した）。
 - **回帰テスト棚卸し**: 意味を失ったテストはありません（履歴の Codable やイベント名を確かめるテストはなかった）。初期スナップショットの往復テストと Revert → Undo の既存テストは彩度だけを見ていたため、キー30個と30項目の確認で補強しました。キャッシュ無効化・高画質化の制限・枠色の履歴・複製・保存用コピーの既存テストは、そのまま有効です。
 - **Verification**: 各ステップのあとでビルドと GLogoTests 全体を実行しました。最終状態は378件中375件成功で、失敗1件は既知の `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用です。途中の全体実行で `testPreviewLatencyHDR_4K_P95` が1回だけ超過しましたが、性能テストだけの再実行2回では成功しました（固定パラメータでプレビューを測るテストで、今回の変更とは経路が無関係）。変更したファイルからのビルド警告はなく、`git diff --check`（新規ファイルを含む）と、更新した文書の相対リンクも確認しました。iPhone 17 Pro／iOS 26.1 Simulator、`-parallel-testing-enabled NO`。UI・実機は未実施です。SwiftFormatは未導入のため実行できません。Codegraph は未接続で、参照の確認は `rg` とコンパイラで行いました。
 
 ### 次の範囲
 
 段階3の第8回まで完了しました。次の候補は Composition Root の整備です。その後に、SwiftUI オーバーレイのジェスチャー変形を履歴に積む案（README の残件）を扱います。描画・画像取得・キャッシュ保持のModel外への移動は、引き続き後に回します。
+
+## 段階3・第15回：Decoder の依存注入（2026-11-08）
+
+第9回〜第14回は [EditorViewModel](../ViewModels/EditorViewModel.md) に記録しました。今回は Model の Decoder が対象のため、こちらに記録します。
+
+### 計画と確認した経路
+
+`ImageElement` の Decoder は、userInfo に依存がないとき、取得先（`ImageSourceResolver()`）と描画サービス（`ImagePreviewService.shared`）を自分で作っていました。これを外して復元する側が渡す形にし、あわせて `ImageSourceResolver` の初期化引数の既定値（`ImageAssetRepository.shared`）も外しました。README の「描画・キャッシュの移動とあわせて検討する」は、同じ回で実装するという意味には取らず、分けて進められることを確かめてから進めました（ユーザー・Codex 合意）。参照は `rg`・Serena・ソースで確認し、Codex は Codegraph でも確認しました。
+
+| 確認したこと | 結果 |
+| --- | --- |
+| 描画・キャッシュの移動と分けられるか | 復元の経路で外側の層を参照していたのは、Decoder の既定値2つだけだった。Model に残る具体型の参照（`ImageInitializationLoader` の寸法の取得・URL の読み直し、`ImageElementRenderer` の描画、`BackgroundSettings` から `AssetManager` の背景画像）は、どれも `init(from:)` から呼ばれない。描画を Model の外へ移して描画依存が要らなくなっても、userInfo のキーを1つ外すだけで済む |
+| 読み込みの経路 | `ProjectStorage` の読み込み4つ（単体・一覧の completion 版と async 版）は、アプリから呼ばれていない（エディタの読み込みは `0525c3d`・2025-09-10 で削除）。アプリが触れるのは起動時のディレクトリ作成だけで、テストから呼ぶのは async の単体読み込みだけだった。今回の変更で、アプリの実行時の挙動が変わる経路はない |
+| 依存がないときの扱い | 既定値で補わず、`MissingDecodingDependencyError` で失敗させる。依存の設定不足を、保存データの不正（`DecodingError`）と区別するため。旧形式への切り替えの条件は `type` の `keyNotFound` だけで、このエラーは切り替えに使われない。画像を含まないプロジェクトは依存を使わないため、素の Decoder でも復元できる |
+| 共有と並行処理 | 取得先は、要素ごとに作る形から、1回の読み込みで復元した画像要素が共有する形になる。Resolver は状態を持たず（共有の Repository への不変の参照だけ）、取得の結果は変わらない。エディタの `ImageElementFactory` も1つの Resolver を要素で共有している。描画サービスは前後とも共有インスタンス。Decoder は読み込みごと（一覧ならファイルごと）に作る今の形を保つ |
+| Sendable | この SDK では `JSONDecoder.userInfo` が `[CodingUserInfoKey : any Sendable]` で、Sendable でない取得先を入れると警告になる（既存のテストで2か所出ていた）。取得の境界 `ImageSourceResolving`・`EditingImageLoading` を Sendable にし、すでに Sendable な `ImagePreviewing` にそろえた |
+
+計画は Codex のレビューで補正し、次の条件を実装と検証に含めました。
+
+| 条件 | 対応 |
+| --- | --- |
+| 状態を持つ偽物の `@unchecked Sendable` に根拠を書く | 既存の4つ（`SourceResolverSpy`・`CacheSourceSpy`・`CountingImageSourceResolver`・`RecordingImageAssetRepository`）は、どれもテストのスレッドから同期にだけ呼ばれることを確かめ（使うテストに非同期の経路がない）、その前提をコメントに書いた。並行に読み込むテストには、不変の値だけを持つ偽物（検査付きの Sendable）を使う |
+| 残す読み込み経路のすべてで、依存が届くことを確かめる | 4経路とも、実際の保存と読み込みで確かめる。一覧は失敗したファイルを `try?` で黙って飛ばすため、保存した画像入りのプロジェクトの ID が結果に含まれることまで確かめる |
+| 独自エラーの理由を正確に書く | 「依存の設定不足を、保存データの不正と区別する」とした |
+| `rg` の確認範囲 | Decoder の既定値2つと、初期化引数の既定値に絞る。Model に残る具体型の参照は残件のまま |
+| 判断待ちの2点 | 呼ばれていない読み込み3つは残して依存の引数を足す（削除は永続化の整理で判断）。依存不足のエラーは画像要素で出す |
+
+### 変更した境界
+
+- [ProjectDecodingDependencies](../../../GLogo/UseCases/Storage/ProjectDecodingDependencies.swift)（新規）：取得先と描画サービスを持つ Sendable な値型と、userInfo に設定した Decoder を作る `makeDecoder()`。依存が欠けたときの `MissingDecodingDependencyError` も同じファイルに置きました。
+- `ImageElement`：Decoder は userInfo の2つのキーを必須にし、欠けていればエラーにします。保存形式は変えていません。
+- [ImageSourceResolver](../../../GLogo/UseCases/Storage/ImageSourceResolver.swift)：初期化引数の既定値を外しました。取得の境界 [ImageSourceResolving](../../../GLogo/UseCases/Storage/ImageSourceResolving.swift) と [EditingImageLoading](../../../GLogo/UseCases/Storage/EditingImageLoading.swift) は Sendable にしました（本番の実装は変更なしで条件を満たします）。
+- [ProjectStorage](../../../GLogo/Infrastructure/Storage/ProjectStorage.swift)：読み込み4つが `dependencies` を必須の引数で受け取り、読み込みごと（一覧ならファイルごと）に `makeDecoder()` で Decoder を作ります。
+- [AppComposition](../../../GLogo/App/AppComposition.swift)：読み込みがアプリから呼ばれていないため、依存の生成関数は置きません（読み込みの経路を戻すときに足します）。テストは [LiveDependencyDefaults](../../../GLogoTests/Unit/LiveDependencyDefaults.swift) で、アプリと同じ実装から組み立てます。
+- 変えないもの：保存形式、描画、履歴、取得のキャッシュ（共有の Repository）、描画サービスの共有。
+
+### 検証と変更後レビュー
+
+- **Critical／Warning**: 指摘なし。
+- **Info**: 素の `JSONDecoder()` では、画像を含むプロジェクトを復元できなくなりました（契約の変更）。アプリに該当する経路はなく、テストはアプリと同じ依存を設定した Decoder に置き換えました。
+- **Info**: 一覧の読み込みは、依存が欠けたファイルも壊れたファイルと同じく黙って飛ばします（既存の挙動）。引数が必須のため、通常の使い方では欠けません。
+- **Info**: Model に残る具体型の参照（寸法の取得・URL の読み直し・描画・背景画像）は、描画・キャッシュの移動で扱います。以前からある警告 `ProjectStorage.swift:92`（保存の完了通知で `LogoProject` を渡す）は残っています。
+- **Test Coverage**:
+  - 追加：[LogoProjectPolymorphicCodingRegressionTests](../../../GLogoTests/Regression/LogoProjectPolymorphicCodingRegressionTests.swift) に4件（新旧形式の固定 JSON での要素の型・値と、入れ子の画像要素への依存の受け渡し、依存が欠けたときのエラー、画像を含まないプロジェクトの復元）。[ProjectStorageLoadTests](../../../GLogoTests/Integration/ProjectStorageLoadTests.swift) に5件（読み込み4経路と並行読み込み）。並行のテストで使う不変の偽物は [FixedDecodingDependencies](../../../GLogoTests/Unit/FixedDecodingDependencies.swift) に置きました。
+  - 置き換え：素の Decoder で画像を復元していた7ファイル13か所を、アプリと同じ依存を設定した Decoder に置き換えました。期待値は変えていません。
+  - テストが失敗を検出できることも、一時的な書き換えで確かめました。`ProjectStorage` の内部で素の Decoder に戻すと、読み込みのテスト5件がすべて失敗します。Model を既定値で補う形に戻すと、依存が欠けたときのテストが新旧両方の形式で失敗します。書き換えたファイルを元に戻したことは、ハッシュで確認しました。
+- **回帰テスト棚卸し**: 期待値を変えたテストはありません。素の Decoder が既定の依存で補うことを前提にしていた13か所は置き換え、素の Decoder では失敗することを新しいテストで固定しました。第8回で残っていた「要素全体の旧形式の固定 JSON」も、今回のテストで埋まりました。
+- **Verification**: GLogoTests 425件中422件成功（失敗1件は既知の `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用。追加したテスト9件の分だけ件数が増えた）。UI テストは GLogoUITests 全体の30件が成功しました（起動テストが UI の構成ごとに4回動くため、実行は33回）。最初からのビルドで警告を比べ、消えたのは `ImageSourceIsolationTests` の `SourceResolverSpy` の警告（2か所）だけで、増えた警告はありません。`rg` で、Decoder の既定値2つと `ImageSourceResolver` の初期化引数の既定値が、アプリのコードに残っていないことを確かめました。`git diff --check`（新規ファイルを含む）と、更新した文書の相対リンクを確認しました。iPhone 17 Pro／iOS 26.1 Simulator、`-parallel-testing-enabled NO`。実機は未実施です。SwiftFormat は未導入のため実行できません。
+
+### 次の範囲
+
+段階3の第15回まで完了しました。合意した順の次は、描画・画像取得・キャッシュ保持のModel外への移動（責務一覧の①〜⑤。高リスク）です。保存・読み込みの経路をアプリに戻すかどうかと、呼ばれていない読み込みを削除するかは、永続化の整理で決めます。
