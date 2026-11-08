@@ -90,11 +90,15 @@ class ImageElement: LogoElement {
         )
     }
 
+    /// 取得・描画・キャッシュの管理。要素と同じ寿命を持ち、初期化のたびに作る（複製・保存用の複製とは共有しない）。
+    /// 処理を移した中間段階で、所有と依存の向きの整理は残る（docs/architecture/Models/ImageElement.md の第16回）。
+    private let renderSession: ImageRenderSession
+
     /// 元画像・プロキシ取得の実行時依存。要素ごとに固定し、永続化しない。
-    private let sourceResolver: any ImageSourceResolving
+    private var sourceResolver: any ImageSourceResolving { renderSession.sourceResolver }
 
     /// 描画とサムネイルで共有する生成時の依存。保存データには含めない。
-    let previewService: any ImagePreviewing
+    var previewService: any ImagePreviewing { renderSession.previewService }
 
     /// 画像ファイル名
     var imageFileName: String? { didSet { editRevision &+= 1 } }
@@ -200,23 +204,11 @@ class ImageElement: LogoElement {
     /// 画像メタデータ
     var metadata: ImageMetadata?
     
-    /// 画像要素ごとに所有する実行時キャッシュ。Codableやコピーには含めない。
-    private var renderCache = ImageRenderCache()
-
     /// 履歴と描画完了処理から利用する既存の読み書き口。
     var cachedImage: UIImage? {
-        get { renderCache.renderedImage }
-        set { renderCache.renderedImage = newValue }
+        get { renderSession.renderedImage }
+        set { renderSession.renderedImage = newValue }
     }
-    
-    /// プロキシ生成時の長辺目安（約2MP相当）
-    private let proxyTargetLongSide: CGFloat = 1920
-    
-    /// 高解像度判定の閾値（MP）
-    private let highResThresholdMP: CGFloat = 18.0
-
-    /// 編集中かどうかのフラグ（プレビュー/高品質の切り替え用）
-    private var isCurrentlyEditing: Bool = false
     
     /// 色調補正（彩度調整）
     var saturationAdjustment: CGFloat = 1.0 { didSet { editRevision &+= 1 } }
@@ -318,91 +310,27 @@ class ImageElement: LogoElement {
     
     /// 元画像を取得
     var originalImage: UIImage? {
-        if let cachedOriginalImage = renderCache.originalImage {
-            return cachedOriginalImage
-        }
-
-        let loadedImage = sourceResolver.resolveOriginalImage(
-            imageData: imageData,
-            fileName: imageFileName,
-            url: originalImageURL,
-            path: originalImagePath
-        )
-
-        // 元画像をキャッシュ
-        renderCache.originalImage = loadedImage
-        return loadedImage
-    }
-
-    /// 編集用プロキシ画像（外部リポジトリで生成・解決）
-    private var editingImage: UIImage? {
-        if let proxy = renderCache.proxyImage {
-            return proxy
-        }
-        if let resolved = sourceResolver.resolveEditingImage(
-            identifier: originalImageIdentifier,
-            fileName: imageFileName,
-            originalPath: originalImagePath,
-            originalImageProvider: { self.originalImage },
-            proxyTargetLongSide: proxyTargetLongSide,
-            highResThresholdMP: highResThresholdMP
-        ) {
-            renderCache.proxyImage = resolved
-            return resolved
-        }
-        return originalImage
+        renderSession.originalImage(of: self)
     }
     
     /// 画像を取得
     var image: UIImage? {
-        // 編集中はプレビュー品質のみ返してメインスレッド負荷を抑える
-        if isCurrentlyEditing {
-            let instant = getInstantPreview()
-            let fallbackEditing = editingImage
-            let fallbackOriginal = originalImage
-            let resolved = instant ?? fallbackEditing ?? fallbackOriginal
-            return resolved
-        }
+        renderSession.displayImage(of: self)
+    }
 
-        if let cachedImage = cachedImage {
-            return cachedImage
-        }
-        
-        guard let originalImage = self.originalImage else {
-            return nil
-        }
-        
-        // 編集操作を適用した画像を返す（非編集時はフル品質）
-        let source = originalImage
-        let processedImage = applyFilters(to: source, quality: .full)
-        
-        // 編集後の画像をキャッシュ
-        cachedImage = processedImage
-        return processedImage
-    }
-    
-    /// フィルター適用済み画像を強制的に生成（キャッシュを無視）
+    /// フィルター適用済み画像を強制的に生成（表示画像のキャッシュは使わない。元画像のキャッシュは使う）
     func getFilteredImageForce() -> UIImage? {
-        guard let originalImage = self.originalImage else {
-            return nil
-        }
-        
-        // キャッシュを無視して常に最新のフィルターを適用
-        return applyFilters(to: originalImage)
+        renderSession.filteredImage(of: self)
     }
-    
+
     /// フル品質のフィルター適用結果を非同期で生成する
     ///
-    /// キャッシュ書き込みを伴わないため、呼び出し側で世代管理後に採用可否を判定できる。
+    /// 表示画像のキャッシュ書き込みを伴わないため、呼び出し側で世代管理後に採用可否を判定できる。
     /// - Parameters: なし
     /// - Returns: フィルター適用済み画像。元画像未解決時は nil
     @MainActor
     func renderFullQualityImageAsync() async -> UIImage? {
-        guard let originalImage = self.originalImage else {
-            return nil
-        }
-
-        return await applyFiltersAsync(to: originalImage, quality: .full)
+        await renderSession.fullQualityImageAsync(of: self)
     }
     
     /// ローカル保存用Imageのエンコードキー
@@ -506,8 +434,7 @@ class ImageElement: LogoElement {
         guard let previewService = decoder.userInfo[.imagePreviewService] as? any ImagePreviewing else {
             throw MissingDecodingDependencyError(key: .imagePreviewService)
         }
-        self.sourceResolver = sourceResolver
-        self.previewService = previewService
+        self.renderSession = ImageRenderSession(sourceResolver: sourceResolver, previewService: previewService)
         let container = try decoder.container(keyedBy: ImageCodingKeys.self)
         
         // インポート順番管理用のプロパティをデコード（後方互換性のためデフォルト値を提供）
@@ -584,8 +511,7 @@ class ImageElement: LogoElement {
         sourceResolver: any ImageSourceResolving,
         previewService: any ImagePreviewing
     ) {
-        self.sourceResolver = sourceResolver
-        self.previewService = previewService
+        self.renderSession = ImageRenderSession(sourceResolver: sourceResolver, previewService: previewService)
         self.originalImportOrder = importOrder
         self.canvasSize = canvasSize
 
@@ -617,7 +543,7 @@ class ImageElement: LogoElement {
         editHistory.removeAll()
 
         // キャッシュをクリアして再描画を促す
-        renderCache.invalidate(.adjustments)
+        renderSession.invalidate(.adjustments)
     }
 
     /// 画像ソースを差し替える
@@ -695,84 +621,40 @@ class ImageElement: LogoElement {
     
     /// 画像キャッシュをクリアする
     private func clearImageCaches() {
-        renderCache.invalidate(.all)
-        previewService.resetCache()
+        renderSession.invalidateForSourceChange()
     }
 
     /// レンダリング済み画像のキャッシュを無効化
     ///
     /// 画像調整の値だけが更新された場合に、表示の再描画を確実に行うために使用します。
     func invalidateRenderedImageCache() {
-        renderCache.invalidate(.rendered)
+        renderSession.invalidate(.rendered)
     }
 
     /// メモリ警告時に画像キャッシュを解放する
     func handleMemoryWarning() {
-        renderCache.invalidate(.all)
+        renderSession.invalidate(.all)
     }
     
-    /// プレビュー用低解像度画像を生成
-    private func generatePreviewImage() -> UIImage? {
-        previewService.generatePreviewImage(
-            editingImage: editingImage,
-            originalImage: originalImage,
-            mode: currentRenderMode()
-        )
-    }
-
     /// 即座プレビュー用の画像を取得（低解像度、高速処理）
     func getInstantPreview() -> UIImage? {
-        if renderCache.previewBaseImage == nil {
-            renderCache.previewBaseImage = generatePreviewImage()
-        }
-
-        guard let preview = renderCache.previewBaseImage else { return nil }
-
-        let params = currentFilterParams()
-        return previewService.instantPreview(
-            baseImage: preview,
-            params: params,
-            quality: .preview,
-            mode: currentRenderMode()
-        )
+        renderSession.instantPreview(of: self)
     }
 
     /// 編集開始をマーク
     func startEditing() {
-        isCurrentlyEditing = true
-        renderCache.invalidate(.rendered)
+        renderSession.startEditing()
     }
 
-    /// 編集終了をマーク
+    /// 編集終了をマーク。描画のセッションとキャッシュは破棄しない
     func endEditing() {
-        isCurrentlyEditing = false
-    }
-    
-    /// 画像にフィルターを適用
-    private func applyFilters(to image: UIImage, quality: RenderQuality = .full) -> UIImage? {
-        previewService.applyFilters(
-            to: image,
-            params: currentFilterParams(),
-            quality: quality,
-            mode: currentRenderMode()
-        )
-    }
-    
-    /// 画像にフィルターを非同期で適用（彩度調整特化）
-    @MainActor
-    private func applyFiltersAsync(to image: UIImage, quality: RenderQuality = .full) async -> UIImage? {
-        await previewService.applyFiltersAsync(
-            to: image,
-            params: currentFilterParams(),
-            quality: quality,
-            mode: currentRenderMode()
-        )
+        renderSession.endEditing()
     }
 
-    /// 適用中プリセットからレンダリング経路を判定
+    /// 適用中プリセットからレンダリング経路を判定。描画のセッションが、描画の時点で読む
     /// - Parameters: なし
     /// - Returns: レンダリング経路
-    private func currentRenderMode() -> ImageRenderMode {
+    func currentRenderMode() -> ImageRenderMode {
         ImageRenderMode.fromPresetId(appliedFilterPresetId)
     }
 
@@ -857,23 +739,15 @@ class ImageElement: LogoElement {
         cornerRadius = state.frame.cornerRadius
     }
 
-    /// 現在のフィルタ設定をまとめてサービスに渡す（filter + manual を合成）
-    private func currentFilterParams() -> ImageFilterParams {
+    /// 現在のフィルタ設定をまとめてサービスに渡す（filter + manual を合成）。描画のセッションが、描画の時点で読む
+    func currentFilterParams() -> ImageFilterParams {
         ImageFilterParamsComposer.compose(adjustmentValues, recipe: appliedFilterRecipe)
     }
 
-    /// 画像を描画
+    /// 画像を描画。描く画像はセッションが選び、キャンバスへの描き込みは従来どおりここから呼ぶ
+    /// （UseCases から Infrastructure の具体型を呼ばないため）。
     override func draw(in context: CGContext) {
-        let filteredImage: UIImage? = {
-            guard let image = self.image else { return nil }
-            if isCurrentlyEditing {
-                return getInstantPreview() ?? applyFilters(to: image, quality: .preview) ?? image
-            } else {
-                return image
-            }
-        }()
-
-        ImageElementRenderer.draw(self, in: context, image: filteredImage)
+        ImageElementRenderer.draw(self, in: context, image: renderSession.drawingImage(of: self))
     }
     
     /// 要素のコピーを作成
@@ -911,7 +785,7 @@ class ImageElement: LogoElement {
         copy.name = name
         copy.zIndex = zIndex
         copy.imageRole = imageRole
-        copy.renderCache.originalImage = originalImage
+        copy.renderSession.fixOriginalImage(originalImage)
         return copy
     }
 
@@ -956,7 +830,7 @@ class ImageElement: LogoElement {
     /// - Parameters: なし
     /// - Returns: なし
     func clearRevertImageCaches() {
-        renderCache.invalidate(.revert)
+        renderSession.invalidate(.revert)
     }
     
     /// 初期状態から外れた調整値変更があるかを確認
