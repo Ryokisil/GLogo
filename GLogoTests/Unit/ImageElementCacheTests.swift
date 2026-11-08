@@ -38,6 +38,34 @@ final class ImageElementCacheTests: XCTestCase {
         }
     }
 
+    func test_renderedCacheHit_skipsSourceFetch() {
+        withFixture { element, source, preview in
+            warmCaches(element)
+            // 表示画像と元画像のキャッシュを消してから、表示画像だけを入れ直す。
+            element.clearRevertImageCaches()
+            let marker = snapshotImage(.purple)
+            element.cachedImage = marker
+            // 表示画像のキャッシュを先に確かめ、あれば元画像を取得しない（評価の順序を固定する）。
+            XCTAssertTrue(element.image === marker)
+            XCTAssertEqual(source.originalCalls, 1)
+            XCTAssertEqual(preview.renderCalls, 1)
+        }
+    }
+
+    func test_editing_fetchesFallbackEagerly() {
+        withFixture { element, source, preview in
+            warmCaches(element)
+            // 元画像のキャッシュだけを消し、プレビュー元画像とプロキシは残す。
+            element.clearRevertImageCaches()
+            element.startEditing()
+            // 即時プレビューがあっても、フォールバック候補の元画像を先に取得する（今の評価の順序。短絡評価への変更は別に判断する）。
+            XCTAssertTrue(element.image === source.proxy)
+            XCTAssertEqual(source.originalCalls, 2)
+            XCTAssertEqual(source.proxyCalls, 1)
+            XCTAssertEqual(preview.baseCalls, 1)
+        }
+    }
+
     func test_adjustmentReset_rebuildsPreviewBase() {
         withFixture { element, source, preview in
             element.saturationAdjustment = 0.3
