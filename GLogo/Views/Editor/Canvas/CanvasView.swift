@@ -16,26 +16,16 @@ import SwiftUI
 class CanvasView: UIView {
     // MARK: - プロパティ
     
-    /// プロジェクト参照
+    /// プロジェクト参照。同じインスタンスを設定し直したときも再描画を要求する。
+    /// 要素の変更は、updateUIView のたびの設定し直しで描画に反映されるため、同一判定で省かないこと。
     var project: LogoProject? {
         didSet {
             setNeedsDisplay()
         }
     }
     
-    /// 選択中の要素
-    var selectedElement: LogoElement? {
-        didSet {
-            setNeedsDisplay()
-        }
-    }
-    
     /// エディタモード
-    var editorMode: EditorMode = .select {
-        didSet {
-            updateCursor()
-        }
-    }
+    var editorMode: EditorMode = .select
     
     /// タッチ開始時のポイント
     private var touchStartPoint: CGPoint = .zero
@@ -52,9 +42,6 @@ class CanvasView: UIView {
     /// 編集中のテキスト要素のID
     var editingTextElementId: UUID?
     
-    /// 表示用の変換行列（ズーム/パン撤廃に伴い恒等）
-    private var viewTransform: CGAffineTransform = .identity
-
     /// グリッドのサイズ
     private let gridSize: CGFloat = 20.0
     
@@ -199,9 +186,6 @@ class CanvasView: UIView {
         let location = touch.location(in: self)
         touchStartPoint = location
         
-        // 座標変換
-        let transformedLocation = location.applying(viewTransform.inverted())
-        
         // エディタモードに応じた処理（操作ジェスチャーは別レイヤーに委譲）
         switch editorMode {
         case .select:
@@ -209,7 +193,7 @@ class CanvasView: UIView {
         case .shapeCreate, .imageImport:
             break
         case .delete:
-            handleDeleteTouchBegan(at: transformedLocation)
+            handleDeleteTouchBegan(at: location)
         }
     }
     
@@ -218,7 +202,6 @@ class CanvasView: UIView {
 
         guard let touch = touches.first else { return }
         let location = touch.location(in: self)
-        let transformedLocation = location.applying(viewTransform.inverted())
 
         let distance = hypot(touchStartPoint.x - location.x, touchStartPoint.y - location.y)
 
@@ -230,7 +213,7 @@ class CanvasView: UIView {
         case .select:
             break
         case .shapeCreate, .imageImport:
-            onCreateElement?(transformedLocation)
+            onCreateElement?(location)
         case .delete:
             break
         }
@@ -270,14 +253,6 @@ class CanvasView: UIView {
         return sortedElements.first { $0.hitTest(testPoint) }
     }
 
-    // MARK: - 座標変換
-    
-    /// ビュー変換のリセット（ズーム/パン撤廃につき恒等）
-    func resetViewTransform() {
-        viewTransform = .identity
-        setNeedsDisplay()
-    }
-    
     // MARK: - ユーティリティ
     
     /// ポイントをグリッドにスナップ
@@ -285,33 +260,6 @@ class CanvasView: UIView {
         let x = round(point.x / gridSize) * gridSize
         let y = round(point.y / gridSize) * gridSize
         return CGPoint(x: x, y: y)
-    }
-    
-    /// カーソルの更新
-    private func updateCursor() {
-        // カーソルスタイルを設定（macOS Catalina以降でiPadで利用可能）
-#if targetEnvironment(macCatalyst)
-        switch editorMode {
-        case .select:
-            NSCursor.arrow.set()
-        case .shapeCreate:
-            NSCursor.crosshair.set()
-        case .imageImport:
-            NSCursor.dragCopy.set()
-        case .delete:
-            NSCursor.disappearingItem.set()
-        }
-#endif
-    }
-    
-    /// 表示座標からキャンバス座標への変換
-    func convertPointToCanvas(_ point: CGPoint) -> CGPoint {
-        return point.applying(viewTransform.inverted())
-    }
-    
-    /// キャンバス座標から表示座標への変換
-    func convertPointFromCanvas(_ point: CGPoint) -> CGPoint {
-        return point.applying(viewTransform)
     }
 }
 
@@ -397,9 +345,9 @@ struct CanvasViewRepresentable: UIViewRepresentable {
     
     /// UIViewの更新
     func updateUIView(_ canvasView: CanvasView, context: Context) {
-        // プロジェクトと選択要素を更新
+        // 同じプロジェクトでも毎回設定し直し、再描画を要求する（要素の変更を描画に反映するため）。
+        // editingTextElementId は自身では再描画を要求せず、この要求で反映される。
         canvasView.project = viewModel.project
-        canvasView.selectedElement = viewModel.selectedElement
         canvasView.editorMode = viewModel.editorMode
         canvasView.showGrid = showGrid
         canvasView.snapToGrid = snapToGrid
