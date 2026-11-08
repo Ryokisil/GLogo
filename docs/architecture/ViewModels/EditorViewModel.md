@@ -460,7 +460,7 @@ UseCases に11型、ViewModels に4型、初期化引数の既定値に Infrastr
 
 ### 残り
 
-- 撤廃したズーム・パンの名残（`viewTransform` と、呼び出し元のない変換関数）と、描画に使われていない `CanvasView.selectedElement`（README の残件）。
+- 撤廃したズーム・パンの名残（`viewTransform` と、呼び出し元のない変換関数）と、描画に使われていない `CanvasView.selectedElement`（README の残件）。第14回で削除しました。
 - 2本目の指でドラッグがやり直しになり要素が飛ぶ不具合と、システムによる取り消しの扱い（第11回からの残件）。
 
 ## 段階3・第13回：ジェスチャーのやり直しとアプリの中断（2026-11-07）
@@ -523,3 +523,52 @@ UseCases に11型、ViewModels に4型、初期化引数の既定値に Infrastr
 - ピンチ中の指の組み合わせの変化による跳ね（信頼できる検出方法を調べてから扱う）。
 - 終了通知が届かない取り消し（未観測）。
 - 次の候補は、ズーム・パンの名残と `CanvasView.selectedElement` の整理、続いて Model の Decoder の依存注入（ユーザー・Codex 合意の順）。
+
+## 段階3・第14回：CanvasView の使われていない状態の削除（2026-11-08）
+
+### 計画と確認した経路
+
+第12回の計画で記録した、[CanvasView](../../../GLogo/Views/Editor/Canvas/CanvasView.swift) に残るズーム・パンの名残と、描画に使われていない `selectedElement` を削除しました。計画の確認中に見つけた、Mac Catalyst でだけ動くカーソルの更新も、ユーザーと Codex の了承を得て含めました。挙動を変えないリファクタリングです。参照元は `rg`・Serena・ソースで確認し、Codex は Codegraph でも確認しました。
+
+| 対象 | 確認したこと |
+| --- | --- |
+| `viewTransform` | 値を入れるのは宣言と、呼ばれない `resetViewTransform()` の中だけで、どちらも `.identity`。使っていたのはタッチの処理（削除モードのタップ、図形の作成モードなどのタップ）で、`location.applying(viewTransform.inverted())` は `location` と同じ値になる。削除モードは、何も選んでいないときにゴミ箱ボタンで入る、使われている経路 |
+| `resetViewTransform`・`convertPointToCanvas`・`convertPointFromCanvas` | アプリ・テスト・UI テストのどこからも参照されていない。`@objc` でもないため、セレクタ経由の呼び出しもない |
+| `selectedElement` | 値を入れるのは `CanvasViewRepresentable.updateUIView` の1か所だけで、読む箇所はない。同じ `updateUIView` で `project` と `showGrid` も毎回設定しており、どちらの `didSet` も同じ値の設定し直しで `setNeedsDisplay()` を呼ぶ。消しても、同じ `updateUIView` 内で再描画要求が維持される。`EditorViewModel` は `ObservableObject` のため、`selectedElement` を読まなくなっても `updateUIView` が呼ばれる条件は変わらない |
+| `updateCursor()` | `#if targetEnvironment(macCatalyst)` の中だけで動き、呼び出し元は `editorMode` の `didSet` だけ。アプリのターゲットは Debug／Release とも `SUPPORTS_MACCATALYST = NO` で、この分岐はコンパイルされていない |
+
+README の残件にあった「設定のたびに `setNeedsDisplay()` が呼ばれるため、消すと再描画のきっかけが変わる」は、`project` の設定し直しでも毎回要求している点が抜けていたため、訂正を書き添えました。
+
+計画は Codex のレビューで補正し、次の条件を実装と検証に含めました。
+
+| 条件 | 対応 |
+| --- | --- |
+| `updateCursor()` を削除し、`editorMode` 自体は残す | 関数と、それだけを呼ぶ `editorMode` の `didSet` を削除した。`editorMode` はタッチの処理でモードの判定に使う |
+| テストは、同じプロジェクトの中の要素を変えてから設定し直したときに、再描画を要求する契約を守る | 初期化と最初の設定での要求を除き、そこから増えることだけを確かめる（回数は固定しない） |
+| 記録は再描画の「要求」までにとどめる | `setNeedsDisplay()` は即時の描画ではなく、次の描画サイクルへの要求。追加したテストでも、実際の描画の回数やタイミングは確かめていない |
+
+### 変更した範囲
+
+`CanvasView.swift`（View 層）だけを変更し、テストを1件追加しました。
+
+- **削除**: `viewTransform`、`resetViewTransform`・`convertPointToCanvas`・`convertPointFromCanvas` と「座標変換」の MARK、`selectedElement` と `updateUIView` での設定、`updateCursor()` と `editorMode` の `didSet`。タッチの処理は、タッチの位置をそのまま使います。
+- **注記**: `project` に、同じインスタンスの設定し直しでも再描画を要求すること（同一判定で省かない）を書きました。`updateUIView` には、要素の変更と `editingTextElementId`（自身では再描画を要求しない）が、この要求で描画に反映されることを書きました。
+- 変えないもの: 描画の内容、タッチの判定、`project`・`showGrid` の再描画の要求。
+
+行数は `CanvasView` 421→369 です。
+
+### 検証と変更後レビュー
+
+- **Critical／Warning**: 指摘なし。
+- **Info**: 削除モードと図形の作成モードのタップ（`CanvasView` のタッチの処理）には、UI テストがありません。恒等変換を外しただけで、渡す位置の値は変わりません。
+- **Info**: 選択を切り替えただけでも、`updateUIView` の再描画の要求でキャンバス全体を描き直します。今回の前後で変わらず、今回は扱いません。
+- **Test Coverage**:
+  - 追加: [CanvasViewTests](../../../GLogoTests/Unit/CanvasViewTests.swift) の `test_sameProjectReassigned_requestsRedraw`。`setNeedsDisplay()` を数える子クラスで、同じプロジェクトの中の要素を変えてから設定し直すと、要求が増えることを確かめます。`project` の `didSet` で要求しないように一時的に書き換えると、このテストが失敗することも確かめました。
+  - これまで `CanvasView` を直接確かめるテストはありませんでした。
+- **回帰テスト棚卸し**: 期待値を変えたテストはありません。削除した名前を参照するテストもありません。
+- **Verification**: GLogoTests 416件中413件成功（失敗1件は既知の `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用。追加したテスト1件の分だけ件数が増えた）。UI テストは GLogoUITests 全体の30件が成功しました（起動テストは UI の構成ごとに4回動くため、実行は33回）。変更したファイルからの新しいビルド警告はありません。`rg` とコンパイラで削除した名前の参照が残っていないこと、`git diff --check`、文書の相対リンクを確認しました。iPhone 17 Pro／iOS 26.1 Simulator、`-parallel-testing-enabled NO`。実機は未実施です。SwiftFormat は未導入のため実行できません。
+
+### 残り
+
+- 次の候補は Model の Decoder の依存注入（`ImageSourceResolver` の既定値の解消を含む。ユーザー・Codex 合意の順）。
+- ピンチ中の指の組み合わせの変化による跳ねと、終了通知が届かない取り消しは、README の残件のまま。
