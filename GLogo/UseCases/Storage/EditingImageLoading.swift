@@ -3,7 +3,8 @@
 import UIKit
 
 /// 編集用プロキシを含む画像取得の能力。実装はディスクI/Oとリサイズを担い、Modelから切り離す。
-protocol EditingImageLoading {
+/// 取得の境界（`ImageSourceResolving`）から共有して使うため、Sendable を求める。
+protocol EditingImageLoading: Sendable {
     /// 編集用プロキシも含めた画像の取得
     /// - Parameters:
     ///   - identifier: オリジナル画像の識別子

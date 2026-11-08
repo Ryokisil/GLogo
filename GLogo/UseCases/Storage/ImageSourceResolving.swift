@@ -3,7 +3,8 @@
 import UIKit
 
 /// `ImageElement` が保持する画像参照から表示・編集用画像を解決するプロトコル
-protocol ImageSourceResolving {
+/// 復元では Decoder の userInfo で受け渡し、要素間やスレッド間で共有するため Sendable を求める。
+protocol ImageSourceResolving: Sendable {
     /// 元画像を優先順位付きで解決する。
     /// - Parameters:
     ///   - imageData: 直接保持している画像データ

@@ -151,7 +151,8 @@ private extension ImageSourceResolverTests {
 }
 
 /// 呼び出し内容を記録するテスト用 ImageAssetRepository
-private final class RecordingImageAssetRepository: EditingImageLoading {
+/// テストのスレッドから同期にだけ呼ばれる前提で、記録をロックなしで持つ（並行に使うテストには使わない）。
+private final class RecordingImageAssetRepository: EditingImageLoading, @unchecked Sendable {
     let result: UIImage?
     private(set) var didLoadEditingImage = false
     private(set) var receivedIdentifier: String?
@@ -179,7 +180,8 @@ private final class RecordingImageAssetRepository: EditingImageLoading {
 }
 
 /// 元画像解決の呼び出し回数を記録するテスト用 Resolver
-private final class CountingImageSourceResolver: ImageSourceResolving {
+/// テストのスレッドから同期にだけ呼ばれる前提で、回数をロックなしで持つ（並行に使うテストには使わない）。
+private final class CountingImageSourceResolver: ImageSourceResolving, @unchecked Sendable {
     let originalImage: UIImage
     private(set) var originalResolveCallCount = 0
 

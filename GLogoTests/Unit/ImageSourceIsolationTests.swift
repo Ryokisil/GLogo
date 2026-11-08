@@ -143,7 +143,8 @@ final class ImageSourceIsolationTests: XCTestCase {
 }
 
 /// 取得先と元画像キャッシュの利用回数を、単一テストの要素群で観測する。
-private final class SourceResolverSpy: ImageSourceResolving {
+/// テストのスレッドから同期にだけ呼ばれる前提で、観測値をロックなしで持つ（並行に使うテストには使わない）。
+private final class SourceResolverSpy: ImageSourceResolving, @unchecked Sendable {
     var image: UIImage
     private(set) var originalCalls = 0
     private(set) var editingIdentifiers: [String?] = []

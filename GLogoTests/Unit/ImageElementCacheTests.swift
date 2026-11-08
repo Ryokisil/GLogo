@@ -170,7 +170,8 @@ final class ImageElementCacheTests: XCTestCase {
 }
 
 /// 元画像とプロキシの再解決を別々に観測する。
-private final class CacheSourceSpy: ImageSourceResolving {
+/// テストのスレッドから同期にだけ呼ばれる前提で、観測値をロックなしで持つ（並行に使うテストには使わない）。
+private final class CacheSourceSpy: ImageSourceResolving, @unchecked Sendable {
     var original = snapshotImage(.red)
     var proxy = snapshotImage(.blue)
     var originalCalls = 0
