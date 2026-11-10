@@ -1,5 +1,5 @@
-// 手動背景除去と背景ぼかしマスクの画面が、依存を画面を開くたびに1回だけ作り、再描画では作り直さないことを確かめる。
-// 作る関数は StateObject が ViewModel を作る式の中でだけ呼ばれる、という前提を実際の表示で確認する。
+// 手動背景除去と背景ぼかしマスクの画面が、依存と画像を画面を開くたびに1回だけ作り・受け取り、再描画では作り直さないことを確かめる。
+// 作る関数と管理役への問い合わせは、StateObject が ViewModel を作る式の中でだけ呼ばれる、という前提を実際の表示で確認する。
 
 import SwiftUI
 import XCTest
@@ -11,9 +11,12 @@ final class MaskEditingScreenDependencyTests: XCTestCase {
         let counter = ScreenFactoryCounter()
         let element = try makeElement()
 
-        try assertCreatesPerOpen(counter: counter, perOpen: Counts(removers: 1, resolvers: 1, blurUseCases: 0)) {
+        // 元画像が取れるので、表示画像は求めない（元画像 ?? 表示画像 の順序）。
+        let perOpen = Counts(removers: 1, resolvers: 1, blurUseCases: 0, originalImages: 1, displayImages: 0)
+        try assertCreatesPerOpen(counter: counter, perOpen: perOpen) {
             ManualBackgroundRemovalView(
                 imageElement: element,
+                renderSessions: counter.renderSessions,
                 makeBackgroundRemover: counter.makeBackgroundRemover,
                 makeImageSourceResolver: counter.makeImageSourceResolver
             )
@@ -25,9 +28,11 @@ final class MaskEditingScreenDependencyTests: XCTestCase {
         let counter = ScreenFactoryCounter()
         let element = try makeElement()
 
-        try assertCreatesPerOpen(counter: counter, perOpen: Counts(removers: 1, resolvers: 1, blurUseCases: 1)) {
+        let perOpen = Counts(removers: 1, resolvers: 1, blurUseCases: 1, originalImages: 1, displayImages: 0)
+        try assertCreatesPerOpen(counter: counter, perOpen: perOpen) {
             BackgroundBlurMaskEditView(
                 imageElement: element,
+                renderSessions: counter.renderSessions,
                 initialMaskData: nil,
                 blurRadius: 6,
                 makeManualBackgroundBlurUseCase: counter.makeManualBackgroundBlurUseCase,
@@ -51,19 +56,19 @@ final class MaskEditingScreenDependencyTests: XCTestCase {
         defer { windows.forEach { $0.isHidden = true } }
 
         _ = makeScreen()
-        XCTAssertEqual(counter.counts, Counts(), "画面の値を作るだけでは作らない", file: file, line: line)
+        XCTAssertEqual(counter.counts, Counts(), "画面の値を作るだけでは、作らず受け取らない", file: file, line: line)
 
         let host = show(makeScreen(), in: &windows)
-        XCTAssertEqual(counter.counts, perOpen, "開いたときに1回だけ作る", file: file, line: line)
+        XCTAssertEqual(counter.counts, perOpen, "開いたときに1回だけ作り、受け取る", file: file, line: line)
 
-        // 親の再描画で画面の値が作り直されても、保持中の ViewModel の依存は作り直さない。
+        // 親の再描画で画面の値が作り直されても、保持中の ViewModel の依存と画像は作り直さない。
         host.rootView = makeScreen()
         settle(host.view)
-        XCTAssertEqual(counter.counts, perOpen, "再描画では作り直さない", file: file, line: line)
+        XCTAssertEqual(counter.counts, perOpen, "再描画では作り直さず、受け取り直さない", file: file, line: line)
 
-        // 閉じて開き直すと、新しい画面の分を作る。
+        // 閉じて開き直すと、新しい画面の分を作り、受け取る。
         _ = show(makeScreen(), in: &windows)
-        XCTAssertEqual(counter.counts, perOpen.doubled, "開き直すと新しく作る", file: file, line: line)
+        XCTAssertEqual(counter.counts, perOpen.doubled, "開き直すと新しく作り、受け取る", file: file, line: line)
     }
 
     @MainActor
@@ -96,29 +101,43 @@ private struct Counts: Equatable {
     var removers = 0
     var resolvers = 0
     var blurUseCases = 0
+    /// 管理役に元画像を問い合わせた回数
+    var originalImages = 0
+    /// 管理役に表示画像を問い合わせた回数
+    var displayImages = 0
 
     var doubled: Counts {
-        Counts(removers: removers * 2, resolvers: resolvers * 2, blurUseCases: blurUseCases * 2)
+        Counts(removers: removers * 2, resolvers: resolvers * 2, blurUseCases: blurUseCases * 2,
+               originalImages: originalImages * 2, displayImages: displayImages * 2)
     }
 }
 
-/// 画面用の「作る関数」が呼ばれた回数を数える。
+/// 画面用の「作る関数」が呼ばれた回数と、管理役への画像の問い合わせの回数を数える。
 @MainActor
 private final class ScreenFactoryCounter {
-    private(set) var counts = Counts()
+    /// 画面に渡す管理役。元画像を返すので、手動背景除去は表示画像を求めない。
+    let renderSessions = RenderSessionReadingSpy(original: snapshotImage(.red))
+    private var factoryCounts = Counts()
+
+    var counts: Counts {
+        var counts = factoryCounts
+        counts.originalImages = renderSessions.count(of: .originalImage)
+        counts.displayImages = renderSessions.count(of: .displayImage)
+        return counts
+    }
 
     func makeBackgroundRemover() -> any BackgroundRemovalProcessing {
-        counts.removers += 1
+        factoryCounts.removers += 1
         return AppComposition.makeBackgroundRemover()
     }
 
     func makeImageSourceResolver() -> any ImageSourceResolving {
-        counts.resolvers += 1
+        factoryCounts.resolvers += 1
         return OriginalImageResolver()
     }
 
     func makeManualBackgroundBlurUseCase() -> ManualBackgroundBlurUseCase {
-        counts.blurUseCases += 1
+        factoryCounts.blurUseCases += 1
         return AppComposition.makeManualBackgroundBlurUseCase()
     }
 }

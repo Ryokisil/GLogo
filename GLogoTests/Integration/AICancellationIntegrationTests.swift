@@ -86,7 +86,8 @@ final class AICancellationIntegrationTests: XCTestCase {
         project.addElement(image)
         let editor = EditorViewModel(project: project)
         editor.selectElement(image)
-        let tools = AIToolsViewModel(edits: editor.imageEdits, backgroundRemovalUseCase: processor,
+        let tools = AIToolsViewModel(edits: editor.imageEdits, renderSessions: editor.renderSessions,
+                                     backgroundRemovalUseCase: processor,
                                      imageUpscaleUseCase: ImageUpscaleUseCase(lanczosPipeline: processor, realESRGANPipeline: processor),
                                      selection: editor.$selectedElement.eraseToAnyPublisher(),
                                      changes: editor.objectWillChange.eraseToAnyPublisher())

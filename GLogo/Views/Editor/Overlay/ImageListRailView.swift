@@ -121,7 +121,7 @@ struct ImageListRailView: View {
         } label: {
             Group {
                 // サムネイル画像
-                if let uiImage = imageElement.originalImage {
+                if let uiImage = viewModel.renderSessions.originalImage(of: imageElement) {
                     Image(uiImage: uiImage)
                         .resizable()
                         .aspectRatio(contentMode: .fill)

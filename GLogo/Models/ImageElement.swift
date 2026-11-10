@@ -91,8 +91,10 @@ class ImageElement: LogoElement {
     }
 
     /// 取得・描画・キャッシュの管理。要素と同じ寿命を持ち、初期化のたびに作る（複製・保存用の複製とは共有しない）。
-    /// 処理を移した中間段階で、所有と依存の向きの整理は残る（docs/architecture/Models/ImageElement.md の第16回）。
-    private let renderSession: ImageRenderSession
+    /// 処理を移した中間段階で、所有と依存の向きの整理は残る（docs/architecture/Models/ImageElement.md の第16回・第17回）。
+    /// エディタの管理役（`ImageRenderSessionStore`）が受け取る側の入口のために読むので internal にしている。
+    /// 管理役のほかは、ここを直接使わない（所有を管理役へ移す第19回で、要素から外す）。
+    let renderSession: ImageRenderSession
 
     /// 元画像・プロキシ取得の実行時依存。要素ごとに固定し、永続化しない。
     private var sourceResolver: any ImageSourceResolving { renderSession.sourceResolver }
@@ -745,9 +747,17 @@ class ImageElement: LogoElement {
     }
 
     /// 画像を描画。描く画像はセッションが選び、キャンバスへの描き込みは従来どおりここから呼ぶ
-    /// （UseCases から Infrastructure の具体型を呼ばないため）。
+    /// （UseCases から Infrastructure の具体型を呼ばないため）。キャンバスと削除エフェクトは `draw(in:image:)` を使う。
     override func draw(in context: CGContext) {
-        ImageElementRenderer.draw(self, in: context, image: renderSession.drawingImage(of: self))
+        draw(in: context, image: renderSession.drawingImage(of: self))
+    }
+
+    /// 受け取った画像で描画する。キャンバスと削除エフェクトは、エディタの管理役から受け取った画像を渡す。
+    /// - Parameters:
+    ///   - context: 描き込み先
+    ///   - image: 描く画像。nil のときは何も描かない
+    func draw(in context: CGContext, image: UIImage?) {
+        ImageElementRenderer.draw(self, in: context, image: image)
     }
     
     /// 要素のコピーを作成

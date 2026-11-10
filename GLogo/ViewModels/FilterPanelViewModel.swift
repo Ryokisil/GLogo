@@ -13,13 +13,21 @@ final class FilterPanelViewModel: ObservableObject {
     private let imageEditingSessionUseCase = ImageEditingSessionUseCase()
     private var selectionObservation: AnyCancellable?
     private let filterPresetUseCase = FilterPresetUseCase()
+    /// サムネイルの元画像と描画サービスの受け取り先
+    private let renderSessions: any ImageRenderSessionReading
 
     var appliedFilterPresetId: String? { imageElement?.appliedFilterPresetId }
 
     /// refresh は画像調整とフィルターで共有する。selection は MainActor 上で同期通知する。
-    init(edits: ImageEditUseCase, refresh: ImageRenderRefreshUseCase, selection: AnyPublisher<LogoElement?, Never>) {
+    init(
+        edits: ImageEditUseCase,
+        refresh: ImageRenderRefreshUseCase,
+        renderSessions: any ImageRenderSessionReading,
+        selection: AnyPublisher<LogoElement?, Never>
+    ) {
         self.edits = edits
         imageRenderRefreshUseCase = refresh
+        self.renderSessions = renderSessions
         selectionObservation = selection.sink { [weak self] element in
             self?.updateSelection(element as? ImageElement)
         }
@@ -79,7 +87,7 @@ final class FilterPanelViewModel: ObservableObject {
     /// - Returns: 生成したプレビュー画像。生成失敗時は nil
     func generateFilterPreview(for preset: FilterPreset, targetSize: CGSize) async -> UIImage? {
         guard let imageElement = imageElement,
-              let sourceImage = imageElement.originalImage else {
+              let sourceImage = renderSessions.originalImage(of: imageElement) else {
             return nil
         }
 
@@ -88,7 +96,7 @@ final class FilterPanelViewModel: ObservableObject {
             adjustments: imageElement.adjustmentValues,
             preset: preset,
             targetSize: targetSize,
-            previewService: imageElement.previewService
+            previewService: renderSessions.previewService(of: imageElement)
         )
     }
 

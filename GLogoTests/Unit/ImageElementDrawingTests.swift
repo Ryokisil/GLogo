@@ -1,10 +1,12 @@
-// キャンバスの描画（draw(in:)）と削除のエフェクト（renderSnapshot()）が、どの画像を描くかを、描かれた色で検証する。
+// キャンバスの描画（drawOnCanvas）と削除のエフェクト（renderSnapshot）が、どの画像を描くかを、描かれた色で検証する。
+// どちらもエディタの管理役（ImageRenderSessionStore）から画像を受け取る。Model の draw(in:) も保存の合成が使うため、あわせて確かめる。
 // 取得先と描画サービスは、画像ごと・品質ごとに別の単色を返す偽物にし、取り違えを色の違いで見分ける。
 
 import UIKit
 import XCTest
 @testable import GLogo
 
+@MainActor
 final class ImageElementDrawingTests: XCTestCase {
     func test_draw_notEditing_drawsFullQuality() throws {
         let element = makeElement(
@@ -83,7 +85,8 @@ final class ImageElementDrawingTests: XCTestCase {
         return element
     }
 
-    /// draw(in:) と renderSnapshot() の両方で、要素の中央に描かれた色を確かめる。nil は「何も描かない」。
+    /// キャンバスの描き方（drawOnCanvas）・削除エフェクト（renderSnapshot）・Model の draw(in:) の3つで、
+    /// 要素の中央に描かれた色を確かめる。nil は「何も描かない」。
     private func assertDrawn(
         _ element: ImageElement,
         color expected: UIColor?,
@@ -91,17 +94,28 @@ final class ImageElementDrawingTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
+        let renderSessions = ImageRenderSessionStore()
+        let onCanvas = drawCanvas { element.drawOnCanvas(in: $0, renderSessions: renderSessions) }
+        try assertColor(of: onCanvas, at: CGPoint(x: 20, y: 20), equals: expected, "drawOnCanvas: \(message)",
+                        file: file, line: line)
+
+        let snapshot = try XCTUnwrap(element.renderSnapshot(renderSessions: renderSessions), file: file, line: line)
+        try assertColor(of: snapshot, at: CGPoint(x: 10, y: 10), equals: expected, "renderSnapshot: \(message)",
+                        file: file, line: line)
+
+        let viaModel = drawCanvas { element.draw(in: $0) }
+        try assertColor(of: viaModel, at: CGPoint(x: 20, y: 20), equals: expected, "draw(in:): \(message)",
+                        file: file, line: line)
+    }
+
+    /// キャンバスと同じ 40×40 の範囲に描く。
+    private func drawCanvas(_ draw: (CGContext) -> Void) -> UIImage {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = false
-        let canvas = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40), format: format).image { context in
-            element.draw(in: context.cgContext)
+        return UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40), format: format).image { context in
+            draw(context.cgContext)
         }
-        try assertColor(of: canvas, at: CGPoint(x: 20, y: 20), equals: expected, "draw(in:): \(message)", file: file, line: line)
-
-        let snapshot = try XCTUnwrap(element.renderSnapshot(), file: file, line: line)
-        try assertColor(of: snapshot, at: CGPoint(x: 10, y: 10), equals: expected, "renderSnapshot(): \(message)",
-                        file: file, line: line)
     }
 
     private func assertColor(

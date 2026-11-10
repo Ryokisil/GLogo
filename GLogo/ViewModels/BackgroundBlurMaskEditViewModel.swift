@@ -54,6 +54,7 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
     /// 背景ぼかしマスク編集モード用イニシャライザ
     /// - Parameters:
     ///   - imageElement: 編集対象の画像要素
+    ///   - renderSessions: 元画像の受け取り先。初期化の中で一度だけ受け取る
     ///   - initialMaskData: 初期マスクデータ（既存のマスクがある場合）
     ///   - blurRadius: 背景ぼかし半径（プレビュー用）
     ///   - completion: 編集完了時の処理（マスクデータを返す）
@@ -64,6 +65,7 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
     /// - Returns: なし
     init(
         imageElement: ImageElement,
+        renderSessions: any ImageRenderSessionReading,
         initialMaskData: Data?,
         blurRadius: CGFloat,
         completion: @escaping (Data?) -> Void,
@@ -80,7 +82,7 @@ class BackgroundBlurMaskEditViewModel: ObservableObject, MaskEditingViewModeling
         self.backgroundRemovalUseCase = backgroundRemovalUseCase
 
         // フル解像度画像を基準として保持し、編集時は必要に応じて軽量画像を使用する
-        let resolvedFullResolutionImage = imageElement.originalImage
+        let resolvedFullResolutionImage = renderSessions.originalImage(of: imageElement)
         let isSourceImageAvailable = (resolvedFullResolutionImage != nil)
         self.fullResolutionImage = resolvedFullResolutionImage ?? Self.makeFallbackImage()
 

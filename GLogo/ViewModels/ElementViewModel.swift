@@ -89,6 +89,7 @@ class ElementViewModel: ObservableObject {
         )
         filters = FilterPanelViewModel(
             edits: editorViewModel.imageEdits, refresh: imageRefresh,
+            renderSessions: editorViewModel.renderSessions,
             selection: editorViewModel.$selectedElement.eraseToAnyPublisher()
         )
 

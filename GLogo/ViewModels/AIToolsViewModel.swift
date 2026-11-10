@@ -15,6 +15,8 @@ final class AIToolsViewModel: ObservableObject {
     @Published var isNavigatingToBackgroundBlurMaskEdit = false
 
     private let edits: any AIImageEditApplying
+    /// 加工元の元画像の受け取り先。要求を受けた時点で、その場で受け取る。
+    private let renderSessions: any ImageRenderSessionReading
     private let backgroundRemovalUseCase: any BackgroundRemovalProcessing
     private let imageUpscaleUseCase: ImageUpscaleUseCase
     private var selectionObservation: AnyCancellable?
@@ -33,12 +35,14 @@ final class AIToolsViewModel: ObservableObject {
     /// 加工結果の適用先は edits が非所有で参照し、親の寿命を延長しない。
     init(
         edits: any AIImageEditApplying,
+        renderSessions: any ImageRenderSessionReading,
         backgroundRemovalUseCase: any BackgroundRemovalProcessing,
         imageUpscaleUseCase: ImageUpscaleUseCase,
         selection: AnyPublisher<LogoElement?, Never>,
         changes: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher()
     ) {
         self.edits = edits
+        self.renderSessions = renderSessions
         self.backgroundRemovalUseCase = backgroundRemovalUseCase
         self.imageUpscaleUseCase = imageUpscaleUseCase
         selectionObservation = selection.sink { [weak self] element in
@@ -74,7 +78,7 @@ final class AIToolsViewModel: ObservableObject {
 
     func requestAIBackgroundRemoval(for imageElement: ImageElement) {
         guard !isProcessingAI, let token = edits.imageEditToken(for: imageElement) else { return }
-        let originalImage = imageElement.originalImage
+        let originalImage = renderSessions.originalImage(of: imageElement)
         let errorSelectionRevision = selectionRevision
         lastBackgroundRemovalErrorMessage = nil
         aiRequest = (imageElement, token)
@@ -107,7 +111,7 @@ final class AIToolsViewModel: ObservableObject {
 
     func requestAIBackgroundBlur(for imageElement: ImageElement) {
         guard !isProcessingAI, let token = edits.imageEditToken(for: imageElement) else { return }
-        let originalImage = imageElement.originalImage
+        let originalImage = renderSessions.originalImage(of: imageElement)
         let errorSelectionRevision = selectionRevision
         lastBackgroundBlurErrorMessage = nil
         aiRequest = (imageElement, token)
@@ -149,7 +153,7 @@ final class AIToolsViewModel: ObservableObject {
     ) {
         guard !isProcessingUpscale,
               let token = edits.imageEditToken(for: imageElement),
-              let originalImage = imageElement.originalImage,
+              let originalImage = renderSessions.originalImage(of: imageElement),
               !imageElement.hasAppliedUpscale else { return }
         let errorSelectionRevision = selectionRevision
         lastUpscaleErrorMessage = nil

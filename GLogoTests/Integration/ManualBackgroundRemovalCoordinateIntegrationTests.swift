@@ -33,6 +33,7 @@ final class ManualBackgroundRemovalCoordinateIntegrationTests: XCTestCase {
         var completedImage: UIImage?
         let viewModel = ManualBackgroundRemovalViewModel(
             imageElement: element,
+            renderSessions: ImageRenderSessionStore(),
             completion: { completedImage = $0 },
             backgroundRemovalUseCase: AppComposition.makeBackgroundRemover(),
             imageSourceResolver: EditingResolutionResolver(usesProxy: usesProxy)

@@ -41,6 +41,10 @@ class CanvasView: UIView {
 
     /// 編集中のテキスト要素のID
     var editingTextElementId: UUID?
+
+    /// 画像要素の描く画像の受け取り先（エディタの管理役）。CanvasViewRepresentable が設定する。
+    /// 設定されるまでは要素を描かない（Model の描画へ戻すと、設定漏れに気づけないため）。
+    var renderSessions: (any ImageRenderSessionReading)?
     
     /// グリッドのサイズ
     private let gridSize: CGFloat = 20.0
@@ -90,8 +94,8 @@ class CanvasView: UIView {
             drawGrid(in: context)
         }
         
-        // プロジェクトが設定されていない場合は終了
-        guard let project = project else { return }
+        // プロジェクトと画像の受け取り先が設定されていない場合は終了
+        guard let project = project, let renderSessions = renderSessions else { return }
         
         // キャンバスの境界を描画
         drawCanvasBoundary(in: context, size: project.canvasSize)
@@ -115,7 +119,7 @@ class CanvasView: UIView {
             if let editingId = editingTextElementId, element.id == editingId {
                 continue
             }
-            element.draw(in: context)
+            element.drawOnCanvas(in: context, renderSessions: renderSessions)
         }
         
         context.restoreGState()
@@ -322,7 +326,7 @@ struct CanvasViewRepresentable: UIViewRepresentable {
                 let viewModel = self.parent.viewModel
                 // 削除前にスナップショットを取得してフェードアウト発火
                 if let element = viewModel.selectedElement {
-                    self.parent.deleteEffect.snapshot = element.renderSnapshot()
+                    self.parent.deleteEffect.snapshot = element.renderSnapshot(renderSessions: viewModel.renderSessions)
                     self.parent.deleteEffect.frame = element.frame
                     self.parent.deleteEffect.isActive = true
                 }
@@ -347,6 +351,8 @@ struct CanvasViewRepresentable: UIViewRepresentable {
     func updateUIView(_ canvasView: CanvasView, context: Context) {
         // 同じプロジェクトでも毎回設定し直し、再描画を要求する（要素の変更を描画に反映するため）。
         // editingTextElementId は自身では再描画を要求せず、この要求で反映される。
+        // 画像の受け取り先も同じく、プロジェクトの設定し直しで求める再描画より前に設定する。
+        canvasView.renderSessions = viewModel.renderSessions
         canvasView.project = viewModel.project
         canvasView.editorMode = viewModel.editorMode
         canvasView.showGrid = showGrid

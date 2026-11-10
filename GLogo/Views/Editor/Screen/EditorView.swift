@@ -245,6 +245,7 @@ struct EditorView: View {
                 if let imageElement = viewModel.selectedImageElement {
                     ManualBackgroundRemovalView(
                         imageElement: imageElement,
+                        renderSessions: viewModel.renderSessions,
                         makeBackgroundRemover: viewModel.dependencies.makeBackgroundRemover,
                         makeImageSourceResolver: viewModel.dependencies.makeImageSourceResolver
                     ) { editedImage in
@@ -260,6 +261,7 @@ struct EditorView: View {
                 if let imageElement = viewModel.aiTools.backgroundBlurMaskEditTarget {
                     BackgroundBlurMaskEditView(
                         imageElement: imageElement,
+                        renderSessions: viewModel.renderSessions,
                         initialMaskData: imageElement.backgroundBlurMaskData,
                         blurRadius: imageElement.backgroundBlurRadius,
                         makeManualBackgroundBlurUseCase: viewModel.dependencies.makeManualBackgroundBlurUseCase,

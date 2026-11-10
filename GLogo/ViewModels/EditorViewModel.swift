@@ -104,6 +104,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     /// AI の表示状態と要求の寿命を所有する。推論依存は初期化時の注入を引き継ぐ。
     private(set) lazy var aiTools = AIToolsViewModel(
         edits: imageEdits,
+        renderSessions: renderSessions,
         backgroundRemovalUseCase: backgroundRemovalUseCase,
         imageUpscaleUseCase: imageUpscaleUseCase,
         selection: $selectedElement.eraseToAnyPublisher(),
@@ -116,6 +117,9 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     private var transformObservation: AnyCancellable?
     /// ここから開く画面へ渡す外部処理。画面ごとに作るものは、開くたびに呼ぶ関数として持つ。
     let dependencies: EditorDependencies
+    /// 画像要素の描画のセッションの管理役。寿命はエディタと同じ。
+    /// キャンバス・削除エフェクト・画像一覧・AI・編集画面・フィルターのサムネイルは、ここから画像を受け取る。保存はここを使わない。
+    let renderSessions: any ImageRenderSessionReading
     private let backgroundRemovalUseCase: any BackgroundRemovalProcessing
     private let imageUpscaleUseCase: ImageUpscaleUseCase
     private var aiToolsObservation: AnyCancellable?
@@ -153,13 +157,16 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     /// 新しいプロジェクトでエディタを初期化
     /// - Parameters:
     ///   - dependencies: 保存・インポート・AI の外部処理。実装は Composition Root が組み立てる
+    ///   - renderSessions: 描画のセッションの管理役。エディタごとに新しく作る。テストでは、問い合わせを記録する偽物を渡せる
     init(
         project: LogoProject = LogoProject(),
         dependencies: EditorDependencies,
+        renderSessions: any ImageRenderSessionReading = ImageRenderSessionStore(),
         viewportSizeProvider: @escaping @MainActor () -> CGSize = { UIScreen.main.bounds.size }
     ) {
         self.project = project
         self.dependencies = dependencies
+        self.renderSessions = renderSessions
         // AI ツールと共有する背景除去は、従来どおりエディタの初期化時に1つ作る。
         self.backgroundRemovalUseCase = dependencies.makeBackgroundRemover()
         self.imageUpscaleUseCase = dependencies.imageUpscaleUseCase

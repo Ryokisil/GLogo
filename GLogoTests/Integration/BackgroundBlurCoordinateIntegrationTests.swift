@@ -41,7 +41,8 @@ final class BackgroundBlurCoordinateIntegrationTests: XCTestCase {
             let original = try XCTUnwrap(element.originalImage)
             let resolver = BlurEditingResolver(proxy: proxy)
             var outputMask: Data?
-            let viewModel = BackgroundBlurMaskEditViewModel(imageElement: element, initialMaskData: nil,
+            let viewModel = BackgroundBlurMaskEditViewModel(imageElement: element,
+                renderSessions: ImageRenderSessionStore(), initialMaskData: nil,
                 blurRadius: 6, completion: { outputMask = $0 },
                 manualBackgroundBlurUseCase: AppComposition.makeManualBackgroundBlurUseCase(),
                 backgroundRemovalUseCase: AppComposition.makeBackgroundRemover(), imageSourceResolver: resolver)
@@ -67,6 +68,7 @@ final class BackgroundBlurCoordinateIntegrationTests: XCTestCase {
             let composite = try XCTUnwrap(ImageProcessingService().makeCompositeImage(baseElement: reloaded, project: project))
             try assertBlurLocation(composite, original: original)
             let reopened = BackgroundBlurMaskEditViewModel(imageElement: reloaded,
+                renderSessions: ImageRenderSessionStore(),
                 initialMaskData: reloaded.backgroundBlurMaskData, blurRadius: 6,
                 completion: { _ in },
                 manualBackgroundBlurUseCase: AppComposition.makeManualBackgroundBlurUseCase(),

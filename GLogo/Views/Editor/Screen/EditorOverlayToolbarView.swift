@@ -62,18 +62,7 @@ struct EditorOverlayToolbarView: View {
             .help("editor.help.addImage")
 
             // 削除モード
-            Button(action: {
-                if let element = viewModel.selectedElement {
-                    onShowConfirmation("editor.deleteConfirmation") {
-                        deleteEffect.snapshot = element.renderSnapshot()
-                        deleteEffect.frame = element.frame
-                        deleteEffect.isActive = true
-                        viewModel.deleteSelectedElement()
-                    }
-                } else {
-                    viewModel.editorMode = .delete
-                }
-            }) {
+            Button(action: requestDelete) {
                 Image(systemName: "trash")
                     .foregroundColor(viewModel.editorMode == .delete ? .red : .primary)
             }
@@ -104,6 +93,24 @@ struct EditorOverlayToolbarView: View {
             }
             .accessibilityIdentifier("editor.overlay.settingsButton")
             .help("editor.help.appSettings")
+        }
+    }
+
+    // MARK: - Actions
+
+    /// 削除ボタンの処理。選択中の要素があれば確認のうえ削除し、なければ削除モードにする。
+    /// 削除エフェクトのスナップショットは、削除の直前にキャンバスと同じ描き方で作る。
+    /// 入口が管理役を通ることをテストで確かめるため、private にしない。
+    func requestDelete() {
+        if let element = viewModel.selectedElement {
+            onShowConfirmation("editor.deleteConfirmation") {
+                deleteEffect.snapshot = element.renderSnapshot(renderSessions: viewModel.renderSessions)
+                deleteEffect.frame = element.frame
+                deleteEffect.isActive = true
+                viewModel.deleteSelectedElement()
+            }
+        } else {
+            viewModel.editorMode = .delete
         }
     }
 }
