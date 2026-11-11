@@ -1,6 +1,6 @@
 # SaveImageCoordinatorの保存境界と非同期所有
 
-この文書は、写真ライブラリへの保存境界と入力の所有契約を記録します。2026-10-25 に保存要求の Protocol 境界と画面状態を分離し、2026-10-28 に保存受付時の入力固定を実装しました。
+この文書は、写真ライブラリへの保存境界と入力の所有契約を記録します。2026-10-25 に保存要求の Protocol 境界と画面状態を分離し、2026-10-28 に保存受付時の入力固定を実装しました。2026-11-11 に、保存1件の範囲を分けました（段階3の第18回）。
 
 - 対象: [SaveImageCoordinator.swift](../../../../GLogo/UseCases/SaveImage/SaveImageCoordinator.swift)
 - 全体方針: [比較と責務分離方針](../../README.md)
@@ -9,8 +9,8 @@
 ## 確認した処理の流れ
 
 1. `EditorViewModel` が `ImageSaveViewModel` へ要求を渡します。子は重複要求を除外し、親の `prepareForImageSave` を呼んでから保存中フラグを更新します。
-2. Coordinator が MainActor 上で `SaveProjectSnapshot` を作り、その要素構成で保存モードを判定してから写真ライブラリ権限を確認します。
-3. バックグラウンドの単一タスクで保存専用の要素から画像を選び、既存のフィルター適用または合成を行います。
+2. Coordinator が MainActor 上で `SaveProjectSnapshot` を作り（画像要素の元画像は、エディタの管理役から受け取って固定する）、その要素構成で保存モードを判定してから写真ライブラリ権限を確認します。
+3. バックグラウンドの単一タスクで保存専用の要素から画像を選び、既存のフィルター適用または合成を行います。画像要素の画像は、保存1件の範囲（スナップショット）から受け取ります。
 4. Writerが画像を書き込み、結果をMainActor上のcompletionへ返します。
 5. `ImageSaveViewModel` が保存中フラグと失敗理由を更新し、画面へ結果を伝えます。親は状態を参照し、子の変更通知を転送します。
 
@@ -23,6 +23,7 @@
 | `SaveImagePolicy` | 保存モードの判定 |
 | `ImageSelecting` | 保存対象・ベース画像の選定 |
 | `ImageProcessing` | フィルター適用・合成 |
+| `SaveImageReading` | 保存1件の範囲（`SaveProjectSnapshot`）から、選定・加工・合成へ画像を渡す読み取り（MainActor にしない） |
 | `PhotoLibraryWriting` | 権限確認と写真ライブラリへの書き込み |
 
 依存は初期化時に注入でき、異常系を代替実装で再現できます。合成失敗を元画像の保存成功に置き換えず、`PhotoLibrarySaveFailure`で分類する契約もあります。
@@ -33,7 +34,7 @@ ViewModel 側には `PhotoLibrarySaving` を注入でき、既定の実装は `S
 
 以前の `DetachedProjectBox` は編集中のプロジェクトをそのまま保持していました。現在は [SaveProjectSnapshot](../../../../GLogo/UseCases/SaveImage/SaveProjectSnapshot.swift) が保存専用の独立した要素を作ります。`save` と `saveComposite` のどちらも権限待ちの前に固定し、UI を経由しない直接呼び出しにも同じ契約を適用します。
 
-- 画像は `ImageElement.renderCopy()` で調整値、フレーム、マスク、フィルターレシピ、元画像を固定します。ID・役割・インポート順・zIndex も維持します。表示用キャッシュ、編集中フラグ、メタデータ履歴は持ち越しません。
+- 画像は `ImageElement.renderCopy()` で調整値、フレーム、マスク、フィルターレシピ、元画像を固定します。ID・役割・インポート順・zIndex も維持します。表示用キャッシュ、編集中フラグ、メタデータ履歴は持ち越しません。（2026-11-11 の第18回から、元画像の固定は `SaveProjectSnapshot` が行い、`renderCopy()` は属性だけを写します。下の「保存の範囲」）
 - 文字と図形は既存のコピー処理を使い、ID・名前・zIndex を保存用に維持します。文字効果は深いコピー、配列・Data は値として独立します。
 - 元画像の UIImage は再エンコードせず保持します。向き・scale・色空間を変えず、編集側のソース差し替えや元ファイル削除から独立します。
 - `BackgroundSettings.renderCopy()` も背景画像を保持します。設定値だけでなく、権限待ち中の同名背景アセットの更新からも切り離します。保持情報は実行時だけで、Codable キーは追加していません。
@@ -97,3 +98,13 @@ ViewModel 側には `PhotoLibrarySaving` を注入でき、既定の実装は `S
 
 
 2026-10-31 に iPhone 16／iOS 26.6.2 でも保存入力測定4件が成功しました。元画像キャッシュなしの入力固定は今回の条件で平均0.1ms未満ですが、全画素デコードや描画・写真ライブラリ書き込みの時間ではありません。数値・測定条件は [実機測定](../../AsyncCancellation.md) に記録しています。
+
+## 保存の範囲（2026-11-11）
+
+段階3の第18回で、[SaveProjectSnapshot](../../../../GLogo/UseCases/SaveImage/SaveProjectSnapshot.swift) を保存1件の範囲にしました。計画・補正・検証の詳細は [ImageElement](../../Models/ImageElement.md) の第18回を参照してください。
+
+- 受付（MainActor、権限待ちより前）で、画像要素の元画像をエディタの管理役（`ImageRenderSessionReading`）から受け取り、保存用の複製に固定します。管理役は保持せず、権限待ちと保存のタスクへは持ち込みません。
+- 選定・単独の加工・合成は、画像を範囲（[SaveImageReading](../../../../GLogo/UseCases/SaveImage/SaveImageReading.swift)）から受け取ります。範囲は自分の複製にだけ画像を返し、編集元の要素や、同じ ID を持つ別の保存要求の複製には返しません。
+- 独立させるのは、セッションとキャッシュの状態です。同じ内容を続けて保存した2件が、同じ元画像（UIImage）を参照するのは構いません。
+- 保存の要求の境界（`PhotoLibrarySaving`）と `ImageSaveViewModel` は、管理役を `renderSessions:` で受け取ります。エディタは自分の管理役を渡します。
+- 処理の手順・回数・失敗の扱い・保存形式は変えていません（変更の前後で、12場面の回数と出力が一致することを確認）。

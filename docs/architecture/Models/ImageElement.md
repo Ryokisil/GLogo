@@ -306,10 +306,10 @@ Serenaの参照検索で `ImageFilterParams` の生成元を確認し、合成�
 
 | 区分 | 責務 | 状態 |
 | --- | --- | --- |
-| Modelに残す | 画像ソースの参照と優先順位、編集値（調整・フレーム・フィルター）、役割・順序・メタデータ、`editRevision`、Revertの初期スナップショット、Codableと旧形式互換、`copy()`・`renderCopy()` | 維持。第8回で編集値を `ImageEditState` として一括で取り出し・反映できるようにした。第15回で Decoder の実行時の依存を必須にした（既定値で補わない） |
+| Modelに残す | 画像ソースの参照と優先順位、編集値（調整・フレーム・フィルター）、役割・順序・メタデータ、`editRevision`、Revertの初期スナップショット、Codableと旧形式互換、`copy()`・`renderCopy()` | 維持。第8回で編集値を `ImageEditState` として一括で取り出し・反映できるようにした。第15回で Decoder の実行時の依存を必須にした（既定値で補わない）。第18回で `renderCopy()` は属性だけを写す形にした（元画像の固定は保存の範囲へ移した） |
 | 外へ出す① | 読み取り時の描画：`image` が同期でフル品質描画し、編集中は即時プレビューへ切り替える | 第16回で処理を `ImageRenderSession` へ抽出（中間段階。Model が所有して委譲し、所有の場所と依存の向きの整理は残る。同期の描画も変えていない）。第17回で、受け取る側の入口は、エディタの管理役（`ImageRenderSessionStore`）から受け取る形にした（所有は第19回） |
-| 外へ出す② | キャンバス描画：`draw(in:)` が表示画像を選んで描画する | 第16回で描く画像の選択を `ImageRenderSession` へ委譲。第17回でキャンバスと削除エフェクトは、管理役から受け取った画像で描く形にした（`drawOnCanvas` → `draw(in:image:)`）。`ImageElementRenderer` の呼び出しは Model に残る。保存の合成は、引き続き `draw(in:)` を使う |
-| 外へ出す③ | 画像取得：`originalImage`・編集用プロキシを読み取り時に読み込みキャッシュする | 第16回で処理を `ImageRenderSession` へ抽出（中間段階。①と同じ）。第17回で画像一覧・AI・編集画面・フィルターのサムネイルは、管理役から受け取る形にした。保存は第18回で扱う |
+| 外へ出す② | キャンバス描画：`draw(in:)` が表示画像を選んで描画する | 第16回で描く画像の選択を `ImageRenderSession` へ委譲。第17回でキャンバスと削除エフェクトは、管理役から受け取った画像で描く形にした（`drawOnCanvas` → `draw(in:image:)`）。`ImageElementRenderer` の呼び出しは Model に残る。第18回で保存の合成も、保存の範囲から受け取った画像で描く形にし、Model の `draw(in:)` の本番の呼び出し元はなくなった（テストの観察だけ） |
+| 外へ出す③ | 画像取得：`originalImage`・編集用プロキシを読み取り時に読み込みキャッシュする | 第16回で処理を `ImageRenderSession` へ抽出（中間段階。①と同じ）。第17回で画像一覧・AI・編集画面・フィルターのサムネイルは、管理役から受け取る形にした。第18回で保存も、受付は管理役から、選定・加工・合成は保存の範囲（`SaveProjectSnapshot`）から受け取る形にした（Model の `originalImage`・`getFilteredImageForce()` の本番の呼び出し元はなくなった） |
 | 外へ出す④ | キャッシュの持ち主：`renderCache`・`cachedImage`・無効化。履歴イベントから55か所で無効化を呼ぶ（第8回で数え直し。以前の「57か所」は誤り） | 第16回でキャッシュの保持と無効化を `ImageRenderSession` へ抽出（中間段階。①と同じ）。`editRevision` による自動失効は別に判断する |
 | 外へ出す⑤ | 編集中の状態：`isCurrentlyEditing`・`startEditing`／`endEditing` | 第16回で `ImageRenderSession` へ抽出（中間段階。①と同じ） |
 | 外へ出す⑥ | 初期化時の読み込み：7つの初期化入口が画像を読み込みサイズを決める | **第7回で完了**。`copy()` のURL読み直しと画像差し替え時の寸法取得はModelに残る |
@@ -604,3 +604,71 @@ Serenaの参照検索とソースで、7つの初期化入口の呼び出し元�
 - **第19回**：所有を管理役へ移し、状態を変える側（編集中の切り替え・キャッシュの書き込み・失効・メモリ警告）も管理役経由にする。失効の経路は、実装の前の計画で決める（Model が通知する形か、履歴イベントが範囲を示す形か。`editRevision` による自動失効は混ぜない）。解放された要素の分を捨てる時点は、次の描画だけに頼らない。最後の画像を取り除いた場合などは、以後問い合わせが来ないことがあるため、履歴の上限による破棄と Redo の履歴の破棄のあと、問い合わせがなくても不要なキャッシュを回収できるかを確かめる。寿命のテストのこの2件は、要素の解放を弱参照で確かめているだけなので、所有を移したあとの「要素は消えたが、管理役にキャッシュが残る」は検出できない。第19回で、キャッシュに入れた画像への弱参照などで、キャッシュ自体の解放も直接確かめるテストを足す（Codex のレビュー）。
 - **第20回**：メモリ警告のとき、削除した要素（プロジェクトにない要素）のキャッシュも解放の対象にする方向（ユーザー・Codex 合意）。ただし、元画像まで消すと再取得が必要になる。`ImageSourceResolver` は、パスや URL を参照する要素ではファイルを読み直すため（`resolveOriginalImage`）、そのファイルが変更・削除されていれば同じ画像には戻らない。「Undo の表示には影響しない」とはまだ言えないため、元画像も解放できる条件と、加工済みのキャッシュだけを解放する場合を、第20回で判断する。解放より前に削除エフェクトのスナップショットを作ることも、そのときに削除の流れの中で保証する。
 - 保留（Codex 合意）：表示の非同期化、サムネイル専用の画像、即時プレビューの重複した要求。`editRevision` による自動失効は、構造の変更に混ぜず別に判断する。
+
+## 段階3・第18回：保存の範囲を分ける（2026-11-11）
+
+### 計画と確認した経路
+
+保存の経路で画像を受け取る場所は、受付の1か所と、バックグラウンドの5か所でした。今回は所有を移さず（保存用の複製のセッションは、まだ複製が持つ）、画像を受け取る場所だけを付け替えました。
+
+| 段階 | 実行場所 | 第17回までの受け取り方 | 第18回の受け取り方 |
+| --- | --- | --- | --- |
+| 受付（`SaveImageCoordinator` の `save`・`saveComposite` → `SaveProjectSnapshot`） | MainActor、権限待ちより前 | `renderCopy()` が、編集元の要素の `originalImage`（Model の API）を読んで、複製のセッションに固定する | スナップショットが、エディタの管理役から元画像を受け取って固定する。`renderCopy()` は属性だけを写す |
+| モード判定（`SaveImagePolicy`） | 同上 | 画像は読まない（属性だけ） | 変えない |
+| 選定（`ImageSelectionService`） | `Task.detached` の中 | 複製の `originalImage` | 保存の範囲の `originalImage(of:)` |
+| 単独の加工（`ImageProcessingService.applyFilters`） | 同上 | 複製の `getFilteredImageForce()` | 範囲の `filteredImage(of:)` |
+| 合成（`ImageProcessingService.makeCompositeImage`） | 同上 | ベースと可視の画像要素の `getFilteredImageForce()`。得られなかった画像要素は `draw(in:)` | 範囲の `filteredImage(of:)`。得られなかった画像要素は、範囲の `drawingImage(of:)` で描く |
+
+Codex の3条件は、次の形で守ります。
+
+| 条件 | 守り方 | 確かめるテスト |
+| --- | --- | --- |
+| 元画像と編集値を、権限待ちより前の保存受付時に固定する | 受付（MainActor）でスナップショットを作り、元画像は管理役から受け取って固定する。編集値と属性は、従来どおり `renderCopy()` が写す | 既存の [SaveSnapshotIntegrationTests](../../../GLogoTests/Integration/SaveSnapshotIntegrationTests.swift) の権限待ち・加工待ち・AI 完了と Undo の3件。追加した `test_acceptance_readsStoreOnlyWhileSaving`（両方の入口で、`save` の呼び出しの中で画像要素ごとに1回だけ問い合わせ、完了まで増えない。保存した画像は、管理役が返した画像から作られる） |
+| セッションを保存1件ごとに専有し、エディタや別の保存要求と共有しない | スナップショットは自分の複製をインスタンスで引き当て、自分の複製にだけ画像を返す。独立させるのはセッションとキャッシュの状態で、同じ内容を続けて受け付けた2件が同じ元画像（UIImage）を参照するのは構わない（バッファは複製しない） | [SaveProjectSnapshotTests](../../../GLogoTests/Unit/SaveProjectSnapshotTests.swift) の `test_snapshot_servesOnlyOwnCopies`（編集元と、同じ ID を持つ別のスナップショットの複製には返さない）と `test_snapshots_keepIndependentCaches`（片方のキャッシュの書き込み・消去が、もう片方にも編集元にも届かない） |
+| バックグラウンドの保存処理へ、MainActor のエディタ用管理役を持ち込まない | 管理役はスナップショットの初期化でだけ使い、保持しない。権限待ちのクロージャと保存のタスクは、スナップショットだけを持つ。範囲の Protocol（`SaveImageReading`）は MainActor にせず、管理役の Protocol とは別にした | 追加した `test_pendingSave_doesNotRetainStore`（両方の入口で、権限待ちの間に偽物の管理役への弱参照が nil になり、そのあとも受付で固定した画像で保存できる）と、上の「完了まで問い合わせが増えない」。管理役をバックグラウンドへ持ち込むこと自体はコンパイルが通り、同期の呼び出しだけがコンパイルエラーになる（計画のときに確認用のコードで確かめた）ため、テストで防ぐ |
+
+計画は Codex のレビューで補正しました。
+
+| 補正 | 対応 |
+| --- | --- |
+| 「共有しない」の意味を、セッションとキャッシュの状態の独立に直す | 画像自体を共有しないことは求めず、片方のキャッシュの変更がもう片方に届かないことを確かめた。元画像の UIImage を複製しない既存の取り決め（`test_snapshot_preservesImageAppearance`）はそのまま。範囲外の判定には、編集元に加えて、同じ ID を持つ別のスナップショットの複製も含めた |
+| 問い合わせの回数に加え、管理役を保持していないことも確かめる | Coordinator を直接呼び、権限待ちの間に管理役への弱参照が nil になることと、そのあとも保存できることを確かめた（プロジェクトを保持しないことを確かめる既存のテストと同じ形） |
+| 加工の失敗の比較で、ベースと重ねる画像を分ける | ベースの1回目の加工に失敗すると、合成を終える。2回目（可視の画像要素をまとめて解決するとき）に失敗したベースと、加工に失敗した重ねる画像は、描画用の画像（表示画像の加工を試し直したもの）で描く。変更の前後の比較（下の検証）に、ベースの1回目の失敗、ベースの2回目の失敗と描き直しの成功・失敗、重ねる画像の失敗と描き直しの成功・失敗を含め、回数と出力が同じことを確かめた。コミットするテストでも、問い合わせの順序と出力で固定した |
+| テスト側の互換の入口で、余分な取得や複製をしない | 互換の入口は引数を補うだけにした（スナップショットは本体の入口で1つだけ作り、要素に注入した偽物もそのまま通る）。新しい範囲を確かめるテストは、管理役と範囲を明示して渡す |
+
+### 変更した範囲
+
+- [SaveImageReading](../../../GLogo/UseCases/SaveImage/SaveImageReading.swift)（新規）：保存の範囲の読み取り用の Protocol。元画像・フル品質で加工した画像・描画用の画像を返す。MainActor にしない。
+- [SaveProjectSnapshot](../../../GLogo/UseCases/SaveImage/SaveProjectSnapshot.swift)：保存1件の範囲として、上の Protocol を実装する。初期化（MainActor）で管理役から元画像を受け取って複製のセッションへ固定し、管理役は保持しない。複製はインスタンスで引き当て（範囲の寿命のあいだ複製を持ち続け、識別子が使い回されないようにする）、範囲に含まれない要素には nil を返す。セッションはまだ複製が持つ（所有の移動は第19回）。
+- `ImageElement`：`renderCopy()` は属性だけを写す（元画像の固定はスナップショットへ移した）。`renderSession` の説明を「管理役と保存の範囲のほかは使わない」に直した（AGENTS.md の「移行中の例外」も同じ）。
+- 選定（`ImageSelecting`・`ImageSelectionService`）と加工（`ImageProcessing`・`ImageProcessingService`）：範囲を引数（`images:`）で受け取り、画像はそこから受け取る。手順・回数・失敗の扱いは変えていない。
+- `SaveImageCoordinator`：受付で管理役をスナップショットへ渡し、選定と加工にはスナップショットを渡す。
+- 保存の要求の境界（`PhotoLibrarySaving`）・`ImageSaveViewModel`・`EditorViewModel`：保存の要求に管理役（`renderSessions:`）を渡す。エディタは自分の管理役を渡す。
+- 変えないもの：モード判定、選定の規則、加工・合成の手順と回数、失敗時の結果、保存形式、完了の通知、権限の扱い、受付の読み取りの順序（要素の順に、属性を写したあとで元画像）、元画像の UIImage を複製しないこと。
+
+これで保存の経路も Model の取得・描画の API を使わなくなり、`originalImage`・`getFilteredImageForce()`・`draw(in:)` の本番の呼び出し元はなくなりました（Serena で確認。`draw(in:)` は基底クラスの `draw(in:)` からも呼ばれうるが、本番で基底の `draw(in:)` を呼ぶ2か所は、どちらも画像要素を先に分けて描く）。テストが観察に使っているため今回は残し、外すかは第19回で判断します。
+
+`ImageElement.swift` は **970行** のまま、`EditorViewModel.swift` は **787 → 790行** です。
+
+### 検証と変更後レビュー
+
+- **Critical／Warning**: 指摘なし。
+- **Info**: Model の取得・描画の API（`originalImage`・`getFilteredImageForce()`・`draw(in:)`）は本番の呼び出し元がなくなり、テストの観察だけが使います（上の段落）。
+- **Info**: テスト側の互換の入口（`ElementSessionImages`）は、以前の合成の `draw(in:)` と同じ画像を返すため、`renderSession` を直接使います。本番で `renderSession` を使うのは、管理役と保存の範囲だけです。
+- **Info**: スナップショットの `project` の要素は書き換えられます。範囲外の要素には画像を返さず、保存失敗や一部画像の省略につながります（合成の重ねる画像なら、その画像を描かずに保存が成功する場合がある）。本番ではスナップショットの要素だけを渡し、引き渡した後は読み書きしない取り決めです（型の説明に書いた）。
+- **Info**: 計画外の発見（合成でベースの加工が2回走る）は、記録だけにしました（[README](../README.md) の「計画外の対応と残件」）。
+- **Test Coverage**:
+  - 追加14件：SaveProjectSnapshotTests 3件（受付で要素ごとに1回だけ管理役から元画像を受け取って固定する、自分の複製にだけ返す、2件のキャッシュの独立）。SaveSnapshotIntegrationTests 2件（上の条件1・3）。[SaveImageReadingRouteTests](../../../GLogoTests/Unit/SaveImageReadingRouteTests.swift)（新規）8件（選定は範囲の元画像で比べ、ベースの役割があれば問い合わせない。単独の加工。合成で、ベースに2回・重ねる画像に1回、範囲へ加工済みの画像を求めること、重ねる画像の加工の失敗と描き直しの成功・失敗、ベースの2回目の失敗と描き直し、ベースの1回目の失敗で終えること。どれも問い合わせの順序と出力の色で確かめる）。[EditorImageSaveIntegrationTests](../../../GLogoTests/Integration/EditorImageSaveIntegrationTests.swift) 1件（エディタが両方の入口で自分の管理役を渡す）。
+  - 変更：保存の偽物7つ（選定・加工の5つ、保存の要求の2つ）の引数。`renderCopy()` の固定に頼っていた3件（ImageSourceIsolationTests の `test_saveSnapshot_pinsResolvedImage`（名前を変えた）、ImageElementCacheTests の `test_copies_keepIndependentCaches`、SaveProjectSnapshotTests の `test_snapshot_preservesOrientationAndColorSpace`）は、スナップショットを通す形にした。SaveProjectSnapshotTests と SaveSnapshotPerformanceTests は、スナップショットに管理役を明示して渡す。
+  - 既存の呼び出し45か所（合成22・単独の加工4・選定2・Coordinator の保存9・保存の画面の ViewModel 8）は、テスト側の互換の入口 [SaveScopeDefaults](../../../GLogoTests/Unit/SaveScopeDefaults.swift)（新規）で変えずに通す。選定と加工には、要素自身のセッションから返す `ElementSessionImages`（以前の Model の API と同じ取得・加工）を渡し、保存の要求にはアプリと同じ管理役を渡す。
+  - 変更の前後の比較：コミットしない確認用テストで、12場面（単独、単独の加工の失敗、非表示の大きい画像を含む単独、権限待ちの間の編集、合成、ベースの1回目の失敗、ベースの2回目の失敗と描き直しの成功・失敗、重ねる画像の失敗と描き直しの成功・失敗、ベースの役割のない合成、強制の合成）の結果・書き込みの回数・出力（PNG のハッシュ）・受付の時点と完了の時点の取得の回数・入力ごとのフル品質の加工の回数を記録し、変更の前後ですべて一致することを確かめた。
+  - 接続漏れを検出できること：コミットしない確認として、9か所を一時的に以前の形へ戻すと（選定・単独の加工・ベース・可視の画像要素の解決・描き直しを Model の API へ、受付の固定を Model の API へ、Coordinator が管理役を持つ、範囲が ID で引き当てる、エディタが別の管理役を渡す）、それぞれ対応するテストが失敗することを確かめてから元に戻した（4回に分けて実行）。
+- **回帰テスト棚卸し**: 既存のテストの期待値は変えていません。`renderCopy()` の固定に頼っていた3件は、確かめる取り決め（保存用の複製は受付時の元画像を使う）は同じで、固定する場所に合わせて経路を変えました。[ImageElementDrawingTests](../../../GLogoTests/Unit/ImageElementDrawingTests.swift) の説明にあった「Model の `draw(in:)` は保存の合成が使う」は今回から当たらないため、説明を直しました（確かめる内容は同じ）。
+- **Verification**: GLogoTests は465件中462件成功（失敗1件は既知の性能テスト `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用。追加した14件の分だけ件数が増えた）。UI テストは GLogoUITests 全体の30件が成功しました（実行は33回）。全体の実行のあとに直したのはテストの説明の2か所だけで、その2スイート14件を再実行して成功しました。`git diff --check`（新規ファイルを含む）と、更新した文書の相対リンクを確認しました。アプリのビルドで、変更したファイルに警告はありません。Xcode 27.1、iPhone 17 Pro／iOS 26.1 Simulator、`-parallel-testing-enabled NO`。実機は未実施です。SwiftFormat は未導入のため実行できません。
+
+### 残り
+
+- **第19回**：所有を管理役へ移し、状態を変える側も管理役経由にする（第17回の「残り」のとおり。失効の経路は実装の前の計画で決め、解放された要素の分の回収は次の描画だけに頼らず、キャッシュ自体の解放も直接確かめる）。保存用の複製のセッションも、スナップショットが作って持つ形にする（今は複製が持ち、スナップショットは複製を通して引き当てる）。本番の呼び出し元がなくなった Model の取得・描画の API（`originalImage`・`getFilteredImageForce()`・`draw(in:)`）は、要素から外すか、テストの観察の場所を移すかを決める。
+- **第20回**：第17回の「残り」のとおり（削除した要素のキャッシュを解放する時点と、元画像も解放できる条件）。
+- 記録のみ：合成でベースの加工が2回走ること（[README](../README.md) の「計画外の対応と残件」）。
+- 保留（Codex 合意）：第17回の「残り」のとおり。
