@@ -144,11 +144,16 @@ final class ImageElementCacheTests: XCTestCase {
         }
     }
 
+    @MainActor
     func test_copies_keepIndependentCaches() throws {
         try withFixture { element, source, preview in
             warmCaches(element)
             let copy = try XCTUnwrap(element.copy() as? ImageElement)
-            let renderCopy = element.renderCopy()
+            // 保存用の複製は、保存の範囲が受付時に元画像を固定したものを使う。
+            let project = LogoProject()
+            project.addElement(element)
+            let snapshot = SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
+            let renderCopy = try XCTUnwrap(snapshot.project.elements.first as? ImageElement)
             XCTAssertNil(copy.cachedImage)
             XCTAssertNil(renderCopy.cachedImage)
             warmCaches(copy)

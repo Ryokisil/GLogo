@@ -16,16 +16,19 @@ enum PhotoLibrarySaveFailure: Error, Sendable, Equatable {
 typealias PhotoLibrarySaveResult = Result<Void, PhotoLibrarySaveFailure>
 
 /// 保存要求の境界。完了は MainActor 上で一度だけ通知する。
+/// 画像要素の元画像は、受付の間だけエディタの管理役（`renderSessions`）から受け取る。管理役は保存の処理へ持ち込まない。
 protocol PhotoLibrarySaving {
     @MainActor
     func save(
         project: LogoProject,
+        renderSessions: any ImageRenderSessionReading,
         completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     )
 
     @MainActor
     func saveComposite(
         project: LogoProject,
+        renderSessions: any ImageRenderSessionReading,
         completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     )
 }

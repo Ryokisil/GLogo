@@ -7,6 +7,8 @@ import XCTest
 @MainActor
 final class PhotoLibrarySavingStub: PhotoLibrarySaving {
     private(set) var projects: [LogoProject] = []
+    /// 受け取った管理役。エディタが自分の管理役を渡すことを確かめるテストで使う。
+    private(set) var renderSessions: [any ImageRenderSessionReading] = []
     private(set) var compositeCount = 0
     var immediateResult: PhotoLibrarySaveResult?
     /// 保存入力を受け取った時点で呼ぶ。準備処理との前後関係を確かめるテストで使う。
@@ -15,10 +17,12 @@ final class PhotoLibrarySavingStub: PhotoLibrarySaving {
 
     func save(
         project: LogoProject,
+        renderSessions: any ImageRenderSessionReading,
         completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     ) {
         onSave?()
         projects.append(project)
+        self.renderSessions.append(renderSessions)
         self.completion = completion
         if let immediateResult {
             finish(immediateResult)
@@ -27,10 +31,11 @@ final class PhotoLibrarySavingStub: PhotoLibrarySaving {
 
     func saveComposite(
         project: LogoProject,
+        renderSessions: any ImageRenderSessionReading,
         completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     ) {
         compositeCount += 1
-        save(project: project, completion: completion)
+        save(project: project, renderSessions: renderSessions, completion: completion)
     }
 
     func finish(_ result: PhotoLibrarySaveResult) {

@@ -34,7 +34,7 @@ final class SaveProjectSnapshotTests: XCTestCase {
         let project = LogoProject()
         project.addElement(image)
 
-        let copy = try XCTUnwrap(SaveProjectSnapshot(project: project).project.elements.first as? ImageElement)
+        let copy = try XCTUnwrap(makeSnapshot(project).project.elements.first as? ImageElement)
         XCTAssertFalse(copy === image)
         XCTAssertEqual(copy.id, image.id)
         XCTAssertEqual(copy.name, "Base")
@@ -82,7 +82,7 @@ final class SaveProjectSnapshotTests: XCTestCase {
         shape.gradientAngle = 45
         shape.zIndex = 250
         project.elements = [text, shape]
-        let copy = SaveProjectSnapshot(project: project).project
+        let copy = makeSnapshot(project).project
         let copiedText = try XCTUnwrap(copy.elements[0] as? TextElement)
         let copiedGlow = try XCTUnwrap(copiedText.effects.first as? GlowEffect)
         let copiedShape = try XCTUnwrap(copy.elements[1] as? ShapeElement)
@@ -120,7 +120,7 @@ final class SaveProjectSnapshotTests: XCTestCase {
         )
         let project = LogoProject()
         project.addElement(image)
-        let copy = try XCTUnwrap(SaveProjectSnapshot(project: project).project.elements.first as? ImageElement)
+        let copy = try XCTUnwrap(makeSnapshot(project).project.elements.first as? ImageElement)
         let frozen = try XCTUnwrap(copy.originalImage)
         try FileManager.default.removeItem(at: url)
         image.replaceImageSource(with: snapshotImage(.blue).pngData()!, resetAdjustments: true)
@@ -136,7 +136,9 @@ final class SaveProjectSnapshotTests: XCTestCase {
         let image = ImageElementFactory(sourceResolver: SnapshotSourceResolver(image: oriented))
             .makeElement(imageData: Data(), importOrder: 1)
         let original = try XCTUnwrap(image.originalImage)
-        let copy = image.renderCopy()
+        let project = LogoProject()
+        project.addElement(image)
+        let copy = try XCTUnwrap(makeSnapshot(project).project.elements.first as? ImageElement)
         XCTAssertTrue(copy.originalImage === original)
         XCTAssertEqual(copy.originalImage?.cgImage?.bitsPerComponent, original.cgImage?.bitsPerComponent)
         XCTAssertEqual(copy.originalImage?.cgImage?.colorSpace?.name, original.cgImage?.colorSpace?.name)
@@ -154,7 +156,7 @@ final class SaveProjectSnapshotTests: XCTestCase {
         let project = LogoProject()
         project.backgroundSettings.type = .image
         project.backgroundSettings.imageFileName = name
-        let snapshot = SaveProjectSnapshot(project: project)
+        let snapshot = makeSnapshot(project)
         let before = drawBackground(snapshot.project.backgroundSettings)
         XCTAssertTrue(assets.saveImage(snapshotImage(.blue), name: name, type: .background, alsoSaveProxy: false))
         XCTAssertEqual(drawBackground(snapshot.project.backgroundSettings).pngData(), before.pngData())
@@ -163,6 +165,92 @@ final class SaveProjectSnapshotTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         XCTAssertEqual(try encoder.encode(snapshot.project.backgroundSettings), try encoder.encode(project.backgroundSettings))
+    }
+
+    // MARK: - 保存の範囲（第18回）
+
+    /// 受付では、画像要素ごとに要素の順で1回ずつ、エディタの管理役から元画像だけを受け取って固定する。
+    @MainActor
+    func test_snapshot_readsOriginalsThroughStore() throws {
+        let first = ImageElementFactory().makeElement(imageData: snapshotImage(.red).pngData()!)
+        let second = ImageElementFactory().makeElement(imageData: snapshotImage(.blue).pngData()!)
+        let project = LogoProject()
+        project.elements = [first, TextElement(text: "A", fontSize: 12), second]
+        // 要素自身の画像（赤・青）と別の画像を返し、固定した画像の出どころを見分ける。
+        let marker = snapshotImage(.green)
+        let store = RenderSessionReadingSpy(original: marker)
+
+        let snapshot = SaveProjectSnapshot(project: project, renderSessions: store)
+
+        XCTAssertEqual(store.requests, [.init(.originalImage, first), .init(.originalImage, second)])
+        let copies = snapshot.project.elements.compactMap { $0 as? ImageElement }
+        XCTAssertEqual(copies.map(\.id), [first.id, second.id])
+        for copy in copies {
+            XCTAssertTrue(snapshot.originalImage(of: copy) === marker, "管理役から受け取った元画像を固定する")
+        }
+        XCTAssertEqual(store.requests.count, 2, "固定した元画像を返すときは、管理役に問い合わせない")
+    }
+
+    /// 範囲は自分の複製にだけ画像を返す。編集元の要素と、同じ ID を持つ別の保存要求の複製には返さない。
+    @MainActor
+    func test_snapshot_servesOnlyOwnCopies() throws {
+        let image = ImageElementFactory().makeElement(imageData: snapshotImage(.red).pngData()!)
+        let project = LogoProject()
+        project.addElement(image)
+        let first = makeSnapshot(project)
+        let second = makeSnapshot(project)
+        let firstCopy = try XCTUnwrap(first.project.elements.first as? ImageElement)
+        let secondCopy = try XCTUnwrap(second.project.elements.first as? ImageElement)
+        XCTAssertEqual(secondCopy.id, firstCopy.id)
+        XCTAssertEqual(firstCopy.id, image.id)
+
+        XCTAssertNotNil(first.originalImage(of: firstCopy))
+        XCTAssertNotNil(first.filteredImage(of: firstCopy))
+        XCTAssertNotNil(first.drawingImage(of: firstCopy))
+        for (outsider, label) in [(image, "編集元の要素"), (secondCopy, "別の保存要求の複製")] {
+            XCTAssertNil(first.originalImage(of: outsider), label)
+            XCTAssertNil(first.filteredImage(of: outsider), label)
+            XCTAssertNil(first.drawingImage(of: outsider), label)
+        }
+    }
+
+    /// 同じ内容を続けて受け付けた2件は、同じ元画像を参照してよい（バッファは複製しない）が、
+    /// セッションとキャッシュの状態は独立し、片方の変更がもう片方と編集元に届かない。
+    @MainActor
+    func test_snapshots_keepIndependentCaches() throws {
+        let source = DataOnlySourceResolver(image: snapshotImage(.red))
+        let image = ImageElement(
+            source: .data(Data()), size: nil, sourceResolver: source,
+            previewService: FixedPreviewService(output: snapshotImage(.green))
+        )
+        let project = LogoProject()
+        project.addElement(image)
+        let first = makeSnapshot(project)
+        let second = makeSnapshot(project)
+        let firstCopy = try XCTUnwrap(first.project.elements.first as? ImageElement)
+        let secondCopy = try XCTUnwrap(second.project.elements.first as? ImageElement)
+        XCTAssertEqual(source.originalCalls, 1, "2件目の受付は、編集元のキャッシュから元画像を受け取る")
+        XCTAssertTrue(first.originalImage(of: firstCopy) === second.originalImage(of: secondCopy))
+
+        // 片方で作った描画用の画像のキャッシュは、もう片方にも編集元にも書かない。
+        XCTAssertNotNil(first.drawingImage(of: firstCopy))
+        XCTAssertNotNil(firstCopy.cachedImage)
+        XCTAssertNil(secondCopy.cachedImage)
+        XCTAssertNil(image.cachedImage)
+
+        // 片方のキャッシュを消しても、もう片方が固定した元画像は残る。
+        firstCopy.handleMemoryWarning()
+        XCTAssertNil(first.originalImage(of: firstCopy), "複製はソースを持たないため、消したあとは元画像を得られない")
+        XCTAssertTrue(second.originalImage(of: secondCopy) === source.image)
+        XCTAssertNotNil(second.drawingImage(of: secondCopy))
+        XCTAssertTrue(image.originalImage === source.image, "編集元のキャッシュも残る")
+        XCTAssertEqual(source.originalCalls, 2, "取得し直したのは、キャッシュを消した複製の1回だけ")
+    }
+
+    /// アプリと同じ管理役（要素のセッションを返す）で受け付ける。
+    @MainActor
+    private func makeSnapshot(_ project: LogoProject) -> SaveProjectSnapshot {
+        SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
     }
 
     private func drawBackground(_ background: BackgroundSettings) -> UIImage {
@@ -179,6 +267,27 @@ private struct SnapshotSourceResolver: ImageSourceResolving {
     func resolveEditingImage(identifier: String?, fileName: String?, originalPath: String?,
                              originalImageProvider: () -> UIImage?, proxyTargetLongSide: CGFloat,
                              highResThresholdMP: CGFloat) -> UIImage? { image }
+}
+
+/// 画像データを持つ要素にだけ画像を返し、元画像の取得の回数を数える取得先。
+/// ソースを持たない保存用の複製には nil を返すため、複製が固定した元画像を失ったことを見分けられる。
+/// テストのスレッドから同期にだけ呼ばれる前提で、回数をロックなしで持つ。
+private final class DataOnlySourceResolver: ImageSourceResolving, @unchecked Sendable {
+    let image: UIImage
+    private(set) var originalCalls = 0
+
+    init(image: UIImage) {
+        self.image = image
+    }
+
+    func resolveOriginalImage(imageData: Data?, fileName: String?, url: URL?, path: String?) -> UIImage? {
+        originalCalls += 1
+        return imageData == nil ? nil : image
+    }
+
+    func resolveEditingImage(identifier: String?, fileName: String?, originalPath: String?,
+                             originalImageProvider: () -> UIImage?, proxyTargetLongSide: CGFloat,
+                             highResThresholdMP: CGFloat) -> UIImage? { nil }
 }
 
 /// 保存テスト用の小さな単色画像。

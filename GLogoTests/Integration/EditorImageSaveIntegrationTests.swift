@@ -70,6 +70,25 @@ final class EditorImageSaveIntegrationTests: XCTestCase {
         XCTAssertEqual(element.position.x, positionAtSave.x + 5, accuracy: 0.0001)
     }
 
+    /// 両方の入口で、エディタは自分の管理役を保存の要求へ渡す（受付で元画像を受け取るため）。
+    @MainActor
+    func test_save_passesEditorRenderSessions() {
+        let saver = PhotoLibrarySavingStub()
+        let renderSessions = RenderSessionReadingSpy()
+        let editor = EditorViewModel(
+            dependencies: .live(photoLibrarySaver: saver), renderSessions: renderSessions
+        )
+
+        editor.saveToPhotoLibrary { _ in }
+        saver.finish(.success(()))
+        editor.saveCompositeToPhotoLibrary { _ in }
+        saver.finish(.success(()))
+
+        XCTAssertEqual(saver.renderSessions.count, 2)
+        XCTAssertTrue(saver.renderSessions.allSatisfy { $0 === renderSessions })
+        XCTAssertEqual(saver.compositeCount, 1)
+    }
+
     @MainActor
     func test_save_pendingCompletion_doesNotRetainEditor() {
         let saver = PhotoLibrarySavingStub()

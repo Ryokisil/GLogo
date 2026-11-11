@@ -28,10 +28,12 @@ struct SaveImageCoordinator: PhotoLibrarySaving, Sendable {
     @MainActor
     func save(
         project: LogoProject,
+        renderSessions: any ImageRenderSessionReading,
         completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     ) {
         // 権限待ちより前に固定し、モード判定と描画が同じ時点の状態を見るようにする。
-        let snapshot = SaveProjectSnapshot(project: project)
+        // エディタの管理役は、ここで元画像を受け取るためだけに使い、権限待ちと保存の処理へは渡さない。
+        let snapshot = SaveProjectSnapshot(project: project, renderSessions: renderSessions)
         let mode = policy.resolveMode(elements: snapshot.project.elements)
 
         authorizeIfNeeded { authorizationResult in
@@ -48,9 +50,10 @@ struct SaveImageCoordinator: PhotoLibrarySaving, Sendable {
     @MainActor
     func saveComposite(
         project: LogoProject,
+        renderSessions: any ImageRenderSessionReading,
         completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     ) {
-        let snapshot = SaveProjectSnapshot(project: project)
+        let snapshot = SaveProjectSnapshot(project: project, renderSessions: renderSessions)
 
         authorizeIfNeeded { authorizationResult in
             switch authorizationResult {
@@ -91,7 +94,8 @@ struct SaveImageCoordinator: PhotoLibrarySaving, Sendable {
     }
 
     /// モード別に保存フローを実行（要素選定 → フィルター/合成 → 保存）
-    /// バックグラウンドスレッドで実行し、メインスレッドのブロックを防止する
+    /// バックグラウンドスレッドで実行し、メインスレッドのブロックを防止する。
+    /// 画像要素の画像は、保存1件の範囲（スナップショット）からだけ受け取る。
     private func performSave(
         snapshot: SaveProjectSnapshot,
         mode: SaveImageMode,
@@ -109,12 +113,14 @@ struct SaveImageCoordinator: PhotoLibrarySaving, Sendable {
             case .failure:
                 await completion(.failure(.noImageElements))
             case .individual:
-                let targetImageElement = selectionService.selectHighestResolutionImageElement(from: imageElements)
+                let targetImageElement = selectionService.selectHighestResolutionImageElement(
+                    from: imageElements, images: snapshot
+                )
                 guard let imageElement = targetImageElement else {
                     await completion(.failure(.imageSelectionFailed))
                     return
                 }
-                guard let processedImage = processingService.applyFilters(to: imageElement) else {
+                guard let processedImage = processingService.applyFilters(to: imageElement, images: snapshot) else {
                     await completion(.failure(.filterApplicationFailed))
                     return
                 }
@@ -128,11 +134,13 @@ struct SaveImageCoordinator: PhotoLibrarySaving, Sendable {
                     await completion(.failure(.writeFailed))
                 }
             case .composite:
-                guard let baseElement = selectionService.selectBaseImageElement(from: imageElements) else {
+                guard let baseElement = selectionService.selectBaseImageElement(from: imageElements, images: snapshot) else {
                     await completion(.failure(.imageSelectionFailed))
                     return
                 }
-                guard let finalImage = processingService.makeCompositeImage(baseElement: baseElement, project: project) else {
+                guard let finalImage = processingService.makeCompositeImage(
+                    baseElement: baseElement, project: project, images: snapshot
+                ) else {
                     Self.logger.warning("合成保存に失敗: makeCompositeImage が nil を返却")
                     await completion(.failure(.compositeGenerationFailed))
                     return

@@ -14,23 +14,27 @@ final class ImageSaveViewModel: ObservableObject {
         self.saver = saver
     }
 
+    /// - Parameters:
+    ///   - renderSessions: エディタの管理役。保存の受付で元画像を受け取るために渡し、ここでは保持しない
     func save(
         project: LogoProject,
+        renderSessions: any ImageRenderSessionReading,
         prepare: () -> Void,
         completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     ) {
         performSave(prepare: prepare, operation: { done in
-            saver.save(project: project, completion: done)
+            saver.save(project: project, renderSessions: renderSessions, completion: done)
         }, completion: completion)
     }
 
     func saveComposite(
         project: LogoProject,
+        renderSessions: any ImageRenderSessionReading,
         prepare: () -> Void,
         completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     ) {
         performSave(prepare: prepare, operation: { done in
-            saver.saveComposite(project: project, completion: done)
+            saver.saveComposite(project: project, renderSessions: renderSessions, completion: done)
         }, completion: completion)
     }
 

@@ -136,6 +136,91 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
         XCTAssertEqual(writer.writeCount, 1)
     }
 
+    // MARK: - エディタの管理役（第18回）
+
+    /// 両方の入口で、元画像は権限待ちより前の受付で管理役から1回だけ受け取り、完了まで問い合わせない。
+    /// 保存した画像は、管理役が返した画像（要素自身の赤ではなく緑）から作られる。
+    @MainActor
+    func test_acceptance_readsStoreOnlyWhileSaving() async throws {
+        for composite in [false, true] {
+            let writer = SnapshotWriter()
+            let coordinator = SaveImageCoordinator(processingService: ImageProcessingService(), writer: writer)
+            let (project, image) = makeProject()
+            let store = RenderSessionReadingSpy(original: snapshotImage(.green))
+            let completed = expectation(description: "保存完了")
+            let completion: @MainActor @Sendable (PhotoLibrarySaveResult) -> Void = { result in
+                if case .failure(let error) = result { XCTFail("\(error)") }
+                completed.fulfill()
+            }
+            if composite {
+                coordinator.saveComposite(project: project, renderSessions: store, completion: completion)
+            } else {
+                coordinator.save(project: project, renderSessions: store, completion: completion)
+            }
+            XCTAssertEqual(store.requests, [.init(.originalImage, image)], "合成: \(composite)")
+
+            writer.authorize()
+            await fulfillment(of: [completed], timeout: 5)
+            XCTAssertEqual(store.requests.count, 1, "受付のあとは問い合わせない（合成: \(composite)）")
+            try assertCenter(of: XCTUnwrap(writer.savedImage), isGreen: true, "合成: \(composite)")
+        }
+    }
+
+    /// 保存の要求は管理役を持たない。権限待ちの間に管理役を解放しても、受付で固定した画像で保存できる。
+    @MainActor
+    func test_pendingSave_doesNotRetainStore() async throws {
+        for composite in [false, true] {
+            let writer = SnapshotWriter()
+            let coordinator = SaveImageCoordinator(processingService: ImageProcessingService(), writer: writer)
+            let (project, _) = makeProject()
+            var store: RenderSessionReadingSpy? = RenderSessionReadingSpy(original: snapshotImage(.green))
+            weak let weakStore = store
+            let completed = expectation(description: "管理役の解放後の保存完了")
+            let completion: @MainActor @Sendable (PhotoLibrarySaveResult) -> Void = { result in
+                if case .failure(let error) = result { XCTFail("\(error)") }
+                completed.fulfill()
+            }
+            if composite {
+                coordinator.saveComposite(project: project, renderSessions: try XCTUnwrap(store), completion: completion)
+            } else {
+                coordinator.save(project: project, renderSessions: try XCTUnwrap(store), completion: completion)
+            }
+            store = nil
+            XCTAssertNil(weakStore, "権限待ちの間、保存の要求は管理役を持たない（合成: \(composite)）")
+
+            writer.authorize()
+            await fulfillment(of: [completed], timeout: 5)
+            XCTAssertEqual(writer.writeCount, 1)
+            try assertCenter(of: XCTUnwrap(writer.savedImage), isGreen: true, "合成: \(composite)")
+        }
+    }
+
+    /// 保存した画像の中央が、緑（管理役が返した画像）か赤（要素自身の画像）かを確かめる。
+    private func assertCenter(
+        of image: UIImage,
+        isGreen: Bool,
+        _ message: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let cgImage = try XCTUnwrap(image.cgImage, file: file, line: line)
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let context = try XCTUnwrap(CGContext(
+            data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+        ), file: file, line: line)
+        let center = CGRect(x: cgImage.width / 2, y: cgImage.height / 2, width: 1, height: 1)
+        let cropped = try XCTUnwrap(cgImage.cropping(to: center), file: file, line: line)
+        context.draw(cropped, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        let (red, green) = (Int(pixel[0]), Int(pixel[1]))
+        if isGreen {
+            XCTAssertTrue(green > 200 && red < 60, "\(message)（RGBA: \(pixel)）", file: file, line: line)
+        } else {
+            XCTAssertTrue(red > 200 && green < 60, "\(message)（RGBA: \(pixel)）", file: file, line: line)
+        }
+    }
+
     private func makeProject() -> (LogoProject, ImageElement) {
         let project = LogoProject(canvasSize: CGSize(width: 32, height: 24))
         let image = ImageElementFactory().makeElement(imageData: snapshotImage(.red).pngData()!, importOrder: 1)
@@ -181,17 +266,18 @@ private final class PausedSnapshotProcessing: ImageProcessing, @unchecked Sendab
     private let started: XCTestExpectation
     init(started: XCTestExpectation) { self.started = started }
     func resume() { gate.signal() }
-    func applyFilters(to imageElement: ImageElement) -> UIImage? {
+    func applyFilters(to imageElement: ImageElement, images: any SaveImageReading) -> UIImage? {
         XCTFail("合成モードを維持するべき")
         return nil
     }
-    func makeCompositeImage(baseElement: ImageElement, project: LogoProject) -> UIImage? {
+    func makeCompositeImage(baseElement: ImageElement, project: LogoProject, images: any SaveImageReading) -> UIImage? {
         started.fulfill()
         guard gate.wait(timeout: .now() + 5) == .success else {
             XCTFail("加工再開が届かない")
             return nil
         }
-        return ImageProcessingService().makeCompositeImage(baseElement: baseElement, project: project)
+        // 受け取った保存の範囲をそのまま渡し、本番と同じ画像で合成する。
+        return ImageProcessingService().makeCompositeImage(baseElement: baseElement, project: project, images: images)
     }
 }
 

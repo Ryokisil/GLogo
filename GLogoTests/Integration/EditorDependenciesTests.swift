@@ -241,12 +241,20 @@ private final class RecordingMetadataStore: ImageMetadataStoring {
 private final class SaverSpy: PhotoLibrarySaving {
     private(set) var requests: [String] = []
 
-    func save(project: LogoProject, completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void) {
+    func save(
+        project: LogoProject,
+        renderSessions: any ImageRenderSessionReading,
+        completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
+    ) {
         requests.append("save")
         completion(.success(()))
     }
 
-    func saveComposite(project: LogoProject, completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void) {
+    func saveComposite(
+        project: LogoProject,
+        renderSessions: any ImageRenderSessionReading,
+        completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
+    ) {
         requests.append("saveComposite")
         completion(.success(()))
     }

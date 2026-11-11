@@ -118,7 +118,8 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     /// ここから開く画面へ渡す外部処理。画面ごとに作るものは、開くたびに呼ぶ関数として持つ。
     let dependencies: EditorDependencies
     /// 画像要素の描画のセッションの管理役。寿命はエディタと同じ。
-    /// キャンバス・削除エフェクト・画像一覧・AI・編集画面・フィルターのサムネイルは、ここから画像を受け取る。保存はここを使わない。
+    /// キャンバス・削除エフェクト・画像一覧・AI・編集画面・フィルターのサムネイルは、ここから画像を受け取る。
+    /// 保存は受付で元画像を受け取るときだけ使い、選定・加工・合成は保存の範囲から受け取る。
     let renderSessions: any ImageRenderSessionReading
     private let backgroundRemovalUseCase: any BackgroundRemovalProcessing
     private let imageUpscaleUseCase: ImageUpscaleUseCase
@@ -549,6 +550,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     func saveToPhotoLibrary(completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void) {
         imageSaveViewModel.save(
             project: project,
+            renderSessions: renderSessions,
             prepare: prepareForImageSave,
             completion: completion
         )
@@ -559,6 +561,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     func saveCompositeToPhotoLibrary(completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void) {
         imageSaveViewModel.saveComposite(
             project: project,
+            renderSessions: renderSessions,
             prepare: prepareForImageSave,
             completion: completion
         )

@@ -1,4 +1,4 @@
-// 管理役（ImageRenderSessionReading）への問い合わせを記録する偽物。受け取る側の入口が管理役を通ることを確かめるテストで共有する。
+// 管理役（ImageRenderSessionReading）への問い合わせを記録する偽物。受け取る側の入口と保存の受付が、管理役を通ることを確かめるテストで共有する。
 
 import UIKit
 @testable import GLogo

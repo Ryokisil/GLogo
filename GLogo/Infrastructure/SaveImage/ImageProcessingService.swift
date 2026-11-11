@@ -16,18 +16,19 @@ struct ImageProcessingService: ImageProcessing {
         let renderSize: CGSize
     }
 
-    /// ImageElement に設定されたフィルターを適用した画像を返す
-    func applyFilters(to imageElement: ImageElement) -> UIImage? {
-        imageElement.getFilteredImageForce()
+    /// ImageElement に設定されたフィルターを適用した画像を、保存の範囲から受け取って返す
+    func applyFilters(to imageElement: ImageElement, images: any SaveImageReading) -> UIImage? {
+        images.filteredImage(of: imageElement)
     }
 
     /// ベース画像の範囲を基準に合成して返す
     /// - Parameters:
     ///   - baseElement: 保存基準となるベース画像要素
     ///   - project: プロジェクト
+    ///   - images: 保存の範囲。画像要素の画像はここから受け取る
     /// - Returns: 合成画像（ベース画像の実ピクセルサイズで出力）
-    func makeCompositeImage(baseElement: ImageElement, project: LogoProject) -> UIImage? {
-        guard let baseImage = baseElement.getFilteredImageForce() else {
+    func makeCompositeImage(baseElement: ImageElement, project: LogoProject, images: any SaveImageReading) -> UIImage? {
+        guard let baseImage = images.filteredImage(of: baseElement) else {
             Self.logger.warning("合成保存に失敗: ベース画像のフィルタ適用に失敗")
             return nil
         }
@@ -62,7 +63,7 @@ struct ImageProcessingService: ImageProcessing {
         let visibleElements = project.elements
             .filter(\.isVisible)
             .sorted { $0.zIndex < $1.zIndex }
-        let resolvedImages = resolvedImages(for: visibleElements)
+        let resolvedImages = resolvedImages(for: visibleElements, images: images)
 
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1.0
@@ -82,9 +83,10 @@ struct ImageProcessingService: ImageProcessing {
             project.backgroundSettings.draw(in: cgContext, rect: canvasRect)
 
             for element in visibleElements {
-                if let imageElement = element as? ImageElement,
-                   let highResImage = resolvedImages[element.id] {
-                    ImageElementRenderer.draw(imageElement, in: cgContext, image: highResImage)
+                if let imageElement = element as? ImageElement {
+                    // 加工済みの画像を得られなかった画像要素は、描画用の画像（表示画像の加工を試し直したもの）で描く。
+                    let image = resolvedImages[element.id] ?? images.drawingImage(of: imageElement)
+                    ImageElementRenderer.draw(imageElement, in: cgContext, image: image)
                     continue
                 }
 
@@ -96,11 +98,11 @@ struct ImageProcessingService: ImageProcessing {
     // MARK: - 補助
 
     /// 可視画像要素のフル品質画像を一度だけ解決する
-    private func resolvedImages(for elements: [LogoElement]) -> [UUID: UIImage] {
+    private func resolvedImages(for elements: [LogoElement], images: any SaveImageReading) -> [UUID: UIImage] {
         Dictionary(
             uniqueKeysWithValues: elements.compactMap { element in
                 guard let imageElement = element as? ImageElement,
-                      let highResImage = imageElement.getFilteredImageForce() else {
+                      let highResImage = images.filteredImage(of: imageElement) else {
                     return nil
                 }
 

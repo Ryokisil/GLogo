@@ -92,8 +92,8 @@ class ImageElement: LogoElement {
 
     /// 取得・描画・キャッシュの管理。要素と同じ寿命を持ち、初期化のたびに作る（複製・保存用の複製とは共有しない）。
     /// 処理を移した中間段階で、所有と依存の向きの整理は残る（docs/architecture/Models/ImageElement.md の第16回・第17回）。
-    /// エディタの管理役（`ImageRenderSessionStore`）が受け取る側の入口のために読むので internal にしている。
-    /// 管理役のほかは、ここを直接使わない（所有を管理役へ移す第19回で、要素から外す）。
+    /// エディタの管理役（`ImageRenderSessionStore`）と保存の範囲（`SaveProjectSnapshot`）が読むので internal にしている。
+    /// この2つのほかは、ここを直接使わない（所有を移す第19回で、要素から外す）。
     let renderSession: ImageRenderSession
 
     /// 元画像・プロキシ取得の実行時依存。要素ごとに固定し、永続化しない。
@@ -747,7 +747,8 @@ class ImageElement: LogoElement {
     }
 
     /// 画像を描画。描く画像はセッションが選び、キャンバスへの描き込みは従来どおりここから呼ぶ
-    /// （UseCases から Infrastructure の具体型を呼ばないため）。キャンバスと削除エフェクトは `draw(in:image:)` を使う。
+    /// （UseCases から Infrastructure の具体型を呼ばないため）。キャンバスと削除エフェクトは `draw(in:image:)` を使い、
+    /// 保存の合成は保存の範囲から受け取った画像で描く（第18回）。
     override func draw(in context: CGContext) {
         draw(in: context, image: renderSession.drawingImage(of: self))
     }
@@ -782,9 +783,9 @@ class ImageElement: LogoElement {
         return copy
     }
 
-    /// 保存専用の独立した描画状態を作る。UI 用複製と異なり元画像をその場で固定する。
-    /// UIImage は再圧縮せず共有し、調整値・キャッシュ・編集フラグは共有しない。
+    /// 保存専用の複製を作る。描画属性と識別子・順序・役割だけを写し、調整値・キャッシュ・編集フラグは共有しない。
     /// 元のファイル参照を持ち越さないため、後続のソース差し替えや削除にも影響されない。
+    /// 元画像は、保存の範囲（`SaveProjectSnapshot`）が受付時にエディタの管理役から受け取って固定する。
     func renderCopy() -> ImageElement {
         let copy = ImageElement(
             source: nil, size: nil, importOrder: originalImportOrder,
@@ -795,7 +796,6 @@ class ImageElement: LogoElement {
         copy.name = name
         copy.zIndex = zIndex
         copy.imageRole = imageRole
-        copy.renderSession.fixOriginalImage(originalImage)
         return copy
     }
 

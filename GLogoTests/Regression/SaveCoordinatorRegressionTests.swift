@@ -18,12 +18,12 @@ import UIKit
 /// 合成結果を nil で返すモック（異常系再現用）
 private struct StubImageProcessing_CompositeNil: ImageProcessing {
     /// applyFilters は有効な画像を返す（合成前段階を通過させるため）
-    func applyFilters(to imageElement: ImageElement) -> UIImage? {
+    func applyFilters(to imageElement: ImageElement, images: any SaveImageReading) -> UIImage? {
         makeSolidImage(color: .white)
     }
 
     /// 合成処理が失敗するケースを再現
-    func makeCompositeImage(baseElement: ImageElement, project: LogoProject) -> UIImage? {
+    func makeCompositeImage(baseElement: ImageElement, project: LogoProject, images: any SaveImageReading) -> UIImage? {
         _ = baseElement; _ = project
         return nil
     }
@@ -31,11 +31,11 @@ private struct StubImageProcessing_CompositeNil: ImageProcessing {
 
 /// 常に最初の要素をベースとして返すモック
 private struct StubImageSelecting: ImageSelecting {
-    func selectBaseImageElement(from elements: [ImageElement]) -> ImageElement? {
+    func selectBaseImageElement(from elements: [ImageElement], images: any SaveImageReading) -> ImageElement? {
         elements.first
     }
 
-    func selectHighestResolutionImageElement(from elements: [ImageElement]) -> ImageElement? {
+    func selectHighestResolutionImageElement(from elements: [ImageElement], images: any SaveImageReading) -> ImageElement? {
         elements.first
     }
 }

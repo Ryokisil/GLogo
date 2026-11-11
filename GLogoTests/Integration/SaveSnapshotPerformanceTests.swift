@@ -36,6 +36,7 @@ final class SaveSnapshotPerformanceTests: XCTestCase {
         let image = ImageElementFactory().makeElement(imageData: data)
         let project = LogoProject()
         project.addElement(image)
+        let renderSessions = ImageRenderSessionStore()
         let options = XCTMeasureOptions()
         options.iterationCount = 3
         options.invocationOptions = [.manuallyStart, .manuallyStop]
@@ -45,7 +46,7 @@ final class SaveSnapshotPerformanceTests: XCTestCase {
                 image.handleMemoryWarning()
                 if cached { _ = image.originalImage }
                 startMeasuring()
-                let snapshot = SaveProjectSnapshot(project: project)
+                let snapshot = SaveProjectSnapshot(project: project, renderSessions: renderSessions)
                 stopMeasuring()
                 let copy = snapshot.project.elements.first as? ImageElement
                 XCTAssertEqual(copy?.originalImage?.cgImage?.width, width)

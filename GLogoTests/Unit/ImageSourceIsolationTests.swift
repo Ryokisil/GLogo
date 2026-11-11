@@ -88,16 +88,21 @@ final class ImageSourceIsolationTests: XCTestCase {
         XCTAssertEqual(resolver.originalCalls, 4)
     }
 
-    func test_renderCopy_pinsResolvedImage() {
+    /// 保存の範囲は、受付時に解決済みの元画像を複製へ固定する（第18回で、固定を renderCopy() から範囲へ移した）。
+    @MainActor
+    func test_saveSnapshot_pinsResolvedImage() throws {
         let original = snapshotImage(.red)
         let resolver = SourceResolverSpy(image: original)
         let element = ImageElementFactory(sourceResolver: resolver).makeElement(imageData: Data())
-        let copy = element.renderCopy()
+        let project = LogoProject()
+        project.addElement(element)
+        let snapshot = SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
+        let copy = try XCTUnwrap(snapshot.project.elements.first as? ImageElement)
         resolver.image = snapshotImage(.blue)
         element.handleMemoryWarning()
         XCTAssertTrue(element.originalImage === resolver.image)
         let count = resolver.originalCalls
-        XCTAssertTrue(copy.originalImage === original)
+        XCTAssertTrue(snapshot.originalImage(of: copy) === original)
         XCTAssertEqual(resolver.originalCalls, count, "保存用コピーは固定済み画像を使う")
         XCTAssertEqual(copy.id, element.id)
     }
