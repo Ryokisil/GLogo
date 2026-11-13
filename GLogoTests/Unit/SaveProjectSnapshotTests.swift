@@ -178,7 +178,7 @@ final class SaveProjectSnapshotTests: XCTestCase {
         project.elements = [first, TextElement(text: "A", fontSize: 12), second]
         // 要素自身の画像（赤・青）と別の画像を返し、固定した画像の出どころを見分ける。
         let marker = snapshotImage(.green)
-        let store = RenderSessionReadingSpy(original: marker)
+        let store = RenderSessionSpy(original: marker)
 
         let snapshot = SaveProjectSnapshot(project: project, renderSessions: store)
 

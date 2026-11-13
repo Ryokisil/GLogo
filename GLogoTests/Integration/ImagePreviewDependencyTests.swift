@@ -145,18 +145,23 @@ final class ImagePreviewDependencyTests: XCTestCase {
         XCTAssertEqual(hdr.state.resets, 1)
     }
 
+    @MainActor
     func test_cacheRelease_resetsEachUsedServiceOnce() throws {
+        // 要素ごとの解放と描画サービスの引き当ては、アプリと同じ管理役に求める。
+        let renderSessions = ImageRenderSessionStore()
         let shared = PreviewDependencySpy(color: .red)
         let separate = PreviewDependencySpy(color: .blue)
         let unused = PreviewDependencySpy(color: .green)
         let images = try [element(service: shared), element(service: shared), element(service: separate)]
         for image in images { XCTAssertNotNil(image.image) }
-        ImageCacheReleaseUseCase.releaseCaches(in: images, defaultService: ImagePreviewService.shared)
+        ImageCacheReleaseUseCase.releaseCaches(
+            in: images, defaultService: ImagePreviewService.shared, renderSessions: renderSessions
+        )
         for image in images { XCTAssertNil(image.cachedImage) }
         XCTAssertEqual(shared.state.resets, 1)
         XCTAssertEqual(separate.state.resets, 1)
         XCTAssertEqual(unused.state.resets, 0)
-        ImageCacheReleaseUseCase.releaseCaches(in: [], defaultService: ImagePreviewService.shared)
+        ImageCacheReleaseUseCase.releaseCaches(in: [], defaultService: ImagePreviewService.shared, renderSessions: renderSessions)
         XCTAssertEqual(shared.state.resets, 1)
     }
 

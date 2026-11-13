@@ -75,21 +75,24 @@ class ElementViewModel: ObservableObject {
             edits: editorViewModel.shapeEdits,
             selection: editorViewModel.$selectedElement.eraseToAnyPublisher()
         )
+        // 読み取りと状態の変更は、エディタが持つ同じ管理役を使う。
+        let renderSessions = editorViewModel.managedRenderSessions
         imageFrame = ImageFrameViewModel(
             editor: editorViewModel.imageEdits,
             refresh: frameImageRefresh,
+            renderSessions: renderSessions,
             metadataEdits: ImageMetadataEditUseCase(store: metadataStore),
             selection: editorViewModel.$selectedElement.eraseToAnyPublisher()
         )
 
         imageAdjustment = ImageAdjustmentViewModel(
-            edits: editorViewModel.imageEdits, refresh: imageRefresh,
+            edits: editorViewModel.imageEdits, refresh: imageRefresh, renderSessions: renderSessions,
             metadataEdits: ImageMetadataEditUseCase(store: metadataStore),
             selection: editorViewModel.$selectedElement.eraseToAnyPublisher()
         )
         filters = FilterPanelViewModel(
             edits: editorViewModel.imageEdits, refresh: imageRefresh,
-            renderSessions: editorViewModel.renderSessions,
+            renderSessions: renderSessions,
             selection: editorViewModel.$selectedElement.eraseToAnyPublisher()
         )
 

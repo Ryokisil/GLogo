@@ -17,7 +17,7 @@ final class ImageRenderSessionRouteTests: XCTestCase {
     func test_canvas_drawsImageFromRenderSessions() throws {
         var windows: [UIWindow] = []
         defer { windows.forEach { $0.isHidden = true } }
-        let spy = RenderSessionReadingSpy(drawing: snapshotImage(.magenta))
+        let spy = RenderSessionSpy(drawing: snapshotImage(.magenta))
         let (editor, element) = try makeEditor(renderSessions: spy)
         let canvas = try showCanvas(of: editor, in: &windows)
         spy.removeAllRequests()
@@ -33,7 +33,7 @@ final class ImageRenderSessionRouteTests: XCTestCase {
     func test_canvasDelete_snapshotsBeforeDeletion() throws {
         var windows: [UIWindow] = []
         defer { windows.forEach { $0.isHidden = true } }
-        let spy = RenderSessionReadingSpy(drawing: snapshotImage(.magenta))
+        let spy = RenderSessionSpy(drawing: snapshotImage(.magenta))
         let (editor, element) = try makeEditor(renderSessions: spy)
         editor.selectElement(element)
         let canvas = try showCanvas(of: editor, in: &windows)
@@ -51,7 +51,7 @@ final class ImageRenderSessionRouteTests: XCTestCase {
     /// ツールバーの削除も、確認のあと削除の前に、管理役から受け取った画像でスナップショットを作る。
     @MainActor
     func test_toolbarDelete_snapshotsBeforeDeletion() throws {
-        let spy = RenderSessionReadingSpy(drawing: snapshotImage(.magenta))
+        let spy = RenderSessionSpy(drawing: snapshotImage(.magenta))
         let (editor, element) = try makeEditor(renderSessions: spy)
         editor.selectElement(element)
         let frame = element.frame
@@ -85,7 +85,7 @@ final class ImageRenderSessionRouteTests: XCTestCase {
     func test_imageListRail_usesOriginalFromRenderSessions() throws {
         var windows: [UIWindow] = []
         defer { windows.forEach { $0.isHidden = true } }
-        let spy = RenderSessionReadingSpy(original: snapshotImage(.blue))
+        let spy = RenderSessionSpy(original: snapshotImage(.blue))
         let (editor, element) = try makeEditor(renderSessions: spy)
         let second = try makeImageElement()
         editor.project.addElement(second)
@@ -102,7 +102,7 @@ final class ImageRenderSessionRouteTests: XCTestCase {
     @MainActor
     func test_aiRequests_useOriginalFromRenderSessions() async throws {
         let processor = ReceivedImageRecorder()
-        let spy = RenderSessionReadingSpy(original: snapshotImage(.blue))
+        let spy = RenderSessionSpy(original: snapshotImage(.blue))
         let (editor, element) = try makeEditor(renderSessions: spy, dependencies: .live(
             imageUpscaleUseCase: ImageUpscaleUseCase(lanczosPipeline: processor, realESRGANPipeline: processor),
             makeBackgroundRemover: { processor }
@@ -129,7 +129,7 @@ final class ImageRenderSessionRouteTests: XCTestCase {
     @MainActor
     func test_filterThumbnail_usesRenderSessions() async throws {
         let service = FixedPreviewService(output: snapshotImage(.green))
-        let spy = RenderSessionReadingSpy(original: snapshotImage(.blue), service: service)
+        let spy = RenderSessionSpy(original: snapshotImage(.blue), service: service)
         let (editor, element) = try makeEditor(renderSessions: spy)
         let panels = ElementViewModel(editorViewModel: editor)
         editor.selectElement(element)
@@ -147,7 +147,7 @@ final class ImageRenderSessionRouteTests: XCTestCase {
     /// 手動背景除去は、元画像が取れないときにだけ、そのあとで表示画像を受け取る（今の評価の順序）。
     @MainActor
     func test_manualRemoval_fallsBackToDisplayAfterOriginal() throws {
-        let spy = RenderSessionReadingSpy(original: nil, display: snapshotImage(.blue))
+        let spy = RenderSessionSpy(original: nil, display: snapshotImage(.blue))
         let element = try makeImageElement()
 
         let viewModel = ManualBackgroundRemovalViewModel(
@@ -162,7 +162,7 @@ final class ImageRenderSessionRouteTests: XCTestCase {
     /// 手動背景除去は、元画像が取れれば表示画像を求めない。
     @MainActor
     func test_manualRemoval_usesOriginalWithoutDisplay() throws {
-        let spy = RenderSessionReadingSpy(original: snapshotImage(.green), display: snapshotImage(.blue))
+        let spy = RenderSessionSpy(original: snapshotImage(.green), display: snapshotImage(.blue))
         let element = try makeImageElement()
 
         let viewModel = ManualBackgroundRemovalViewModel(
@@ -177,7 +177,7 @@ final class ImageRenderSessionRouteTests: XCTestCase {
     /// 背景ぼかしマスクの編集は、管理役から受け取った元画像で編集する。
     @MainActor
     func test_blurMask_usesOriginalFromRenderSessions() throws {
-        let spy = RenderSessionReadingSpy(original: snapshotImage(.green), display: snapshotImage(.blue))
+        let spy = RenderSessionSpy(original: snapshotImage(.green), display: snapshotImage(.blue))
         let element = try makeImageElement()
 
         let viewModel = BackgroundBlurMaskEditViewModel(
@@ -195,7 +195,7 @@ final class ImageRenderSessionRouteTests: XCTestCase {
     /// 偽物の管理役を持つエディタと、プロジェクトに置いた画像要素。
     @MainActor
     private func makeEditor(
-        renderSessions: RenderSessionReadingSpy,
+        renderSessions: RenderSessionSpy,
         dependencies: EditorDependencies? = nil
     ) throws -> (EditorViewModel, ImageElement) {
         let element = try makeImageElement()
@@ -216,7 +216,7 @@ final class ImageRenderSessionRouteTests: XCTestCase {
     /// 削除の前に問い合わせたかを調べるため、キャンバスに描く画像の問い合わせごとに、その時点で要素がプロジェクトにあったかを記録する。
     @MainActor
     private func recordMembership(of element: ImageElement, in editor: EditorViewModel,
-                                  spy: RenderSessionReadingSpy) -> MembershipLog {
+                                  spy: RenderSessionSpy) -> MembershipLog {
         let log = MembershipLog()
         spy.onRequest = { [weak editor] request, requested in
             guard request.kind == .drawingImage, requested === element, let editor else { return }
@@ -271,7 +271,7 @@ final class ImageRenderSessionRouteTests: XCTestCase {
     @MainActor
     private func assertRequest(
         _ name: String,
-        spy: RenderSessionReadingSpy,
+        spy: RenderSessionSpy,
         element: ImageElement,
         finished processing: Published<Bool>.Publisher,
         file: StaticString = #filePath,

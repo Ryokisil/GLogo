@@ -116,7 +116,7 @@ private struct Counts: Equatable {
 @MainActor
 private final class ScreenFactoryCounter {
     /// 画面に渡す管理役。元画像を返すので、手動背景除去は表示画像を求めない。
-    let renderSessions = RenderSessionReadingSpy(original: snapshotImage(.red))
+    let renderSessions = RenderSessionSpy(original: snapshotImage(.red))
     private var factoryCounts = Counts()
 
     var counts: Counts {

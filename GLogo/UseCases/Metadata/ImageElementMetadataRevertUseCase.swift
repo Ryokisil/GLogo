@@ -22,15 +22,16 @@ struct ImageElementMetadataRevertUseCase {
     }
 
     /// 画像要素を初期状態へ戻し、関連するメタデータ履歴も巻き戻す
+    ///
+    /// 表示画像と元画像の失効は、Revert のイベントが示し、履歴が適用の直後にエディタの管理役で行う（第19回）。
+    /// 調整値の初期化に伴う Model の中の失効（`resetAdjustmentsToInitialState()`）は、第20回まで残す。
     /// - Parameters:
     ///   - imageElement: リバート対象の画像要素
     /// - Returns: メタデータ履歴のリバート結果。対象履歴がない場合は `.noChanges`
     @discardableResult
     func revertToInitialState(_ imageElement: ImageElement) -> MetadataOperationResult {
         imageElement.resetAdjustmentsToInitialState()
-        let result = revertMetadataIfNeeded(for: imageElement)
-        imageElement.clearRevertImageCaches()
-        return result
+        return revertMetadataIfNeeded(for: imageElement)
     }
 
     /// 画像要素のメタデータ編集履歴有無を確認する

@@ -10,11 +10,11 @@ final class FilterPanelViewModel: ObservableObject {
     private let edits: ImageEditUseCase
     /// 調整と共有する描画の更新。共有関係をテストで照合するため内部公開にしている。
     let imageRenderRefreshUseCase: ImageRenderRefreshUseCase
-    private let imageEditingSessionUseCase = ImageEditingSessionUseCase()
+    private let imageEditingSessionUseCase: ImageEditingSessionUseCase
     private var selectionObservation: AnyCancellable?
-    private let filterPresetUseCase = FilterPresetUseCase()
-    /// サムネイルの元画像と描画サービスの受け取り先
-    private let renderSessions: any ImageRenderSessionReading
+    private let filterPresetUseCase: FilterPresetUseCase
+    /// エディタの管理役。サムネイルの元画像と描画サービスを受け取り、編集中の切り替えと表示画像の失効・書き込みを求める
+    private let renderSessions: any ImageRenderSessionManaging
 
     var appliedFilterPresetId: String? { imageElement?.appliedFilterPresetId }
 
@@ -22,12 +22,14 @@ final class FilterPanelViewModel: ObservableObject {
     init(
         edits: ImageEditUseCase,
         refresh: ImageRenderRefreshUseCase,
-        renderSessions: any ImageRenderSessionReading,
+        renderSessions: any ImageRenderSessionManaging,
         selection: AnyPublisher<LogoElement?, Never>
     ) {
         self.edits = edits
         imageRenderRefreshUseCase = refresh
         self.renderSessions = renderSessions
+        imageEditingSessionUseCase = ImageEditingSessionUseCase(renderSessions: renderSessions)
+        filterPresetUseCase = FilterPresetUseCase(renderSessions: renderSessions)
         selectionObservation = selection.sink { [weak self] element in
             self?.updateSelection(element as? ImageElement)
         }
@@ -73,7 +75,9 @@ final class FilterPanelViewModel: ObservableObject {
         edits.updateImageElement(imageElement)
         objectWillChange.send()
 
-        imageRenderRefreshUseCase.scheduleFullQualityRefresh(for: imageElement, edits: edits) { [weak self] in
+        imageRenderRefreshUseCase.scheduleFullQualityRefresh(
+            for: imageElement, edits: edits, renderSessions: renderSessions
+        ) { [weak self] in
             guard let self, self.imageElement === imageElement else { return }
             self.edits.updateImageElement(imageElement)
             self.objectWillChange.send()

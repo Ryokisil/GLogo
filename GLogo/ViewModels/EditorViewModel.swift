@@ -94,7 +94,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     @Published private(set) var editingTextElement: TextElement?
     
     /// 操作履歴の管理
-    private lazy var history = EditorHistory(project: project)
+    private lazy var history = EditorHistory(project: project, renderSessions: managedRenderSessions)
 
     /// 確定操作のイベント生成を機能別に委譲する。各 UseCase は親を非所有で参照する。
     private(set) lazy var textEdits = TextEditUseCase(target: self)
@@ -112,15 +112,20 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     )
     /// キャンバスのジェスチャーの開始値と未確定の変形を持つ。`ElementViewModel.transform` と同じものを共有する。
     private(set) lazy var transform = ElementTransformViewModel(
-        editor: self, selection: $selectedElement.eraseToAnyPublisher()
+        editor: self, renderSessions: managedRenderSessions, selection: $selectedElement.eraseToAnyPublisher()
     )
     private var transformObservation: AnyCancellable?
     /// ここから開く画面へ渡す外部処理。画面ごとに作るものは、開くたびに呼ぶ関数として持つ。
     let dependencies: EditorDependencies
     /// 画像要素の描画のセッションの管理役。寿命はエディタと同じ。
+    /// 読み取りと状態の変更（履歴・編集パネル・描画の更新・メモリ警告）は、この1つのインスタンスを使う。
+    /// ViewModel が子へ渡すためのもので、View は読み取り用の `renderSessions` を使う。
+    let managedRenderSessions: any ImageRenderSessionManaging
+
+    /// View へ渡す読み取り用の管理役（`managedRenderSessions` と同じインスタンス）。
     /// キャンバス・削除エフェクト・画像一覧・AI・編集画面・フィルターのサムネイルは、ここから画像を受け取る。
     /// 保存は受付で元画像を受け取るときだけ使い、選定・加工・合成は保存の範囲から受け取る。
-    let renderSessions: any ImageRenderSessionReading
+    var renderSessions: any ImageRenderSessionReading { managedRenderSessions }
     private let backgroundRemovalUseCase: any BackgroundRemovalProcessing
     private let imageUpscaleUseCase: ImageUpscaleUseCase
     private var aiToolsObservation: AnyCancellable?
@@ -158,16 +163,17 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     /// 新しいプロジェクトでエディタを初期化
     /// - Parameters:
     ///   - dependencies: 保存・インポート・AI の外部処理。実装は Composition Root が組み立てる
-    ///   - renderSessions: 描画のセッションの管理役。エディタごとに新しく作る。テストでは、問い合わせを記録する偽物を渡せる
+    ///   - renderSessions: 描画のセッションの管理役（読み取りと状態の変更の両方）。エディタごとに新しく作る。
+    ///     テストでは、問い合わせを記録する偽物を渡せる
     init(
         project: LogoProject = LogoProject(),
         dependencies: EditorDependencies,
-        renderSessions: any ImageRenderSessionReading = ImageRenderSessionStore(),
+        renderSessions: any ImageRenderSessionManaging = ImageRenderSessionStore(),
         viewportSizeProvider: @escaping @MainActor () -> CGSize = { UIScreen.main.bounds.size }
     ) {
         self.project = project
         self.dependencies = dependencies
-        self.renderSessions = renderSessions
+        self.managedRenderSessions = renderSessions
         // AI ツールと共有する背景除去は、従来どおりエディタの初期化時に1つ作る。
         self.backgroundRemovalUseCase = dependencies.makeBackgroundRemover()
         self.imageUpscaleUseCase = dependencies.imageUpscaleUseCase
@@ -177,7 +183,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         imageSaveViewModel = ImageSaveViewModel(saver: dependencies.photoLibrarySaver)
         
         // 履歴管理の初期化
-        history = EditorHistory(project: project)
+        history = EditorHistory(project: project, renderSessions: managedRenderSessions)
 
         // 既存の画面は親を購読するため、保存状態を複製せず変更通知だけを転送する。
         imageSaveObservation = imageSaveViewModel.objectWillChange.sink { [weak self] in
@@ -208,7 +214,9 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
 
     /// メモリ警告を受けた際にキャッシュを解放する
     private func handleMemoryWarning() {
-        ImageCacheReleaseUseCase.releaseCaches(in: project.elements, defaultService: dependencies.previewService)
+        ImageCacheReleaseUseCase.releaseCaches(
+            in: project.elements, defaultService: dependencies.previewService, renderSessions: managedRenderSessions
+        )
     }
     
     // MARK: - プロジェクト操作
@@ -415,7 +423,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
         }
 
         let event = ImageRevertedToInitialStateEvent(element: imageElement, metadataStore: dependencies.metadataStore)
-        imageElement.endEditing()
+        managedRenderSessions.endEditing(imageElement)
         applyEventAndRefreshSelection(event, elementId: imageElement.id)
     }
 
@@ -442,7 +450,9 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
             history.recordAndApply(event)
         }
         // 古い描画の完了を待たず、加工後の画像を確定品質で表示する。
-        project.element(for: elementId, as: ImageElement.self)?.endEditing()
+        if let image = project.element(for: elementId, as: ImageElement.self) {
+            managedRenderSessions.endEditing(image)
+        }
         if selectsResult || selectedElement?.id == elementId {
             if let updatedElement = project.elements.first(where: { $0.id == elementId }) {
                 selectedElement = updatedElement
@@ -466,13 +476,20 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     
     // MARK: - 編集履歴操作
     
+    /// 選択中の画像要素の編集中を、管理役で終える（Undo・Redo のあと）。
+    private func endEditingSelectedImage() {
+        if let image = selectedElement as? ImageElement {
+            managedRenderSessions.endEditing(image)
+        }
+    }
+
     /// アンドゥ操作
     func undo() {
         // ボタンの無効化に加えて、キーボードショートカットや直接の呼び出しでも止めるため、`canUndo` で判定する。
         if canUndo {
             history.undo()
             // 履歴移動で描画要求が失効しても、選択中のプレビュー状態を残さない。
-            (selectedElement as? ImageElement)?.endEditing()
+            endEditingSelectedImage()
 
             // 選択要素の状態を適切に更新
             if let selectedElement = selectedElement {
@@ -495,7 +512,7 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     func redo() {
         if canRedo {
             history.redo()
-            (selectedElement as? ImageElement)?.endEditing()
+            endEditingSelectedImage()
 
             // リドゥ後、選択要素の状態を適切に更新
             if let selectedElement = selectedElement {
@@ -574,8 +591,8 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     private func prepareForImageSave() {
         transform.interruptManipulation()
 
-        for element in project.elements {
-            (element as? ImageElement)?.endEditing()
+        for case let image as ImageElement in project.elements {
+            managedRenderSessions.endEditing(image)
         }
     }
     

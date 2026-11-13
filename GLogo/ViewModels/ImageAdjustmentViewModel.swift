@@ -10,20 +10,25 @@ final class ImageAdjustmentViewModel: ObservableObject {
     private let edits: ImageEditUseCase
     /// フィルターと共有する描画の更新。共有関係をテストで照合するため内部公開にしている。
     let imageRenderRefreshUseCase: ImageRenderRefreshUseCase
-    private let imageEditingSessionUseCase = ImageEditingSessionUseCase()
+    /// 編集中の切り替えと表示画像の失効を求めるエディタの管理役
+    private let renderSessions: any ImageRenderSessionControlling
+    private let imageEditingSessionUseCase: ImageEditingSessionUseCase
     private var selectionObservation: AnyCancellable?
     private let imageAdjustmentUseCase = ImageAdjustmentUseCase()
     private let metadataEditUseCase: ImageMetadataEditUseCase
 
-    /// refresh は画像調整とフィルターで共有する。selection は MainActor 上で同期通知する。
+    /// refresh は画像調整とフィルターで共有する。renderSessions はエディタが持つ管理役。selection は MainActor 上で同期通知する。
     init(
         edits: ImageEditUseCase,
         refresh: ImageRenderRefreshUseCase,
+        renderSessions: any ImageRenderSessionControlling,
         metadataEdits: ImageMetadataEditUseCase,
         selection: AnyPublisher<LogoElement?, Never>
     ) {
         self.edits = edits
         imageRenderRefreshUseCase = refresh
+        self.renderSessions = renderSessions
+        imageEditingSessionUseCase = ImageEditingSessionUseCase(renderSessions: renderSessions)
         metadataEditUseCase = metadataEdits
         selectionObservation = selection.sink { [weak self] element in
             self?.updateSelection(element as? ImageElement)
@@ -144,7 +149,8 @@ final class ImageAdjustmentViewModel: ObservableObject {
 
         guard imageRenderRefreshUseCase.applyToneCurvePreview(
             newData,
-            to: imageElement
+            to: imageElement,
+            renderSessions: renderSessions
         ) else { return }
 
         imageRenderRefreshUseCase.cancelScheduledRefresh()
@@ -162,7 +168,7 @@ final class ImageAdjustmentViewModel: ObservableObject {
             update: { [weak self] in
                 guard let self, self.imageElement === imageElement else { return }
                 imageEditingSessionUseCase.endEditing(imageElement)
-                imageElement.cachedImage = nil
+                renderSessions.invalidate(.rendered, of: imageElement)
                 self.edits.updateImageElement(imageElement)
             }
         )

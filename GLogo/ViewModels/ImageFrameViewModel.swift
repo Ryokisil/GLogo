@@ -25,7 +25,7 @@ final class ImageFrameViewModel: ObservableObject {
     private var selectionObservation: AnyCancellable?
     private var frameColorStartState: UIColor?
     private let imageAdjustmentUseCase = ImageAdjustmentUseCase()
-    private let imageEditingSessionUseCase = ImageEditingSessionUseCase()
+    private let imageEditingSessionUseCase: ImageEditingSessionUseCase
     /// プレビューの反映に使う描画の更新。調整・フィルターとは別のものを受け取る。共有関係をテストで照合するため内部公開にしている。
     let imageRenderRefreshUseCase: ImageRenderRefreshUseCase
     private let metadataEditUseCase: ImageMetadataEditUseCase
@@ -33,16 +33,19 @@ final class ImageFrameViewModel: ObservableObject {
     /// - Parameters:
     ///   - editor: 確定操作を提供する UseCase。適用先の編集セッションは UseCase が非所有で参照する。
     ///   - refresh: フレーム用の描画の更新。調整・フィルターと共有しない
+    ///   - renderSessions: 編集中の切り替えを求めるエディタの管理役
     ///   - metadataEdits: フレーム値のメタデータ記録
     ///   - selection: 現在値と以後の選択を MainActor 上で同期通知する Publisher。
     init(
         editor: any ImageFrameEditApplying,
         refresh: ImageRenderRefreshUseCase,
+        renderSessions: any ImageRenderSessionControlling,
         metadataEdits: ImageMetadataEditUseCase,
         selection: AnyPublisher<LogoElement?, Never>
     ) {
         self.editor = editor
         imageRenderRefreshUseCase = refresh
+        imageEditingSessionUseCase = ImageEditingSessionUseCase(renderSessions: renderSessions)
         metadataEditUseCase = metadataEdits
         selectionObservation = selection.sink { [weak self] element in
             self?.updateSelection(element as? ImageElement)

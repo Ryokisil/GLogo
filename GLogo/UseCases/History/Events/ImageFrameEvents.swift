@@ -1,4 +1,5 @@
 // 画像要素のフレームと角丸の変更を記録する履歴イベント。
+// 表示画像の失効は、各イベントが `ImageAppearanceEvent` として示し、履歴が適用・巻き戻しの直後に行う。
 
 import UIKit
 
@@ -36,7 +37,7 @@ struct RGBAColorSnapshot {
 }
 
 /// 画像フレーム表示変更イベント
-struct ImageShowFrameChangedEvent: EditorEvent {
+struct ImageShowFrameChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldValue: Bool
     let newValue: Bool
@@ -48,20 +49,18 @@ struct ImageShowFrameChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.showFrame = newValue
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.showFrame = oldValue
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像フレーム色変更イベント
-struct ImageFrameColorChangedEvent: EditorEvent {
+struct ImageFrameColorChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldColor: UIColor
     let newColor: UIColor
@@ -73,20 +72,18 @@ struct ImageFrameColorChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameColor = newColor
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameColor = oldColor
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像フレーム太さ変更イベント
-struct ImageFrameWidthChangedEvent: EditorEvent {
+struct ImageFrameWidthChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldWidth: CGFloat
     let newWidth: CGFloat
@@ -98,20 +95,18 @@ struct ImageFrameWidthChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameWidth = newWidth
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameWidth = oldWidth
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像フレームスタイル変更イベント
-struct ImageFrameStyleChangedEvent: EditorEvent {
+struct ImageFrameStyleChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldStyle: ImageFrameStyle
     let newStyle: ImageFrameStyle
@@ -123,20 +118,18 @@ struct ImageFrameStyleChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameStyle = newStyle
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.frameStyle = oldStyle
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像フレームの表示・スタイル・色をまとめて変更するイベント
-struct ImageFrameAppearanceChangedEvent: EditorEvent {
+struct ImageFrameAppearanceChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldShowFrame: Bool
     let newShowFrame: Bool
@@ -172,7 +165,6 @@ struct ImageFrameAppearanceChangedEvent: EditorEvent {
             element.showFrame = newShowFrame
             element.frameStyle = newFrameStyle
             element.frameColor = newFrameColor.uiColor
-            element.invalidateRenderedImageCache()
         }
     }
 
@@ -181,13 +173,12 @@ struct ImageFrameAppearanceChangedEvent: EditorEvent {
             element.showFrame = oldShowFrame
             element.frameStyle = oldFrameStyle
             element.frameColor = oldFrameColor.uiColor
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像角丸設定変更イベント
-struct ImageRoundedCornersChangedEvent: EditorEvent {
+struct ImageRoundedCornersChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let wasRounded: Bool
     let isRounded: Bool
@@ -206,7 +197,6 @@ struct ImageRoundedCornersChangedEvent: EditorEvent {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.roundedCorners = isRounded
             element.cornerRadius = newRadius
-            element.invalidateRenderedImageCache()
         }
     }
 
@@ -214,7 +204,6 @@ struct ImageRoundedCornersChangedEvent: EditorEvent {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.roundedCorners = wasRounded
             element.cornerRadius = oldRadius
-            element.invalidateRenderedImageCache()
         }
     }
 }

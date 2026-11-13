@@ -43,7 +43,7 @@ final class ImageRenderRefreshUseCaseTests: XCTestCase {
         for index in 0..<2 {
             let started = expectation(description: "描画開始 \(index)")
             renderer.onStart = { started.fulfill() }
-            refresh.scheduleFullQualityRefresh(for: image, edits: editor.imageEdits) { updates += 1 }
+            refresh.scheduleFullQualityRefresh(for: image, edits: editor.imageEdits, renderSessions: editor.managedRenderSessions) { updates += 1 }
             scheduler.runPending()
             await fulfillment(of: [started], timeout: 1)
         }
@@ -70,7 +70,7 @@ final class ImageRenderRefreshUseCaseTests: XCTestCase {
         defer { withExtendedLifetime(editor) {} }
         let started = expectation(description: "描画開始")
         renderer.onStart = { started.fulfill() }
-        refresh?.scheduleFullQualityRefresh(for: image, edits: editor.imageEdits) { XCTFail("解放後は更新しない") }
+        refresh?.scheduleFullQualityRefresh(for: image, edits: editor.imageEdits, renderSessions: editor.managedRenderSessions) { XCTFail("解放後は更新しない") }
         scheduler.runPending()
         await fulfillment(of: [started], timeout: 1)
         refresh = nil

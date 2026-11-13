@@ -27,6 +27,7 @@ final class ImageFrameViewModelTests: XCTestCase {
         let frame = ImageFrameViewModel(
             editor: editor.imageEdits,
             refresh: editor.dependencies.makeImageRenderRefresh(),
+            renderSessions: editor.managedRenderSessions,
             metadataEdits: ImageMetadataEditUseCase(store: editor.dependencies.metadataStore),
             selection: editor.$selectedElement.eraseToAnyPublisher()
         )

@@ -1,11 +1,12 @@
 // 画像要素の調整値・ティント・背景ぼかし・フィルタープリセットの変更を記録する履歴イベント。
+// 表示画像の失効は、各イベントが `ImageAppearanceEvent` として示し、履歴が適用・巻き戻しの直後に行う。
 
 import UIKit
 
 // MARK: - 調整値
 
 /// 画像彩度変更イベント
-struct ImageSaturationChangedEvent: EditorEvent {
+struct ImageSaturationChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldSaturation: CGFloat
     let newSaturation: CGFloat
@@ -17,20 +18,18 @@ struct ImageSaturationChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.saturationAdjustment = newSaturation
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.saturationAdjustment = oldSaturation
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像明度変更イベント
-struct ImageBrightnessChangedEvent: EditorEvent {
+struct ImageBrightnessChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldBrightness: CGFloat
     let newBrightness: CGFloat
@@ -42,20 +41,18 @@ struct ImageBrightnessChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.brightnessAdjustment = newBrightness
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.brightnessAdjustment = oldBrightness
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像コントラスト変更イベント
-struct ImageContrastChangedEvent: EditorEvent {
+struct ImageContrastChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldContrast: CGFloat
     let newContrast: CGFloat
@@ -67,20 +64,18 @@ struct ImageContrastChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.contrastAdjustment = newContrast
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.contrastAdjustment = oldContrast
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像ハイライト変更イベント
-struct ImageHighlightsChangedEvent: EditorEvent {
+struct ImageHighlightsChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldHighlights: CGFloat
     let newHighlights: CGFloat
@@ -92,20 +87,18 @@ struct ImageHighlightsChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.highlightsAdjustment = newHighlights
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.highlightsAdjustment = oldHighlights
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像シャドウ変更イベント
-struct ImageShadowsChangedEvent: EditorEvent {
+struct ImageShadowsChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldShadows: CGFloat
     let newShadows: CGFloat
@@ -117,20 +110,18 @@ struct ImageShadowsChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.shadowsAdjustment = newShadows
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.shadowsAdjustment = oldShadows
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像黒レベル変更イベント
-struct ImageBlacksChangedEvent: EditorEvent {
+struct ImageBlacksChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldBlacks: CGFloat
     let newBlacks: CGFloat
@@ -142,20 +133,18 @@ struct ImageBlacksChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.blacksAdjustment = newBlacks
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.blacksAdjustment = oldBlacks
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像白レベル変更イベント
-struct ImageWhitesChangedEvent: EditorEvent {
+struct ImageWhitesChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldWhites: CGFloat
     let newWhites: CGFloat
@@ -167,20 +156,18 @@ struct ImageWhitesChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.whitesAdjustment = newWhites
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.whitesAdjustment = oldWhites
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像色温度変更イベント
-struct ImageWarmthChangedEvent: EditorEvent {
+struct ImageWarmthChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldWarmth: CGFloat
     let newWarmth: CGFloat
@@ -192,20 +179,18 @@ struct ImageWarmthChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.warmthAdjustment = newWarmth
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.warmthAdjustment = oldWarmth
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像ヴィブランス変更イベント
-struct ImageVibranceChangedEvent: EditorEvent {
+struct ImageVibranceChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldVibrance: CGFloat
     let newVibrance: CGFloat
@@ -217,20 +202,18 @@ struct ImageVibranceChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.vibranceAdjustment = newVibrance
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.vibranceAdjustment = oldVibrance
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像色相変更イベント
-struct ImageHueChangedEvent: EditorEvent {
+struct ImageHueChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldHue: CGFloat
     let newHue: CGFloat
@@ -242,20 +225,18 @@ struct ImageHueChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.hueAdjustment = newHue
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.hueAdjustment = oldHue
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像シャープネス変更イベント
-struct ImageSharpnessChangedEvent: EditorEvent {
+struct ImageSharpnessChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldSharpness: CGFloat
     let newSharpness: CGFloat
@@ -267,20 +248,18 @@ struct ImageSharpnessChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.sharpnessAdjustment = newSharpness
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.sharpnessAdjustment = oldSharpness
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像ガウシアンブラー変更イベント
-struct ImageGaussianBlurChangedEvent: EditorEvent {
+struct ImageGaussianBlurChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldRadius: CGFloat
     let newRadius: CGFloat
@@ -292,20 +271,18 @@ struct ImageGaussianBlurChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.gaussianBlurRadius = newRadius
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.gaussianBlurRadius = oldRadius
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像ビネット変更イベント
-struct ImageVignetteChangedEvent: EditorEvent {
+struct ImageVignetteChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldIntensity: CGFloat
     let newIntensity: CGFloat
@@ -317,20 +294,18 @@ struct ImageVignetteChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.vignetteAdjustment = newIntensity
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.vignetteAdjustment = oldIntensity
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像ブルーム変更イベント
-struct ImageBloomChangedEvent: EditorEvent {
+struct ImageBloomChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldIntensity: CGFloat
     let newIntensity: CGFloat
@@ -342,20 +317,18 @@ struct ImageBloomChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.bloomAdjustment = newIntensity
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.bloomAdjustment = oldIntensity
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像グレイン変更イベント
-struct ImageGrainChangedEvent: EditorEvent {
+struct ImageGrainChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldIntensity: CGFloat
     let newIntensity: CGFloat
@@ -367,20 +340,18 @@ struct ImageGrainChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.grainAdjustment = newIntensity
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.grainAdjustment = oldIntensity
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像フェード変更イベント
-struct ImageFadeChangedEvent: EditorEvent {
+struct ImageFadeChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldIntensity: CGFloat
     let newIntensity: CGFloat
@@ -392,20 +363,18 @@ struct ImageFadeChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.fadeAdjustment = newIntensity
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.fadeAdjustment = oldIntensity
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 画像色収差変更イベント
-struct ImageChromaticAberrationChangedEvent: EditorEvent {
+struct ImageChromaticAberrationChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldIntensity: CGFloat
     let newIntensity: CGFloat
@@ -417,14 +386,12 @@ struct ImageChromaticAberrationChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.chromaticAberrationAdjustment = newIntensity
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.chromaticAberrationAdjustment = oldIntensity
-            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -432,7 +399,7 @@ struct ImageChromaticAberrationChangedEvent: EditorEvent {
 // MARK: - ティント
 
 /// 画像ティントカラー変更イベント
-struct ImageTintColorChangedEvent: EditorEvent {
+struct ImageTintColorChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldColor: UIColor?
     let newColor: UIColor?
@@ -447,7 +414,6 @@ struct ImageTintColorChangedEvent: EditorEvent {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.tintColor = newColor
             element.tintIntensity = newIntensity
-            element.invalidateRenderedImageCache()
         }
     }
 
@@ -455,7 +421,6 @@ struct ImageTintColorChangedEvent: EditorEvent {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.tintColor = oldColor
             element.tintIntensity = oldIntensity
-            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -463,7 +428,7 @@ struct ImageTintColorChangedEvent: EditorEvent {
 // MARK: - 背景ぼかし
 
 /// 背景ぼかしマスク変更イベント
-struct ImageBackgroundBlurMaskChangedEvent: EditorEvent {
+struct ImageBackgroundBlurMaskChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldMaskData: Data?
     let newMaskData: Data?
@@ -479,20 +444,18 @@ struct ImageBackgroundBlurMaskChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.backgroundBlurMaskData = newMaskData
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.backgroundBlurMaskData = oldMaskData
-            element.invalidateRenderedImageCache()
         }
     }
 }
 
 /// 背景ぼかし半径変更イベント
-struct ImageBackgroundBlurRadiusChangedEvent: EditorEvent {
+struct ImageBackgroundBlurRadiusChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldRadius: CGFloat
     let newRadius: CGFloat
@@ -504,14 +467,12 @@ struct ImageBackgroundBlurRadiusChangedEvent: EditorEvent {
     func apply(to project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.backgroundBlurRadius = newRadius
-            element.invalidateRenderedImageCache()
         }
     }
 
     func revert(from project: LogoProject) {
         if let element = project.element(for: elementId, as: ImageElement.self) {
             element.backgroundBlurRadius = oldRadius
-            element.invalidateRenderedImageCache()
         }
     }
 }
@@ -519,7 +480,7 @@ struct ImageBackgroundBlurRadiusChangedEvent: EditorEvent {
 // MARK: - フィルタープリセット
 
 /// フィルタープリセット変更イベント
-struct FilterPresetChangedEvent: EditorEvent {
+struct FilterPresetChangedEvent: ImageAppearanceEvent {
     let elementId: UUID
     let oldRecipe: FilterRecipe?
     let newRecipe: FilterRecipe?
@@ -538,13 +499,11 @@ struct FilterPresetChangedEvent: EditorEvent {
         guard let element = project.element(for: elementId, as: ImageElement.self) else { return }
         element.appliedFilterRecipe = newRecipe
         element.appliedFilterPresetId = newPresetId
-        element.invalidateRenderedImageCache()
     }
 
     func revert(from project: LogoProject) {
         guard let element = project.element(for: elementId, as: ImageElement.self) else { return }
         element.appliedFilterRecipe = oldRecipe
         element.appliedFilterPresetId = oldPresetId
-        element.invalidateRenderedImageCache()
     }
 }

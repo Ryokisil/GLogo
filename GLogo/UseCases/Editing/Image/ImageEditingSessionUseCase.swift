@@ -8,8 +8,17 @@
 
 import Foundation
 
-/// 画像要素の編集中描画モードを切り替えるユースケース
+/// 画像要素の編集中描画モードを切り替えるユースケース。切り替えはエディタの管理役に求める。
+@MainActor
 struct ImageEditingSessionUseCase {
+    private let renderSessions: any ImageRenderSessionControlling
+
+    /// - Parameters:
+    ///   - renderSessions: エディタの管理役（エディタが読み取りに使うものと同じインスタンス）
+    init(renderSessions: any ImageRenderSessionControlling) {
+        self.renderSessions = renderSessions
+    }
+
     /// ジェスチャー操作中の描画モードを適用する
     /// - Parameters:
     ///   - imageElement: 対象画像要素
@@ -17,12 +26,12 @@ struct ImageEditingSessionUseCase {
     /// - Returns: なし
     func applyManipulationState(to imageElement: ImageElement, ended: Bool) {
         if ended {
-            imageElement.endEditing()
+            renderSessions.endEditing(imageElement)
             return
         }
 
         // 移動・拡縮・回転は頻度が高い操作のため、調整差分ではなく追従性を優先する。
-        imageElement.startEditing()
+        renderSessions.startEditing(imageElement)
     }
 
     /// 画像調整ディスクリプタに応じて描画モードを切り替える
@@ -35,9 +44,9 @@ struct ImageEditingSessionUseCase {
         descriptor: ImageAdjustmentDescriptor
     ) {
         if descriptor.usesInstantPreviewWhileEditing {
-            imageElement.startEditing()
+            renderSessions.startEditing(imageElement)
         } else {
-            imageElement.endEditing()
+            renderSessions.endEditing(imageElement)
         }
     }
 
@@ -46,7 +55,7 @@ struct ImageEditingSessionUseCase {
     ///   - imageElement: 対象画像要素
     /// - Returns: なし
     func beginEditing(_ imageElement: ImageElement) {
-        imageElement.startEditing()
+        renderSessions.startEditing(imageElement)
     }
 
     /// 編集中プレビューを終了する
@@ -54,6 +63,6 @@ struct ImageEditingSessionUseCase {
     ///   - imageElement: 対象画像要素
     /// - Returns: なし
     func endEditing(_ imageElement: ImageElement) {
-        imageElement.endEditing()
+        renderSessions.endEditing(imageElement)
     }
 }

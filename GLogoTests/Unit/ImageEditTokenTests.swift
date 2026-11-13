@@ -34,9 +34,10 @@ final class ImageEditTokenTests: XCTestCase {
         }
     }
 
+    @MainActor
     func test_historyRevision_movesOnlyAcrossRestoration() {
         let project = LogoProject()
-        let history = EditorHistory(project: project)
+        let history = EditorHistory(project: project, renderSessions: ImageRenderSessionStore())
         let start = history.restorationRevision
         XCTAssertFalse(history.undo())
         XCTAssertFalse(history.redo())

@@ -3,6 +3,10 @@
 import Foundation
 
 /// エディタの履歴を管理するクラス
+///
+/// イベントの適用・巻き戻しの直後に、イベントが示す描画キャッシュをエディタの管理役で失効させる。
+/// 失効は同じ同期の呼び出しの中で行い、タスクなどへ遅らせない（次の描画より前に古い表示画像を消すため）。
+@MainActor
 class EditorHistory {
     /// 履歴の移動をまたぐ非同期要求を失効させる。Undo／Redo しても巻き戻さない。
     private(set) var restorationRevision: UInt = 0
@@ -19,9 +23,13 @@ class EditorHistory {
     /// プロジェクト参照
     private var project: LogoProject?
 
+    /// 描画キャッシュを失効させるエディタの管理役。エディタが読み取りに使うものと同じインスタンス。
+    private let renderSessions: any ImageRenderSessionControlling
+
     /// イニシャライザ
-    init(project: LogoProject?, maxHistoryCount: Int = 100) {
+    init(project: LogoProject?, renderSessions: any ImageRenderSessionControlling, maxHistoryCount: Int = 100) {
         self.project = project
+        self.renderSessions = renderSessions
         self.maxHistoryCount = maxHistoryCount
     }
 
@@ -37,6 +45,7 @@ class EditorHistory {
 
         // イベントをプロジェクトに適用
         event.apply(to: project)
+        invalidateRenderCaches(event.renderInvalidationsAfterApply, in: project)
 
         // イベントスタックに追加
         eventStack.append(event)
@@ -62,6 +71,7 @@ class EditorHistory {
 
         // イベントの効果を元に戻す
         lastEvent.revert(from: project)
+        invalidateRenderCaches(lastEvent.renderInvalidationsAfterRevert, in: project)
 
         // 取り消し履歴に追加
         undoneEventStack.append(lastEvent)
@@ -79,6 +89,7 @@ class EditorHistory {
 
         // 取り消したイベントを再適用
         lastUndoneEvent.apply(to: project)
+        invalidateRenderCaches(lastUndoneEvent.renderInvalidationsAfterApply, in: project)
 
         // イベント履歴に追加
         eventStack.append(lastUndoneEvent)
@@ -116,5 +127,13 @@ class EditorHistory {
     /// 履歴の説明を取得（UIに表示可能）
     func getHistoryDescriptions() -> [String] {
         return eventStack.map { $0.description }
+    }
+
+    /// イベントが示す失効を、適用したプロジェクトで要素のインスタンスへ解決して、管理役に求める。
+    private func invalidateRenderCaches(_ invalidations: [ImageRenderInvalidation], in project: LogoProject) {
+        for invalidation in invalidations {
+            guard let element = project.element(for: invalidation.elementId, as: ImageElement.self) else { continue }
+            renderSessions.invalidate(invalidation.scope, of: element)
+        }
     }
 }

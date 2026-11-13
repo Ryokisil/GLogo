@@ -27,13 +27,18 @@ final class ElementTransformViewModel: ObservableObject {
     /// 割り込みの後、古い操作の終了を待っている種類。空でないあいだは、どの種類の変化も適用しない。
     private var suppressedGestureKinds = Set<ElementGestureTransformKind>()
     private let transformUseCase = ElementTransformUseCase()
-    private let imageEditingSessionUseCase = ImageEditingSessionUseCase()
+    private let imageEditingSessionUseCase: ImageEditingSessionUseCase
 
     private var canEdit: Bool { editor.map { !$0.isSavingImage } ?? false }
 
-    /// selection は現在値と以後の選択を MainActor 上で同期通知する。
-    init(editor: any ElementTransformApplying, selection: AnyPublisher<LogoElement?, Never>) {
+    /// renderSessions はエディタが持つ管理役（操作中の編集中の切り替えに使う）。selection は現在値と以後の選択を MainActor 上で同期通知する。
+    init(
+        editor: any ElementTransformApplying,
+        renderSessions: any ImageRenderSessionControlling,
+        selection: AnyPublisher<LogoElement?, Never>
+    ) {
         self.editor = editor
+        imageEditingSessionUseCase = ImageEditingSessionUseCase(renderSessions: renderSessions)
         selectionObservation = selection.sink { [weak self] element in
             guard let self else { return }
             // 選択の通知は変更前に届くため、この時点の self.element は切り替え前の要素。

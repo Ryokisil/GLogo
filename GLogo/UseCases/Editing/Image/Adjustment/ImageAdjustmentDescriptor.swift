@@ -62,7 +62,7 @@ struct ImageAdjustmentDescriptor: @unchecked Sendable {
 
     /// スライダー編集中に即時プレビュー経路を使うか
     ///
-    /// true の場合は `ImageElement.startEditing()` を利用し、preview/proxy画像で高速に追従する。
+    /// true の場合は編集中に切り替え（エディタの管理役の `startEditing(_:)`）、preview/proxy画像で高速に追従する。
     /// false の場合は編集中も full 経路を維持し、指を離した前後での見た目差を抑える。
     let usesInstantPreviewWhileEditing: Bool
 

@@ -74,7 +74,7 @@ final class EditorImageSaveIntegrationTests: XCTestCase {
     @MainActor
     func test_save_passesEditorRenderSessions() {
         let saver = PhotoLibrarySavingStub()
-        let renderSessions = RenderSessionReadingSpy()
+        let renderSessions = RenderSessionSpy()
         let editor = EditorViewModel(
             dependencies: .live(photoLibrarySaver: saver), renderSessions: renderSessions
         )

@@ -10,11 +10,15 @@ import Foundation
 import UIKit
 
 /// 画像レンダリング更新ユースケース
+///
+/// 描画のセッションの状態（表示画像の失効・書き込み、編集中の終了）は、呼び出しごとに渡されるエディタの管理役に求める。
+/// 管理役を持たないのは、編集パネルより先に作られ、エディタと同じ管理役を確実に使うため。
 @MainActor
 final class ImageRenderRefreshUseCase {
     /// 最新のみ実行するレンダリングスケジューラ
     private let renderScheduler: any RenderScheduling
-    private let renderFullQuality: @MainActor (ImageElement) async -> UIImage?
+    /// フル品質の加工の差し替え（テスト用）。nil のときは、管理役のフル品質の加工を使う。
+    private let renderFullQuality: (@MainActor (ImageElement) async -> UIImage?)?
     private var generation: UInt = 0
     private var renderTask: Task<Void, Never>?
     private var isRenderCurrent: (() -> Bool)?
@@ -28,9 +32,7 @@ final class ImageRenderRefreshUseCase {
 
     init(
         renderScheduler: any RenderScheduling,
-        renderFullQuality: @escaping @MainActor (ImageElement) async -> UIImage? = { image in
-            await image.renderFullQualityImageAsync()
-        }
+        renderFullQuality: (@MainActor (ImageElement) async -> UIImage?)? = nil
     ) {
         self.renderScheduler = renderScheduler
         self.renderFullQuality = renderFullQuality
@@ -59,17 +61,19 @@ final class ImageRenderRefreshUseCase {
     /// - Parameters:
     ///   - newData: 新しいトーンカーブデータ
     ///   - imageElement: 対象画像要素
+    ///   - renderSessions: 表示画像を失効させるエディタの管理役
     /// - Returns: 値が更新された場合の `true`
     func applyToneCurvePreview(
         _ newData: ToneCurveData,
-        to imageElement: ImageElement
+        to imageElement: ImageElement,
+        renderSessions: any ImageRenderSessionControlling
     ) -> Bool {
         guard imageElement.toneCurveData != newData else {
             return false
         }
 
         imageElement.toneCurveData = newData
-        imageElement.cachedImage = nil
+        renderSessions.invalidate(.rendered, of: imageElement)
         return true
     }
 
@@ -101,13 +105,17 @@ final class ImageRenderRefreshUseCase {
     }
 
     /// 予約世代に加え、AI・履歴操作などで変わる編集対象も描画の前後で照合する。
+    /// 管理役のフル品質の加工は画像を返すだけで、採用すると判定したあとで、ここが書き込みと編集の終了を求める。
     func scheduleFullQualityRefresh(
         for imageElement: ImageElement,
         edits: ImageEditUseCase,
+        renderSessions: any ImageRenderSessionControlling,
         update: @escaping @MainActor () -> Void
     ) {
         guard let token = edits.imageEditToken(for: imageElement) else { return }
-        let render = renderFullQuality
+        let render: @MainActor (ImageElement) async -> UIImage? = renderFullQuality ?? { image in
+            await renderSessions.fullQualityImage(of: image)
+        }
         scheduleRefresh { [weak self] in
             guard let requestGeneration = self?.generation else { return }
             self?.renderTask = Task { @MainActor [weak self] in
@@ -122,8 +130,8 @@ final class ImageRenderRefreshUseCase {
                 let processedImage = await render(imageElement)
                 guard !Task.isCancelled, let self, self.generation == requestGeneration,
                       edits.isImageEditCurrent(token, for: imageElement) else { return }
-                imageElement.cachedImage = processedImage
-                imageElement.endEditing()
+                renderSessions.storeRenderedImage(processedImage, of: imageElement)
+                renderSessions.endEditing(imageElement)
                 update()
             }
         }

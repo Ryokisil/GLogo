@@ -14,8 +14,17 @@ struct FilterPresetUpdatePlan {
     let event: FilterPresetChangedEvent
 }
 
-/// フィルタープリセット適用ユースケース
+/// フィルタープリセット適用ユースケース。表示画像の失効は、エディタの管理役に求める。
+@MainActor
 struct FilterPresetUseCase {
+    private let renderSessions: any ImageRenderSessionControlling
+
+    /// - Parameters:
+    ///   - renderSessions: エディタの管理役（エディタが読み取りに使うものと同じインスタンス）
+    init(renderSessions: any ImageRenderSessionControlling) {
+        self.renderSessions = renderSessions
+    }
+
     /// フィルタープリセット適用の更新計画を作成する
     /// - Parameters:
     ///   - preset: 適用するプリセット
@@ -34,7 +43,7 @@ struct FilterPresetUseCase {
 
         imageElement.appliedFilterRecipe = preset.recipe
         imageElement.appliedFilterPresetId = preset.id
-        imageElement.invalidateRenderedImageCache()
+        renderSessions.invalidate(.rendered, of: imageElement)
 
         let event = FilterPresetChangedEvent(
             elementId: imageElement.id,
@@ -60,7 +69,7 @@ struct FilterPresetUseCase {
 
         imageElement.appliedFilterRecipe = nil
         imageElement.appliedFilterPresetId = nil
-        imageElement.invalidateRenderedImageCache()
+        renderSessions.invalidate(.rendered, of: imageElement)
 
         let event = FilterPresetChangedEvent(
             elementId: imageElement.id,

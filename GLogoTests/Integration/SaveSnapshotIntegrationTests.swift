@@ -146,7 +146,7 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
             let writer = SnapshotWriter()
             let coordinator = SaveImageCoordinator(processingService: ImageProcessingService(), writer: writer)
             let (project, image) = makeProject()
-            let store = RenderSessionReadingSpy(original: snapshotImage(.green))
+            let store = RenderSessionSpy(original: snapshotImage(.green))
             let completed = expectation(description: "保存完了")
             let completion: @MainActor @Sendable (PhotoLibrarySaveResult) -> Void = { result in
                 if case .failure(let error) = result { XCTFail("\(error)") }
@@ -173,7 +173,7 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
             let writer = SnapshotWriter()
             let coordinator = SaveImageCoordinator(processingService: ImageProcessingService(), writer: writer)
             let (project, _) = makeProject()
-            var store: RenderSessionReadingSpy? = RenderSessionReadingSpy(original: snapshotImage(.green))
+            var store: RenderSessionSpy? = RenderSessionSpy(original: snapshotImage(.green))
             weak let weakStore = store
             let completed = expectation(description: "管理役の解放後の保存完了")
             let completion: @MainActor @Sendable (PhotoLibrarySaveResult) -> Void = { result in

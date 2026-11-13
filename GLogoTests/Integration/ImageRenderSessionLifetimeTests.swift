@@ -1,5 +1,5 @@
 // エディタでの画像要素と描画のキャッシュの寿命（削除・Undo・履歴の上限・Redo の履歴の破棄・メモリ警告）の、今の振る舞いを固定する。
-// 第19回で所有を管理役へ移すときと、第20回で解放の時点を変えるときに、変わった点と変わらない点をここで見分ける。
+// 第20回で所有を管理役へ移すときと、第21回で解放の時点を変えるときに、変わった点と変わらない点をここで見分ける。
 // キャッシュは、今は要素の API（cachedImage）で観察する。所有を移すときは、観察の場所も管理役へ移す。
 
 import UIKit
@@ -31,7 +31,7 @@ final class ImageRenderSessionLifetimeTests: XCTestCase {
     }
 
     /// メモリ警告では、プロジェクトにある要素のキャッシュだけを消し、削除した要素（履歴が持つ）のキャッシュは残る。
-    /// 第20回で、削除した要素も解放の対象にする予定（そのときに期待値を変える）。
+    /// 第21回で、削除した要素も解放の対象にする予定（そのときに期待値を変える）。
     func test_memoryWarning_keepsDeletedElementCache() async throws {
         let released = expectation(description: "メモリ警告の処理の終了")
         let defaultService = ReleaseSignalingPreviewService { released.fulfill() }
@@ -50,7 +50,7 @@ final class ImageRenderSessionLifetimeTests: XCTestCase {
         await fulfillment(of: [released], timeout: 2)
 
         XCTAssertNil(kept.cachedImage, "プロジェクトにある要素のキャッシュは消える")
-        XCTAssertNotNil(deleted.cachedImage, "削除した要素のキャッシュは残る（第20回で変える予定）")
+        XCTAssertNotNil(deleted.cachedImage, "削除した要素のキャッシュは残る（第21回で変える予定）")
     }
 
     /// 削除のイベントが履歴の上限（100件）で押し出されると、削除した要素はキャッシュごと解放される。
