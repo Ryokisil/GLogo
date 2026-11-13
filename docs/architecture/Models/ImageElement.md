@@ -310,8 +310,8 @@ Serenaの参照検索で `ImageFilterParams` の生成元を確認し、合成�
 | 外へ出す① | 読み取り時の描画：`image` が同期でフル品質描画し、編集中は即時プレビューへ切り替える | 第16回で処理を `ImageRenderSession` へ抽出（中間段階。Model が所有して委譲し、所有の場所と依存の向きの整理は残る。同期の描画も変えていない）。第17回で、受け取る側の入口は、エディタの管理役（`ImageRenderSessionStore`）から受け取る形にした（所有は第19回） |
 | 外へ出す② | キャンバス描画：`draw(in:)` が表示画像を選んで描画する | 第16回で描く画像の選択を `ImageRenderSession` へ委譲。第17回でキャンバスと削除エフェクトは、管理役から受け取った画像で描く形にした（`drawOnCanvas` → `draw(in:image:)`）。`ImageElementRenderer` の呼び出しは Model に残る。第18回で保存の合成も、保存の範囲から受け取った画像で描く形にし、Model の `draw(in:)` の本番の呼び出し元はなくなった（テストの観察だけ） |
 | 外へ出す③ | 画像取得：`originalImage`・編集用プロキシを読み取り時に読み込みキャッシュする | 第16回で処理を `ImageRenderSession` へ抽出（中間段階。①と同じ）。第17回で画像一覧・AI・編集画面・フィルターのサムネイルは、管理役から受け取る形にした。第18回で保存も、受付は管理役から、選定・加工・合成は保存の範囲（`SaveProjectSnapshot`）から受け取る形にした（Model の `originalImage`・`getFilteredImageForce()` の本番の呼び出し元はなくなった） |
-| 外へ出す④ | キャッシュの持ち主：`renderCache`・`cachedImage`・無効化。履歴イベントから55か所で無効化を呼ぶ（第8回で数え直し。以前の「57か所」は誤り） | 第16回でキャッシュの保持と無効化を `ImageRenderSession` へ抽出（中間段階。①と同じ）。`editRevision` による自動失効は別に判断する |
-| 外へ出す⑤ | 編集中の状態：`isCurrentlyEditing`・`startEditing`／`endEditing` | 第16回で `ImageRenderSession` へ抽出（中間段階。①と同じ） |
+| 外へ出す④ | キャッシュの持ち主：`renderCache`・`cachedImage`・無効化。履歴イベントから55か所で無効化を呼ぶ（第8回で数え直し。以前の「57か所」は誤り） | 第16回でキャッシュの保持と無効化を `ImageRenderSession` へ抽出（中間段階。①と同じ）。第19回で外からの失効と書き込みを管理役経由にし、履歴イベントの55か所は、失効させる範囲を返して履歴が管理役で失効させる形にした（Model の中の失効は第20回まで残る）。`editRevision` による自動失効は別に判断する |
+| 外へ出す⑤ | 編集中の状態：`isCurrentlyEditing`・`startEditing`／`endEditing` | 第16回で `ImageRenderSession` へ抽出（中間段階。①と同じ）。第19回で、編集中の切り替えは管理役経由にした |
 | 外へ出す⑥ | 初期化時の読み込み：7つの初期化入口が画像を読み込みサイズを決める | **第7回で完了**。`copy()` のURL読み直しと画像差し替え時の寸法取得はModelに残る |
 | 外へ出す⑦ | メタデータからフレーム値を戻す規則 | **第6回で完了** |
 
@@ -671,4 +671,77 @@ Codex の3条件は、次の形で守ります。
 - **第19回**：所有を管理役へ移し、状態を変える側も管理役経由にする（第17回の「残り」のとおり。失効の経路は実装の前の計画で決め、解放された要素の分の回収は次の描画だけに頼らず、キャッシュ自体の解放も直接確かめる）。保存用の複製のセッションも、スナップショットが作って持つ形にする（今は複製が持ち、スナップショットは複製を通して引き当てる）。本番の呼び出し元がなくなった Model の取得・描画の API（`originalImage`・`getFilteredImageForce()`・`draw(in:)`）は、要素から外すか、テストの観察の場所を移すかを決める。
 - **第20回**：第17回の「残り」のとおり（削除した要素のキャッシュを解放する時点と、元画像も解放できる条件）。
 - 記録のみ：合成でベースの加工が2回走ること（[README](../README.md) の「計画外の対応と残件」）。
+- 保留（Codex 合意）：第17回の「残り」のとおり。
+
+## 段階3・第19回：状態を変える側を、エディタの管理役経由に付け替え（2026-11-14）
+
+### 計画と確認した経路
+
+所有の移動と状態を変える側の付け替えを1回で行うと、要素の API を使うテストが大量に変わり（`cachedImage` 116か所、`originalImage` 91か所など）、変更の前後の比較で変わった点を見分けにくくなります。そのため、第17回（受け取る側）・第18回（保存）と同じく、経路の付け替えと所有の移動を分けました（ユーザー・Codex 合意）。回の番号は1つずつ繰り下げます（第17回・第18回の「残り」の第19回・第20回は、それぞれ第20回・第21回にあたる）。
+
+| 回 | 内容 | 挙動 |
+| --- | --- | --- |
+| 第19回（今回） | 状態を変える側（編集中の切り替え・キャッシュの失効と書き込み・確定の加工・メモリ警告）の外からの呼び出しを、管理役経由に付け替える。失効の経路を決める。所有は移さない | 変えない |
+| 第20回 | 所有を移す。Model の中の失効を呼び出し側へ移し、Model の取得・描画・キャッシュの API を外す。保存の範囲が複製のセッションを作る。回収を次の描画に頼らない形と、キャッシュ自体の解放を確かめる | 解放された要素の分を捨てる時点の差だけ |
+| 第21回 | 削除した要素のキャッシュを解放する時点を変える（以前の予定の第20回） | 変える |
+
+外から状態を変えていた呼び出しは、次の9経路でした。
+
+| 呼び出し元 | 第18回まで | 第19回 |
+| --- | --- | --- |
+| 履歴イベント 27種（調整21・フレーム6）と、Revert の巻き戻し | apply／revert の最後の文で `invalidateRenderedImageCache()`（55か所） | 失効させる範囲を返し、履歴が適用・巻き戻しの直後に管理役で失効させる |
+| Revert の適用（`ImageElementMetadataRevertUseCase`） | Model の中の失効に加え、`clearRevertImageCaches()` を明示的に呼ぶ（中と重複） | 明示の呼び出しは、イベントの範囲（`.revert`）へ移した |
+| フィルターのプリセット（`FilterPresetUseCase`） | `invalidateRenderedImageCache()` 2か所 | 管理役 |
+| 編集中の切り替え（`ImageEditingSessionUseCase`。4つの ViewModel が使う） | `startEditing`・`endEditing` | 管理役 |
+| エディタ（Revert・AI の結果の適用・Undo・Redo・保存の準備） | `endEditing` 5か所 | 管理役 |
+| 描画の更新（`ImageRenderRefreshUseCase`） | 非同期のフル品質の加工、表示画像の書き込み、`endEditing`、トーンカーブの `cachedImage = nil` | 管理役（呼び出しごとに受け取る） |
+| 画像調整のパネル（`ImageAdjustmentViewModel`） | 確定の再描画で `cachedImage = nil` | 管理役 |
+| メモリ警告（`ImageCacheReleaseUseCase`） | `handleMemoryWarning()`・`previewService` | 管理役 |
+| 画像の差し替え・復元・初期値への戻し（Model の中） | `replaceImageSource`・`restoreImageSource`・`resetToOriginal` の中で失効 | 変えない（第20回で呼び出し側へ移す） |
+
+失効の経路は、候補の2つ（Model が通知する形・履歴イベントが範囲を示す形）から、**履歴イベントが範囲を示す形**にしました（ユーザー・Codex 合意）。Model に失効の語彙と管理役への逆向きの参照を残さず、範囲をイベントごとにテストで確かめられるためです。失効の時点は、apply の最後の文から「apply が返った直後」に変わりますが、どちらも同じ同期の呼び出しの中で、描画より前です。27種の失効が最後の文で、あとに読み取りがないことを確認しました。
+
+計画は Codex のレビューで補正しました。
+
+| 補正 | 対応 |
+| --- | --- |
+| 読み取りと書き込みは、同じ管理役のインスタンスを使う | エディタは両方の Protocol に準拠する1つの値（`ImageRenderSessionManaging`）を受け取り、履歴・編集パネル・ジェスチャー・描画の更新・メモリ警告にその同じ値を渡す。View へ公開する `renderSessions` は読み取り用の型にした。描画の更新は編集パネルより先に作られるため、管理役を持たせず、呼び出しごとに受け取る形にした（別の管理役を作らないため）。テスト側にも、別の管理役を作る互換の入口は足していない |
+| Revert の適用・Undo で、失効の範囲を分ける | 適用（Redo を含む）は `.revert`、Undo は `.rendered`。Model の中の失効は残す。履歴の失効はタスクへ遅らせず、適用・巻き戻しの直後に同期で行う。イベントの ID は、履歴が適用したプロジェクトで要素のインスタンスへ解決してから、管理役へ渡す |
+| 非同期の描画は、採用の判定と書き込みを分けたままにする | 管理役のフル品質の加工は画像を返すだけにし、キャンセル・世代・編集対象の照合は `ImageRenderRefreshUseCase` に残した。採用すると判定したあとで、書き込みと編集中の終了を管理役に求める。古い結果（新しい予約・描画中の編集）では、どちらも求めないことをテストで確かめた |
+| 失効のテストは、27種を網羅する | 27種すべてについて、適用・Undo・Redo のたびに、対象の要素の表示画像だけを失効させることを確かめる（空の既定に落ちたイベントを検出する）。Revert は、範囲の違いと、残すべきキャッシュが残ることを別に確かめる |
+| 元画像が nil の保存（第18回の補強） | 最初に、今の振る舞いを固定するテストを足した（単独保存の選定の失敗、強制の合成の失敗、正常なベースと取得できない重ねる画像なら、その画像を描かずに成功） |
+
+### 変更した範囲
+
+- [ImageRenderSessionControlling](../../../GLogo/UseCases/Rendering/ImageRenderSessionControlling.swift)（新規）：状態を変える側の Protocol（MainActor）。編集中の開始・終了、範囲を指定した失効、表示画像の書き込み、フル品質の加工（画像を返すだけ）。読み取り用と合わせた型 `ImageRenderSessionManaging` も置いた。
+- `ImageRenderSessionStore`：上の Protocol も実装し、今は要素のセッションへ委譲する。
+- 履歴：[ImageRenderInvalidation](../../../GLogo/UseCases/History/ImageRenderInvalidation.swift)（新規。要素の ID と範囲）と、`EditorEvent` の範囲を返す要件（画像の見た目を変えないイベントは空の既定）。[ImageAppearanceEvent](../../../GLogo/UseCases/History/ImageAppearanceEvent.swift)（新規）に27種が準拠し、適用・巻き戻しとも `.rendered` を返す。Revert のイベントは適用が `.revert`、巻き戻しが `.rendered`。差し替えのイベントは、今は Model の中で失効させるため範囲を返さない（第20回で移す）。`EditorHistory` は MainActor になり、管理役を受け取って、適用・巻き戻しの直後に失効させる。
+- 呼び出し元：`ImageEditingSessionUseCase`・`FilterPresetUseCase`（管理役を初期化で受け取る）、`ImageRenderRefreshUseCase`（呼び出しごとに受け取る。テスト用のフル品質の加工の差し替えは残した）、`ImageCacheReleaseUseCase`、`ImageElementMetadataRevertUseCase`（明示の失効を外した）、`ImageAdjustmentViewModel`・`ImageFrameViewModel`・`FilterPanelViewModel`・`ElementTransformViewModel`（管理役を受け取る）、`ElementViewModel`（エディタの同じ管理役を渡す）、`EditorViewModel`。
+- 変えないもの：Model の中の失効（差し替え・復元・初期値への戻し）、要素の API（テストが観察に使う）、取得と加工の時点と回数、編集中の切り替えの順序、保存、描画の更新の生成（`makeImageRenderRefresh`）。
+
+これで、要素の状態を変える API（`startEditing`・`endEditing`・`cachedImage`・失効の各メソッド・`handleMemoryWarning`・`renderFullQualityImageAsync`）の本番の呼び出し元は、管理役から要素のセッションへの委譲と Model の中だけになりました（Serena と rg で確認）。
+
+`EditorViewModel.swift` は **790 → 807行** です（`ImageElement.swift` は変えていない）。
+
+### 検証と変更後レビュー
+
+- **Critical／Warning**: 指摘なし。
+- **Info**: 失効の範囲を返し忘れた新しい画像のイベントは、空の既定に落ちて、表示画像が古いまま残ります。今の27種と Revert はテストで守り、`EditorEvent` の説明に要件を書きました。
+- **Info**: 第19回のあいだ、失効の経路は2つあります（外からの呼び出しは管理役、Model の中の失効は要素自身）。第20回で1つにします。
+- **Info**: `EditorViewModel.managedRenderSessions` は、ViewModel が子へ渡すための internal のプロパティで、View からも参照できてしまいます。View は読み取り用の `renderSessions` を使う取り決めで、今の View は使っていません（rg で確認）。
+- **Info**: テスト用の偽物の管理役（`RenderSessionSpy`。第17回の `RenderSessionReadingSpy` を改名）は、状態の変更を記録してから、アプリと同じ実装の別のインスタンスへ渡します。今の管理役は状態を持たないため同じ要素のセッションに届きますが、所有を移す第20回で見直します。
+- **Info**: `EditorHistory`・`ImageEditingSessionUseCase`・`FilterPresetUseCase`・`ImageCacheReleaseUseCase.releaseCaches` は MainActor になりました（呼び出し元は、すべて MainActor）。
+- **Test Coverage**:
+  - 最初に足したテスト（今のコードで成功を確かめてから付け替えた）：[SaveSnapshotIntegrationTests](../../../GLogoTests/Integration/SaveSnapshotIntegrationTests.swift) 3件。元画像が nil の要素を、Coordinator 経由で保存したときの結果（単独保存は選定の失敗、強制の合成はベースの加工の失敗、正常なベースと取得できない重ねる画像なら、その画像を描かずに成功）と、取得の回数を固定した。
+  - 追加：[ImageRenderInvalidationHistoryTests](../../../GLogoTests/Unit/ImageRenderInvalidationHistoryTests.swift) 4件（27種の適用・Undo・Redo、適用のあとの同期の失効、要素が見つからなければ何もしない、画像以外のイベントは失効させない）。[ImageRenderSessionControlRouteTests](../../../GLogoTests/Integration/ImageRenderSessionControlRouteTests.swift) 9件（ジェスチャー、スライダー、トーンカーブ、フィルターのプリセットのフル品質の確定の順序、古い結果は書き込みも編集中の終了も求めない、Revert の範囲と残すキャッシュ、AI の結果などのイベントの適用、保存の準備、メモリ警告）。
+  - 変更：[ImageUndoCacheInvalidationTests](../../../GLogoTests/Unit/ImageUndoCacheInvalidationTests.swift) 2件は、同じイベントと期待値のまま、履歴を通す形にした。組み立ての引数（ImageFrameViewModelTests・ImageEditTokenTests・ImagePreviewDependencyTests・ImageRenderRefreshUseCaseTests）。偽物の管理役を改名し、状態の変更の記録を足した。回の番号の付け替えに合わせて、テストの説明を直した。
+  - 変更の前後の比較：コミットしない確認用テストで、22の手順（スライダーの開始・変更・確定、確定の再描画の予約、トーンカーブ、フィルターのプリセットの非同期の確定、Undo・Redo、Revert とその Undo・Redo、ジェスチャー、保存の準備、メモリ警告）について、取得先と描画サービスの呼び出し回数、表示画像のキャッシュの有無、描かれた画像を記録し、変更の前後ですべて一致することを確かめた。
+  - 接続漏れを検出できること：コミットしない確認として、15か所を一時的に以前の形へ戻すと（ジェスチャーとスライダーの編集中、トーンカーブの失効、フル品質の加工、確定の書き込みと編集中の終了、プリセットの失効、フィルターのイベントを空の既定へ、Revert の範囲、Undo のあとの編集中の終了、イベントの適用のあとの編集中の終了、保存の準備、メモリ警告、履歴の失効をしない・タスクへ遅らせる、編集パネルへ別の管理役を渡す）、それぞれ対応するテストが失敗することを確かめてから元に戻した。
+- **回帰テスト棚卸し**: 期待値を変えたテストはありません。ImageUndoCacheInvalidationTests は、失効をイベントの中から履歴へ移したため、確かめる経路を履歴に変えました（取り決めは「適用・Undo で表示画像が消える」のまま）。
+- **Verification**: GLogoTests は481件中478件成功（失敗1件は既知の性能テスト `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用。追加した16件の分だけ件数が増えた）。UI テストは GLogoUITests 全体の30件が成功しました（実行は33回。そのあとの変更は、コメントの回の番号とテスト1件の追加だけ）。`git diff --check`（新規ファイルを含む）と、更新した文書の相対リンクを確認しました。アプリのビルドで、変更したファイルに警告はありません。Xcode 27.1、iPhone 17 Pro／iOS 26.1 Simulator、`-parallel-testing-enabled NO`。実機は未実施です。SwiftFormat は未導入のため実行できません。
+
+### 残り
+
+- **第20回**：所有を管理役へ移す。Model の中の失効（差し替え・復元・初期値への戻し）を、呼び出し側（差し替えのイベント・Revert）の範囲へ移す。Model の取得・描画・キャッシュの API を外し、テストの観察の場所を管理役へ移す。保存の範囲が、複製のセッションを作って持つ。回収の方式（管理役の表と履歴の破棄の直後の回収、要素の解放に合わせた回収など）は、その回の計画で確認用テストを使って決め、次の描画だけに頼らないこと、キャッシュ自体の解放（キャッシュに入れた画像への弱参照など）を直接確かめる。テスト用の偽物の管理役が状態の変更を別の管理役へ渡している形も、そのときに見直す。
+- **第21回**：削除した要素のキャッシュを解放する時点（第17回の「残り」の第20回の内容）。
 - 保留（Codex 合意）：第17回の「残り」のとおり。
