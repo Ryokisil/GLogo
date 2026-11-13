@@ -195,6 +195,112 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
         }
     }
 
+    // MARK: - 元画像を取得できない画像要素
+
+    // 受付では編集元から1回取得し、nil を固定する。保存用の複製はソースを持たないため、
+    // 選定・加工・描き直しで画像を求めるたびに、複製の取得先へ取得し直す（取得できないまま）。
+
+    /// 単独保存で、ただ1つの画像の元画像を取得できなければ、選定に失敗して書き込まない。
+    @MainActor
+    func test_unresolvedOriginal_failsIndividualSave() async throws {
+        let broken = UnresolvedSourceResolver()
+        let project = LogoProject(canvasSize: CGSize(width: 32, height: 24))
+        project.addElement(makeImage(resolver: broken, frame: CGRect(x: 0, y: 0, width: 32, height: 24), role: .base))
+        let writer = SnapshotWriter()
+
+        let result = try await save(project, composite: false, writer: writer)
+
+        guard case .failure(let failure) = result else { return XCTFail("失敗するべき") }
+        XCTAssertEqual(failure, .imageSelectionFailed)
+        XCTAssertEqual(writer.writeCount, 0)
+        XCTAssertEqual(broken.originalCalls, 2, "受付の1回と、選定での取得し直しの1回")
+    }
+
+    /// 強制の合成で、ベースの元画像を取得できなければ、合成に失敗して書き込まない。
+    @MainActor
+    func test_unresolvedBase_failsCompositeSave() async throws {
+        let broken = UnresolvedSourceResolver()
+        let project = LogoProject(canvasSize: CGSize(width: 32, height: 24))
+        project.addElement(makeImage(resolver: broken, frame: CGRect(x: 0, y: 0, width: 32, height: 24), role: .base))
+        let writer = SnapshotWriter()
+
+        let result = try await save(project, composite: true, writer: writer)
+
+        guard case .failure(let failure) = result else { return XCTFail("失敗するべき") }
+        XCTAssertEqual(failure, .compositeGenerationFailed)
+        XCTAssertEqual(writer.writeCount, 0)
+        XCTAssertEqual(broken.originalCalls, 2, "受付の1回と、ベースの加工での取得し直しの1回")
+    }
+
+    /// 合成で、ベースは正常・重ねる画像だけ元画像を取得できなければ、その画像を描かずに保存は成功する。
+    @MainActor
+    func test_unresolvedOverlay_isOmittedFromComposite() async throws {
+        let broken = UnresolvedSourceResolver()
+        let project = LogoProject(canvasSize: CGSize(width: 32, height: 24))
+        project.addElement(makeImage(
+            resolver: FixedImageResolver(image: snapshotImage(.red)),
+            frame: CGRect(x: 0, y: 0, width: 32, height: 24), role: .base
+        ))
+        project.addElement(makeImage(resolver: broken, frame: CGRect(x: 4, y: 4, width: 8, height: 8), role: .overlay))
+        let writer = SnapshotWriter()
+
+        let result = try await save(project, composite: false, writer: writer)
+
+        guard case .success = result else { return XCTFail("成功するべき: \(String(describing: result))") }
+        XCTAssertEqual(writer.writeCount, 1)
+        let saved = try XCTUnwrap(writer.savedImage)
+        let overlayArea = try rgba(of: saved, at: CGPoint(x: 8, y: 8))
+        XCTAssertTrue(overlayArea[1] > 200 && overlayArea[0] < 60, "重ねる画像の位置にはベース（緑）が見える: \(overlayArea)")
+        XCTAssertEqual(broken.originalCalls, 3, "受付の1回と、合成の加工・描き直しでの取得し直しの2回")
+    }
+
+    /// 受付から完了までを待ち、結果を返す。管理役はアプリと同じ実装を明示して渡す。
+    @MainActor
+    private func save(_ project: LogoProject, composite: Bool, writer: SnapshotWriter) async throws -> PhotoLibrarySaveResult? {
+        let coordinator = SaveImageCoordinator(processingService: ImageProcessingService(), writer: writer)
+        let box = SaveResultBox()
+        let completed = expectation(description: "保存完了")
+        let completion: @MainActor @Sendable (PhotoLibrarySaveResult) -> Void = { result in
+            box.result = result
+            completed.fulfill()
+        }
+        if composite {
+            coordinator.saveComposite(project: project, renderSessions: ImageRenderSessionStore(), completion: completion)
+        } else {
+            coordinator.save(project: project, renderSessions: ImageRenderSessionStore(), completion: completion)
+        }
+        writer.authorize()
+        await fulfillment(of: [completed], timeout: 5)
+        return box.result
+    }
+
+    /// 加工は入力によらず緑を返す描画サービスで、取得先だけを差し替えた画像要素。
+    private func makeImage(resolver: any ImageSourceResolving, frame: CGRect, role: ImageRole) -> ImageElement {
+        let image = ImageElement(
+            source: .data(Data([1])), size: nil, sourceResolver: resolver,
+            previewService: FixedPreviewService(output: snapshotImage(.green))
+        )
+        image.position = frame.origin
+        image.size = frame.size
+        image.imageRole = role
+        image.zIndex = role == .base ? 100 : 110
+        return image
+    }
+
+    /// 画像の指定位置（上からの座標）の RGBA 成分（0〜255）
+    private func rgba(of image: UIImage, at point: CGPoint) throws -> [UInt8] {
+        let cgImage = try XCTUnwrap(image.cgImage)
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let context = try XCTUnwrap(CGContext(
+            data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+        ))
+        let cropped = try XCTUnwrap(cgImage.cropping(to: CGRect(origin: point, size: CGSize(width: 1, height: 1))))
+        context.draw(cropped, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return pixel
+    }
+
     /// 保存した画像の中央が、緑（管理役が返した画像）か赤（要素自身の画像）かを確かめる。
     private func assertCenter(
         of image: UIImage,
@@ -228,6 +334,40 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
         project.addElement(image)
         return (project, image)
     }
+}
+
+/// 完了で受け取った結果。完了は MainActor で呼ばれる。
+@MainActor
+private final class SaveResultBox {
+    var result: PhotoLibrarySaveResult?
+}
+
+/// 元画像を取得できない取得先。保存のタスクからも呼ばれるため、取得の回数をロックで守る。
+private final class UnresolvedSourceResolver: ImageSourceResolving, @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var originalCalls: Int { lock.withLock { count } }
+
+    func resolveOriginalImage(imageData: Data?, fileName: String?, url: URL?, path: String?) -> UIImage? {
+        lock.withLock { count += 1 }
+        return nil
+    }
+
+    func resolveEditingImage(identifier: String?, fileName: String?, originalPath: String?,
+                             originalImageProvider: () -> UIImage?, proxyTargetLongSide: CGFloat,
+                             highResThresholdMP: CGFloat) -> UIImage? { nil }
+}
+
+/// 常に同じ画像を返す取得先。不変の値だけを持つ。
+private struct FixedImageResolver: ImageSourceResolving {
+    let image: UIImage
+
+    func resolveOriginalImage(imageData: Data?, fileName: String?, url: URL?, path: String?) -> UIImage? { image }
+
+    func resolveEditingImage(identifier: String?, fileName: String?, originalPath: String?,
+                             originalImageProvider: () -> UIImage?, proxyTargetLongSide: CGFloat,
+                             highResThresholdMP: CGFloat) -> UIImage? { image }
 }
 
 /// 権限応答だけを保留し、非同期書き込みの結果をロックで保護する。
