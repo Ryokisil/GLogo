@@ -51,6 +51,25 @@ final class ImageRenderSessionStore: ImageRenderSessionReading, ImageRenderSessi
         await session(of: element).fullQualityImageAsync(of: element)
     }
 
+    // MARK: - 観察（テスト）
+
+    // Protocol には含めない。テストは、注入した具体型のこのインスタンスで観察する（コードと同じ持ち主を見るため）。
+
+    /// 表示画像のキャッシュを見るだけで、無ければ作らない。
+    func cachedRenderedImage(of element: ImageElement) -> UIImage? {
+        session(of: element).renderedImage
+    }
+
+    /// 即時プレビュー。プロキシとプレビュー元画像を取得・生成してキャッシュする。
+    func instantPreview(of element: ImageElement) -> UIImage? {
+        session(of: element).instantPreview(of: element)
+    }
+
+    /// フル品質の加工を同期で行う（表示画像のキャッシュは使わず、元画像のキャッシュは使う）。
+    func filteredImage(of element: ImageElement) -> UIImage? {
+        session(of: element).filteredImage(of: element)
+    }
+
     /// 要素のインスタンスごとのセッション。今は要素が持つものを返す。
     private func session(of element: ImageElement) -> ImageRenderSession {
         element.renderSession

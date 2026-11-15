@@ -195,6 +195,40 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
         }
     }
 
+    /// 受付のあとのメモリ警告でエディタの要素のキャッシュが消えても、保存は受付で固定した元画像を使う。
+    @MainActor
+    func test_memoryWarningAfterAcceptance_usesPinnedImage() async throws {
+        let writer = SnapshotWriter()
+        let released = expectation(description: "メモリ警告の処理の終了")
+        let editor = EditorViewModel(
+            project: LogoProject(canvasSize: CGSize(width: 32, height: 24)),
+            dependencies: .live(
+                photoLibrarySaver: SaveImageCoordinator(processingService: ImageProcessingService(), writer: writer),
+                previewService: ReleaseSignalingPreview { released.fulfill() }
+            )
+        )
+        let store = try XCTUnwrap(editor.managedRenderSessions as? ImageRenderSessionStore)
+        let source = SwitchableResolver(image: snapshotImage(.red))
+        let image = ImageElement(source: .data(Data([1])), size: nil, sourceResolver: source, previewService: PassThroughPreview())
+        image.size = CGSize(width: 32, height: 24)
+        editor.addElement(image)
+        let completed = expectation(description: "保存完了")
+        editor.saveToPhotoLibrary { result in
+            if case .failure(let error) = result { XCTFail("\(error)") }
+            completed.fulfill()
+        }
+
+        NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+        await fulfillment(of: [released], timeout: 2)
+        let replacement = snapshotImage(.green)
+        source.image = replacement
+        XCTAssertTrue(store.originalImage(of: image) === replacement, "エディタの要素は、消えたキャッシュを取得し直す")
+
+        writer.authorize()
+        await fulfillment(of: [completed], timeout: 5)
+        try assertCenter(of: XCTUnwrap(writer.savedImage), isGreen: false, "受付で固定した赤で保存する")
+    }
+
     // MARK: - 元画像を取得できない画像要素
 
     // 受付では編集元から1回取得し、nil を固定する。保存用の複製はソースを持たないため、
@@ -368,6 +402,75 @@ private struct FixedImageResolver: ImageSourceResolving {
     func resolveEditingImage(identifier: String?, fileName: String?, originalPath: String?,
                              originalImageProvider: () -> UIImage?, proxyTargetLongSide: CGFloat,
                              highResThresholdMP: CGFloat) -> UIImage? { image }
+}
+
+/// 返す元画像を途中で差し替えられる取得先。保存のタスクからも呼ばれうるため、ロックで守る。
+private final class SwitchableResolver: ImageSourceResolving, @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: UIImage
+
+    init(image: UIImage) {
+        current = image
+    }
+
+    var image: UIImage {
+        get { lock.withLock { current } }
+        set { lock.withLock { current = newValue } }
+    }
+
+    func resolveOriginalImage(imageData: Data?, fileName: String?, url: URL?, path: String?) -> UIImage? { image }
+
+    func resolveEditingImage(identifier: String?, fileName: String?, originalPath: String?,
+                             originalImageProvider: () -> UIImage?, proxyTargetLongSide: CGFloat,
+                             highResThresholdMP: CGFloat) -> UIImage? { image }
+}
+
+/// 入力の画像をそのまま返す描画サービス。不変の値だけを持つ。
+private final class PassThroughPreview: ImagePreviewing, @unchecked Sendable {
+    func generatePreviewImage(editingImage: UIImage?, originalImage: UIImage?, mode: ImageRenderMode) -> UIImage? {
+        editingImage ?? originalImage
+    }
+
+    func instantPreview(baseImage: UIImage?, params: ImageFilterParams, quality: RenderQuality, mode: ImageRenderMode) -> UIImage? {
+        baseImage
+    }
+
+    func applyFilters(to image: UIImage, params: ImageFilterParams, quality: RenderQuality, mode: ImageRenderMode) -> UIImage? {
+        image
+    }
+
+    func applyFiltersAsync(to image: UIImage, params: ImageFilterParams, quality: RenderQuality, mode: ImageRenderMode) async -> UIImage? {
+        image
+    }
+
+    func resetCache() {}
+}
+
+/// メモリ警告で解放されたことを知らせる、エディタの既定の描画サービス。画像は作らない。
+private final class ReleaseSignalingPreview: ImagePreviewing, @unchecked Sendable {
+    private let onRelease: @Sendable () -> Void
+
+    init(onRelease: @escaping @Sendable () -> Void) {
+        self.onRelease = onRelease
+    }
+
+    func generatePreviewImage(editingImage: UIImage?, originalImage: UIImage?, mode: ImageRenderMode) -> UIImage? { nil }
+
+    func instantPreview(baseImage: UIImage?, params: ImageFilterParams, quality: RenderQuality, mode: ImageRenderMode) -> UIImage? {
+        nil
+    }
+
+    func applyFilters(to image: UIImage, params: ImageFilterParams, quality: RenderQuality, mode: ImageRenderMode) -> UIImage? {
+        nil
+    }
+
+    func applyFiltersAsync(to image: UIImage, params: ImageFilterParams, quality: RenderQuality, mode: ImageRenderMode) async -> UIImage? {
+        nil
+    }
+
+    func resetCache() {
+        onRelease()
+    }
 }
 
 /// 権限応答だけを保留し、非同期書き込みの結果をロックで保護する。
