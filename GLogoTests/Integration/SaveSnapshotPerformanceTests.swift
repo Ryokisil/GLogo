@@ -43,14 +43,15 @@ final class SaveSnapshotPerformanceTests: XCTestCase {
         measure(metrics: [XCTClockMetric(), XCTMemoryMetric()], options: options) {
             autoreleasepool {
                 // OS のファイルキャッシュを排除した測定ではなく、要素の元画像解決キャッシュの差を測る。
-                image.handleMemoryWarning()
-                if cached { _ = image.originalImage }
+                renderSessions.invalidate(.all, of: image)
+                if cached { _ = renderSessions.originalImage(of: image) }
                 startMeasuring()
                 let snapshot = SaveProjectSnapshot(project: project, renderSessions: renderSessions)
                 stopMeasuring()
                 let copy = snapshot.project.elements.first as? ImageElement
-                XCTAssertEqual(copy?.originalImage?.cgImage?.width, width)
-                XCTAssertEqual(copy?.originalImage?.cgImage?.height, height)
+                let pinned = copy.flatMap { snapshot.originalImage(of: $0) }
+                XCTAssertEqual(pinned?.cgImage?.width, width)
+                XCTAssertEqual(pinned?.cgImage?.height, height)
             }
         }
     }

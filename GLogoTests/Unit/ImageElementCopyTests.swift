@@ -55,6 +55,7 @@ final class ImageElementCopyTests: XCTestCase {
         XCTAssertNil(copy.metadata)
     }
 
+    @MainActor
     func test_copy_undecodableURL_keepsReadData() throws {
         let fileData = Data([0, 1, 2, 3])
         let url = try temporaryFile(data: fileData)
@@ -65,7 +66,7 @@ final class ImageElementCopyTests: XCTestCase {
         XCTAssertEqual(copy.imageData, fileData)
         // URL経由はUIImageのデコード失敗時も抽出し、現行の抽出器は空の値を返す。
         XCTAssertNotNil(copy.metadata)
-        XCTAssertNil(copy.originalImage)
+        XCTAssertNil(ImageRenderSessionStore().originalImage(of: copy))
     }
 
     func test_copy_pathAndFileName_keepReferenceOnly() throws {

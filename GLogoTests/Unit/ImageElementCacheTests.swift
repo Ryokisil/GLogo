@@ -1,18 +1,21 @@
-// キャッシュの無効化範囲と再取得を、ImageElementの公開操作から検証する。
+// キャッシュの無効化範囲と再取得を、エディタの管理役（ImageRenderSessionStore）の操作から検証する。
+// 第20回から、Model の差し替え・復元・初期値への戻しは値だけを変え、キャッシュの失効は呼び出し側（履歴イベントの範囲）が管理役で行う。
+// 観察は、操作に使ったのと同じ管理役のインスタンスで行う。
 
 import UIKit
 import XCTest
 @testable import GLogo
 
+@MainActor
 final class ImageElementCacheTests: XCTestCase {
     func test_renderInvalidation_keepsSourceAndPreview() {
-        withFixture { element, source, preview in
-            warmCaches(element)
-            element.invalidateRenderedImageCache()
-            XCTAssertNil(element.cachedImage)
-            XCTAssertTrue(element.originalImage === source.original)
-            XCTAssertTrue(element.getInstantPreview() === source.proxy)
-            XCTAssertTrue(element.image === preview.rendered)
+        withFixture { element, source, preview, store in
+            warmCaches(element, store)
+            store.invalidate(.rendered, of: element)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
+            XCTAssertTrue(store.originalImage(of: element) === source.original)
+            XCTAssertTrue(store.instantPreview(of: element) === source.proxy)
+            XCTAssertTrue(store.displayImage(of: element) === preview.rendered)
             XCTAssertEqual(source.originalCalls, 1)
             XCTAssertEqual(source.proxyCalls, 1)
             XCTAssertEqual(preview.baseCalls, 1)
@@ -22,15 +25,15 @@ final class ImageElementCacheTests: XCTestCase {
     }
 
     func test_editing_clearsOnlyRendered() {
-        withFixture { element, source, preview in
-            warmCaches(element)
-            element.startEditing()
-            XCTAssertNil(element.cachedImage)
-            XCTAssertTrue(element.image === source.proxy)
+        withFixture { element, source, preview, store in
+            warmCaches(element, store)
+            store.startEditing(element)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
+            XCTAssertTrue(store.displayImage(of: element) === source.proxy)
             XCTAssertEqual(preview.renderCalls, 1)
-            element.endEditing()
-            XCTAssertTrue(element.image === preview.rendered)
-            XCTAssertTrue(element.getInstantPreview() === source.proxy)
+            store.endEditing(element)
+            XCTAssertTrue(store.displayImage(of: element) === preview.rendered)
+            XCTAssertTrue(store.instantPreview(of: element) === source.proxy)
             XCTAssertEqual(source.originalCalls, 1)
             XCTAssertEqual(source.proxyCalls, 1)
             XCTAssertEqual(preview.baseCalls, 1)
@@ -39,42 +42,46 @@ final class ImageElementCacheTests: XCTestCase {
     }
 
     func test_renderedCacheHit_skipsSourceFetch() {
-        withFixture { element, source, preview in
-            warmCaches(element)
+        withFixture { element, source, preview, store in
+            warmCaches(element, store)
             // 表示画像と元画像のキャッシュを消してから、表示画像だけを入れ直す。
-            element.clearRevertImageCaches()
+            store.invalidate(.revert, of: element)
             let marker = snapshotImage(.purple)
-            element.cachedImage = marker
+            store.storeRenderedImage(marker, of: element)
             // 表示画像のキャッシュを先に確かめ、あれば元画像を取得しない（評価の順序を固定する）。
-            XCTAssertTrue(element.image === marker)
+            XCTAssertTrue(store.displayImage(of: element) === marker)
             XCTAssertEqual(source.originalCalls, 1)
             XCTAssertEqual(preview.renderCalls, 1)
         }
     }
 
     func test_editing_fetchesFallbackEagerly() {
-        withFixture { element, source, preview in
-            warmCaches(element)
+        withFixture { element, source, preview, store in
+            warmCaches(element, store)
             // 元画像のキャッシュだけを消し、プレビュー元画像とプロキシは残す。
-            element.clearRevertImageCaches()
-            element.startEditing()
+            store.invalidate(.revert, of: element)
+            store.startEditing(element)
             // 即時プレビューがあっても、フォールバック候補の元画像を先に取得する（今の評価の順序。短絡評価への変更は別に判断する）。
-            XCTAssertTrue(element.image === source.proxy)
+            XCTAssertTrue(store.displayImage(of: element) === source.proxy)
             XCTAssertEqual(source.originalCalls, 2)
             XCTAssertEqual(source.proxyCalls, 1)
             XCTAssertEqual(preview.baseCalls, 1)
         }
     }
 
+    /// 調整値の初期化（Model）は値だけを戻す。`.adjustments` の失効で、表示画像とプレビュー元画像を作り直す（元画像・プロキシは残す）。
     func test_adjustmentReset_rebuildsPreviewBase() {
-        withFixture { element, source, preview in
+        withFixture { element, source, preview, store in
             element.saturationAdjustment = 0.3
-            warmCaches(element)
+            warmCaches(element, store)
             element.resetToOriginal()
-            XCTAssertNil(element.cachedImage)
             XCTAssertEqual(element.saturationAdjustment, 1)
-            XCTAssertTrue(element.getInstantPreview() === source.proxy)
-            XCTAssertTrue(element.image === preview.rendered)
+            XCTAssertNotNil(store.cachedRenderedImage(of: element), "Model は値だけを戻し、キャッシュには触れない")
+
+            store.invalidate(.adjustments, of: element)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
+            XCTAssertTrue(store.instantPreview(of: element) === source.proxy)
+            XCTAssertTrue(store.displayImage(of: element) === preview.rendered)
             XCTAssertEqual(source.originalCalls, 1)
             XCTAssertEqual(source.proxyCalls, 1)
             XCTAssertEqual(preview.baseCalls, 2)
@@ -82,20 +89,24 @@ final class ImageElementCacheTests: XCTestCase {
         }
     }
 
+    /// `.revert` は表示画像と元画像だけを消す。Revert のイベントが示す `.adjustments` と `.revert` を合わせると、
+    /// プレビュー元画像も作り直すが、プロキシは残す。
     func test_revertInvalidation_keepsPreviewAndProxy() {
-        withFixture { element, source, preview in
-            warmCaches(element)
-            element.clearRevertImageCaches()
-            XCTAssertNil(element.cachedImage)
-            XCTAssertTrue(element.getInstantPreview() === source.proxy)
+        withFixture { element, source, preview, store in
+            warmCaches(element, store)
+            store.invalidate(.revert, of: element)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
+            XCTAssertTrue(store.instantPreview(of: element) === source.proxy)
             XCTAssertEqual(source.originalCalls, 1, "既存プレビューの利用だけでは元画像を再取得しない")
-            XCTAssertTrue(element.originalImage === source.original)
+            XCTAssertTrue(store.originalImage(of: element) === source.original)
             XCTAssertEqual(source.originalCalls, 2)
             XCTAssertEqual(source.proxyCalls, 1)
             XCTAssertEqual(preview.baseCalls, 1)
 
             element.resetAdjustmentsToInitialState()
-            XCTAssertTrue(element.getInstantPreview() === source.proxy)
+            store.invalidate(.adjustments, of: element)
+            store.invalidate(.revert, of: element)
+            XCTAssertTrue(store.instantPreview(of: element) === source.proxy)
             XCTAssertEqual(source.originalCalls, 3)
             XCTAssertEqual(source.proxyCalls, 1)
             XCTAssertEqual(preview.baseCalls, 2)
@@ -103,15 +114,20 @@ final class ImageElementCacheTests: XCTestCase {
         }
     }
 
+    /// 差し替え・復元（Model）は値だけを変える。ソースの変更の失効で、4つのキャッシュと共有の描画サービスのキャッシュを消す。
     func test_sourceReplacement_invalidatesAllCaches() {
-        withFixture { element, source, preview in
-            warmCaches(element)
+        withFixture { element, source, preview, store in
+            warmCaches(element, store)
             source.original = snapshotImage(.green)
             source.proxy = snapshotImage(.yellow)
             element.replaceImageSource(with: Data([1]), resetAdjustments: false)
-            XCTAssertNil(element.cachedImage)
-            XCTAssertTrue(element.originalImage === source.original)
-            XCTAssertTrue(element.getInstantPreview() === source.proxy)
+            XCTAssertNotNil(store.cachedRenderedImage(of: element), "Model は値だけを変え、キャッシュには触れない")
+            XCTAssertEqual(preview.resetCalls, 0)
+
+            store.invalidateForSourceChange(of: element)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
+            XCTAssertTrue(store.originalImage(of: element) === source.original)
+            XCTAssertTrue(store.instantPreview(of: element) === source.proxy)
             XCTAssertEqual(source.originalCalls, 2)
             XCTAssertEqual(source.proxyCalls, 2)
             XCTAssertEqual(preview.baseCalls, 2)
@@ -120,7 +136,8 @@ final class ImageElementCacheTests: XCTestCase {
             element.restoreImageSource(imageData: Data([2]), fileName: nil, url: nil, path: nil,
                                        originalIdentifier: "restored", hasAppliedUpscale: false)
             XCTAssertEqual(source.originalCalls, 3, "復元時のサイズ取得は元画像キャッシュとは独立")
-            XCTAssertTrue(element.getInstantPreview() === source.proxy)
+            store.invalidateForSourceChange(of: element)
+            XCTAssertTrue(store.instantPreview(of: element) === source.proxy)
             XCTAssertEqual(source.originalCalls, 4)
             XCTAssertEqual(source.proxyCalls, 3)
             XCTAssertEqual(preview.baseCalls, 3)
@@ -129,13 +146,13 @@ final class ImageElementCacheTests: XCTestCase {
     }
 
     func test_memoryWarning_releasesElementCachesOnly() {
-        withFixture { element, source, preview in
-            warmCaches(element)
-            element.handleMemoryWarning()
-            XCTAssertNil(element.cachedImage)
-            XCTAssertTrue(element.originalImage === source.original)
-            XCTAssertTrue(element.getInstantPreview() === source.proxy)
-            XCTAssertTrue(element.image === preview.rendered)
+        withFixture { element, source, preview, store in
+            warmCaches(element, store)
+            store.invalidate(.all, of: element)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
+            XCTAssertTrue(store.originalImage(of: element) === source.original)
+            XCTAssertTrue(store.instantPreview(of: element) === source.proxy)
+            XCTAssertTrue(store.displayImage(of: element) === preview.rendered)
             XCTAssertEqual(source.originalCalls, 2)
             XCTAssertEqual(source.proxyCalls, 2)
             XCTAssertEqual(preview.baseCalls, 2)
@@ -144,61 +161,66 @@ final class ImageElementCacheTests: XCTestCase {
         }
     }
 
-    @MainActor
     func test_copies_keepIndependentCaches() throws {
-        try withFixture { element, source, preview in
-            warmCaches(element)
+        try withFixture { element, source, preview, store in
+            warmCaches(element, store)
             let copy = try XCTUnwrap(element.copy() as? ImageElement)
-            // 保存用の複製は、保存の範囲が受付時に元画像を固定したものを使う。
+            // 保存用の複製は、保存の範囲が受付時に元画像を固定したものを使う。範囲を持ち続け、範囲から観察する。
             let project = LogoProject()
             project.addElement(element)
-            let snapshot = SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
+            let snapshot = SaveProjectSnapshot(project: project, renderSessions: store)
             let renderCopy = try XCTUnwrap(snapshot.project.elements.first as? ImageElement)
-            XCTAssertNil(copy.cachedImage)
-            XCTAssertNil(renderCopy.cachedImage)
-            warmCaches(copy)
+            XCTAssertNil(store.cachedRenderedImage(of: copy))
+            warmCaches(copy, store)
             XCTAssertEqual(source.originalCalls, 2)
             XCTAssertEqual(source.proxyCalls, 2)
             XCTAssertEqual(preview.baseCalls, 2)
+            // 保存用の複製の表示画像のキャッシュは空から始まる（描画用の画像を求めると、加工する）。
+            let renders = preview.renderCalls
+            XCTAssertNotNil(snapshot.drawingImage(of: renderCopy))
+            XCTAssertEqual(preview.renderCalls, renders + 1)
             let pinned = source.original
             source.original = snapshotImage(.cyan)
             source.proxy = snapshotImage(.magenta)
-            copy.handleMemoryWarning()
-            XCTAssertTrue(copy.originalImage === source.original)
-            XCTAssertTrue(element.originalImage === pinned)
-            XCTAssertTrue(renderCopy.originalImage === pinned)
-            XCTAssertTrue(element.cachedImage === preview.rendered)
+            store.invalidate(.all, of: copy)
+            XCTAssertTrue(store.originalImage(of: copy) === source.original)
+            XCTAssertTrue(store.originalImage(of: element) === pinned)
+            XCTAssertTrue(snapshot.originalImage(of: renderCopy) === pinned)
+            XCTAssertTrue(store.cachedRenderedImage(of: element) === preview.rendered)
             XCTAssertEqual(source.originalCalls, 3)
         }
     }
 
     func test_cacheLifecycle_preservesEncodedState() throws {
-        try withFixture { element, _, _ in
+        try withFixture { element, _, _, store in
             let encoder = JSONEncoder()
             encoder.outputFormatting = .sortedKeys
             let before = try encoder.encode(element)
             let revision = element.editRevision
-            warmCaches(element)
+            warmCaches(element, store)
             XCTAssertEqual(try encoder.encode(element), before)
-            element.handleMemoryWarning()
+            store.invalidate(.all, of: element)
             XCTAssertEqual(try encoder.encode(element), before)
             XCTAssertEqual(element.editRevision, revision)
             let decoded = try JSONDecoder.live().decode(ImageElement.self, from: before)
-            XCTAssertNil(decoded.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: decoded))
         }
     }
 
-    private func warmCaches(_ element: ImageElement) {
-        XCTAssertNotNil(element.originalImage)
-        XCTAssertNotNil(element.getInstantPreview())
-        XCTAssertNotNil(element.image)
+    private func warmCaches(_ element: ImageElement, _ store: ImageRenderSessionStore) {
+        XCTAssertNotNil(store.originalImage(of: element))
+        XCTAssertNotNil(store.instantPreview(of: element))
+        XCTAssertNotNil(store.displayImage(of: element))
     }
 
-    /// 要素ごとの依存を渡し、他のテストや要素へ影響を与えない。
-    private func withFixture(_ body: (ImageElement, CacheSourceSpy, CachePreviewSpy) throws -> Void) rethrows {
+    /// 要素ごとの依存を渡し、他のテストや要素へ影響を与えない。操作と観察には、同じ管理役を使う。
+    private func withFixture(
+        _ body: (ImageElement, CacheSourceSpy, CachePreviewSpy, ImageRenderSessionStore) throws -> Void
+    ) rethrows {
         let preview = CachePreviewSpy()
         let source = CacheSourceSpy()
-        try body(ImageElementFactory(sourceResolver: source, previewService: preview).makeElement(imageData: Data()), source, preview)
+        let element = ImageElementFactory(sourceResolver: source, previewService: preview).makeElement(imageData: Data())
+        try body(element, source, preview, ImageRenderSessionStore())
     }
 }
 

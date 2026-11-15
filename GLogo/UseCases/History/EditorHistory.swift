@@ -133,7 +133,12 @@ class EditorHistory {
     private func invalidateRenderCaches(_ invalidations: [ImageRenderInvalidation], in project: LogoProject) {
         for invalidation in invalidations {
             guard let element = project.element(for: invalidation.elementId, as: ImageElement.self) else { continue }
-            renderSessions.invalidate(invalidation.scope, of: element)
+            switch invalidation.scope {
+            case .cache(let scope):
+                renderSessions.invalidate(scope, of: element)
+            case .sourceChange:
+                renderSessions.invalidateForSourceChange(of: element)
+            }
         }
     }
 }

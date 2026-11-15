@@ -7,7 +7,11 @@ import XCTest
 final class SaveProjectSnapshotTests: XCTestCase {
     @MainActor
     func test_snapshot_preservesImageAppearance() throws {
-        let image = ImageElementFactory().makeElement(imageData: snapshotImage(.red).pngData()!, importOrder: 7)
+        // 編集元の観察と受付には同じ管理役を使う。描画サービスは品質ごとに別の画像を返し、複製の状態を見分ける。
+        let store = ImageRenderSessionStore()
+        let preview = QualityPreviewService()
+        let image = ImageElementFactory(previewService: preview)
+            .makeElement(imageData: snapshotImage(.red).pngData()!, importOrder: 7)
         image.imageRole = .base
         image.zIndex = 155
         image.name = "Base"
@@ -28,13 +32,15 @@ final class SaveProjectSnapshotTests: XCTestCase {
         image.frameColor = .blue
         image.frameStyle = .double
         image.roundedCorners = true
-        let original = try XCTUnwrap(image.originalImage)
-        image.cachedImage = snapshotImage(.black)
-        image.startEditing()
+        let original = try XCTUnwrap(store.originalImage(of: image))
+        let editorCache = snapshotImage(.black)
+        store.storeRenderedImage(editorCache, of: image)
+        store.startEditing(image)
         let project = LogoProject()
         project.addElement(image)
 
-        let copy = try XCTUnwrap(makeSnapshot(project).project.elements.first as? ImageElement)
+        let snapshot = SaveProjectSnapshot(project: project, renderSessions: store)
+        let copy = try XCTUnwrap(snapshot.project.elements.first as? ImageElement)
         XCTAssertFalse(copy === image)
         XCTAssertEqual(copy.id, image.id)
         XCTAssertEqual(copy.name, "Base")
@@ -60,11 +66,11 @@ final class SaveProjectSnapshotTests: XCTestCase {
         XCTAssertEqual(copy.frameColor, .blue)
         XCTAssertEqual(copy.frameStyle, .double)
         XCTAssertTrue(copy.roundedCorners)
-        XCTAssertTrue(copy.originalImage === original, "画像バッファを再圧縮・複製しない")
-        XCTAssertNil(copy.cachedImage, "編集中の表示キャッシュは保存に持ち越さない")
-        let marker = snapshotImage(.white)
-        copy.cachedImage = marker
-        XCTAssertTrue(copy.image === marker, "編集中フラグも持ち越さない")
+        XCTAssertTrue(snapshot.originalImage(of: copy) === original, "画像バッファを再圧縮・複製しない")
+        // 描画用の画像は、編集元の表示キャッシュ（黒）でも、編集中の即時プレビューでもなく、新しくフル品質で加工したもの。
+        let drawn = snapshot.drawingImage(of: copy)
+        XCTAssertFalse(drawn === editorCache, "編集中の表示キャッシュは保存に持ち越さない")
+        XCTAssertTrue(drawn === preview.fullQuality, "編集中フラグも持ち越さない")
     }
 
     @MainActor
@@ -82,7 +88,7 @@ final class SaveProjectSnapshotTests: XCTestCase {
         shape.gradientAngle = 45
         shape.zIndex = 250
         project.elements = [text, shape]
-        let copy = makeSnapshot(project).project
+        let copy = SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore()).project
         let copiedText = try XCTUnwrap(copy.elements[0] as? TextElement)
         let copiedGlow = try XCTUnwrap(copiedText.effects.first as? GlowEffect)
         let copiedShape = try XCTUnwrap(copy.elements[1] as? ShapeElement)
@@ -120,13 +126,17 @@ final class SaveProjectSnapshotTests: XCTestCase {
         )
         let project = LogoProject()
         project.addElement(image)
-        let copy = try XCTUnwrap(makeSnapshot(project).project.elements.first as? ImageElement)
-        let frozen = try XCTUnwrap(copy.originalImage)
+        let store = ImageRenderSessionStore()
+        let snapshot = SaveProjectSnapshot(project: project, renderSessions: store)
+        let copy = try XCTUnwrap(snapshot.project.elements.first as? ImageElement)
+        let frozen = try XCTUnwrap(snapshot.originalImage(of: copy))
         try FileManager.default.removeItem(at: url)
         image.replaceImageSource(with: snapshotImage(.blue).pngData()!, resetAdjustments: true)
-        XCTAssertTrue(copy.originalImage === frozen)
-        XCTAssertNotEqual(copy.originalImage?.pngData(), image.originalImage?.pngData())
-        XCTAssertNotNil(ImageProcessingService().applyFilters(to: copy))
+        // 編集元の失効は、差し替えのイベントの範囲で履歴が管理役に求める。
+        store.invalidateForSourceChange(of: image)
+        XCTAssertTrue(snapshot.originalImage(of: copy) === frozen)
+        XCTAssertNotEqual(snapshot.originalImage(of: copy)?.pngData(), store.originalImage(of: image)?.pngData())
+        XCTAssertNotNil(ImageProcessingService().applyFilters(to: copy, images: snapshot))
     }
 
     @MainActor
@@ -135,15 +145,18 @@ final class SaveProjectSnapshotTests: XCTestCase {
         let oriented = UIImage(cgImage: try XCTUnwrap(base.cgImage), scale: 2, orientation: .leftMirrored)
         let image = ImageElementFactory(sourceResolver: SnapshotSourceResolver(image: oriented))
             .makeElement(imageData: Data(), importOrder: 1)
-        let original = try XCTUnwrap(image.originalImage)
+        let store = ImageRenderSessionStore()
+        let original = try XCTUnwrap(store.originalImage(of: image))
         let project = LogoProject()
         project.addElement(image)
-        let copy = try XCTUnwrap(makeSnapshot(project).project.elements.first as? ImageElement)
-        XCTAssertTrue(copy.originalImage === original)
-        XCTAssertEqual(copy.originalImage?.cgImage?.bitsPerComponent, original.cgImage?.bitsPerComponent)
-        XCTAssertEqual(copy.originalImage?.cgImage?.colorSpace?.name, original.cgImage?.colorSpace?.name)
-        XCTAssertEqual(copy.originalImage?.imageOrientation, original.imageOrientation)
-        XCTAssertEqual(copy.originalImage?.scale, original.scale)
+        let snapshot = SaveProjectSnapshot(project: project, renderSessions: store)
+        let copy = try XCTUnwrap(snapshot.project.elements.first as? ImageElement)
+        let pinned = try XCTUnwrap(snapshot.originalImage(of: copy))
+        XCTAssertTrue(pinned === original)
+        XCTAssertEqual(pinned.cgImage?.bitsPerComponent, original.cgImage?.bitsPerComponent)
+        XCTAssertEqual(pinned.cgImage?.colorSpace?.name, original.cgImage?.colorSpace?.name)
+        XCTAssertEqual(pinned.imageOrientation, original.imageOrientation)
+        XCTAssertEqual(pinned.scale, original.scale)
         XCTAssertNotEqual(image.copy().id, image.id, "UI 用複製は引き続き別 ID")
     }
 
@@ -156,7 +169,7 @@ final class SaveProjectSnapshotTests: XCTestCase {
         let project = LogoProject()
         project.backgroundSettings.type = .image
         project.backgroundSettings.imageFileName = name
-        let snapshot = makeSnapshot(project)
+        let snapshot = SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
         let before = drawBackground(snapshot.project.backgroundSettings)
         XCTAssertTrue(assets.saveImage(snapshotImage(.blue), name: name, type: .background, alsoSaveProxy: false))
         XCTAssertEqual(drawBackground(snapshot.project.backgroundSettings).pngData(), before.pngData())
@@ -197,8 +210,9 @@ final class SaveProjectSnapshotTests: XCTestCase {
         let image = ImageElementFactory().makeElement(imageData: snapshotImage(.red).pngData()!)
         let project = LogoProject()
         project.addElement(image)
-        let first = makeSnapshot(project)
-        let second = makeSnapshot(project)
+        let store = ImageRenderSessionStore()
+        let first = SaveProjectSnapshot(project: project, renderSessions: store)
+        let second = SaveProjectSnapshot(project: project, renderSessions: store)
         let firstCopy = try XCTUnwrap(first.project.elements.first as? ImageElement)
         let secondCopy = try XCTUnwrap(second.project.elements.first as? ImageElement)
         XCTAssertEqual(secondCopy.id, firstCopy.id)
@@ -215,18 +229,18 @@ final class SaveProjectSnapshotTests: XCTestCase {
     }
 
     /// 同じ内容を続けて受け付けた2件は、同じ元画像を参照してよい（バッファは複製しない）が、
-    /// セッションとキャッシュの状態は独立し、片方の変更がもう片方と編集元に届かない。
+    /// セッションとキャッシュの状態は独立し、片方のキャッシュへの書き込みがもう片方と編集元に届かない。
+    /// 表示画像のキャッシュの有無は、フル品質の加工の回数で見分ける（範囲には、キャッシュを見るだけの口がないため）。
     @MainActor
     func test_snapshots_keepIndependentCaches() throws {
         let source = DataOnlySourceResolver(image: snapshotImage(.red))
-        let image = ImageElement(
-            source: .data(Data()), size: nil, sourceResolver: source,
-            previewService: FixedPreviewService(output: snapshotImage(.green))
-        )
+        let preview = QualityPreviewService()
+        let image = ImageElement(source: .data(Data()), size: nil, sourceResolver: source, previewService: preview)
         let project = LogoProject()
         project.addElement(image)
-        let first = makeSnapshot(project)
-        let second = makeSnapshot(project)
+        let store = ImageRenderSessionStore()
+        let first = SaveProjectSnapshot(project: project, renderSessions: store)
+        let second = SaveProjectSnapshot(project: project, renderSessions: store)
         let firstCopy = try XCTUnwrap(first.project.elements.first as? ImageElement)
         let secondCopy = try XCTUnwrap(second.project.elements.first as? ImageElement)
         XCTAssertEqual(source.originalCalls, 1, "2件目の受付は、編集元のキャッシュから元画像を受け取る")
@@ -234,23 +248,14 @@ final class SaveProjectSnapshotTests: XCTestCase {
 
         // 片方で作った描画用の画像のキャッシュは、もう片方にも編集元にも書かない。
         XCTAssertNotNil(first.drawingImage(of: firstCopy))
-        XCTAssertNotNil(firstCopy.cachedImage)
-        XCTAssertNil(secondCopy.cachedImage)
-        XCTAssertNil(image.cachedImage)
-
-        // 片方のキャッシュを消しても、もう片方が固定した元画像は残る。
-        firstCopy.handleMemoryWarning()
-        XCTAssertNil(first.originalImage(of: firstCopy), "複製はソースを持たないため、消したあとは元画像を得られない")
-        XCTAssertTrue(second.originalImage(of: secondCopy) === source.image)
+        XCTAssertEqual(preview.fullCalls, 1)
+        XCTAssertNotNil(first.drawingImage(of: firstCopy))
+        XCTAssertEqual(preview.fullCalls, 1, "書いた側は、自分のキャッシュを使う")
         XCTAssertNotNil(second.drawingImage(of: secondCopy))
-        XCTAssertTrue(image.originalImage === source.image, "編集元のキャッシュも残る")
-        XCTAssertEqual(source.originalCalls, 2, "取得し直したのは、キャッシュを消した複製の1回だけ")
-    }
-
-    /// アプリと同じ管理役（要素のセッションを返す）で受け付ける。
-    @MainActor
-    private func makeSnapshot(_ project: LogoProject) -> SaveProjectSnapshot {
-        SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
+        XCTAssertEqual(preview.fullCalls, 2, "もう片方には届いていないため、自分で加工する")
+        XCTAssertNil(store.cachedRenderedImage(of: image), "編集元にも届かない")
+        XCTAssertTrue(store.originalImage(of: image) === source.image, "編集元の元画像のキャッシュも、そのまま")
+        XCTAssertEqual(source.originalCalls, 1)
     }
 
     private func drawBackground(_ background: BackgroundSettings) -> UIImage {
@@ -288,6 +293,32 @@ private final class DataOnlySourceResolver: ImageSourceResolving, @unchecked Sen
     func resolveEditingImage(identifier: String?, fileName: String?, originalPath: String?,
                              originalImageProvider: () -> UIImage?, proxyTargetLongSide: CGFloat,
                              highResThresholdMP: CGFloat) -> UIImage? { nil }
+}
+
+/// 品質ごとに別の画像を返し、フル品質の加工の回数を数える描画サービス。テストのスレッドから同期にだけ呼ばれる。
+private final class QualityPreviewService: ImagePreviewing, @unchecked Sendable {
+    let fullQuality = snapshotImage(.green)
+    let instant = snapshotImage(.magenta)
+    private(set) var fullCalls = 0
+
+    func generatePreviewImage(editingImage: UIImage?, originalImage: UIImage?, mode: ImageRenderMode) -> UIImage? {
+        editingImage ?? originalImage
+    }
+
+    func instantPreview(baseImage: UIImage?, params: ImageFilterParams, quality: RenderQuality, mode: ImageRenderMode) -> UIImage? {
+        instant
+    }
+
+    func applyFilters(to image: UIImage, params: ImageFilterParams, quality: RenderQuality, mode: ImageRenderMode) -> UIImage? {
+        if quality == .full { fullCalls += 1 }
+        return fullQuality
+    }
+
+    func applyFiltersAsync(to image: UIImage, params: ImageFilterParams, quality: RenderQuality, mode: ImageRenderMode) async -> UIImage? {
+        fullQuality
+    }
+
+    func resetCache() {}
 }
 
 /// 保存テスト用の小さな単色画像。

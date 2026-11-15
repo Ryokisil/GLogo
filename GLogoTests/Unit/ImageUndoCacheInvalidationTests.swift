@@ -66,7 +66,9 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
     @MainActor
     func testAdjustmentEventsInvalidateCache() {
         let (project, element) = makeProjectWithImageElement()
-        let history = EditorHistory(project: project, renderSessions: ImageRenderSessionStore())
+        // 履歴に渡した管理役と同じインスタンスで、キャッシュを観察する。
+        let store = ImageRenderSessionStore()
+        let history = EditorHistory(project: project, renderSessions: store)
         let cachedImage = makeSolidImage(color: .blue, size: CGSize(width: 4, height: 4))
 
         XCTContext.runActivity(named: "彩度") { _ in
@@ -75,14 +77,14 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldSaturation: 1.0,
                 newSaturation: 2.0
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.saturationAdjustment, 2.0, accuracy: 0.0001)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.saturationAdjustment, 1.0, accuracy: 0.0001)
         }
 
@@ -92,14 +94,14 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldBrightness: 0.0,
                 newBrightness: 0.5
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.brightnessAdjustment, 0.5, accuracy: 0.0001)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.brightnessAdjustment, 0.0, accuracy: 0.0001)
         }
 
@@ -109,14 +111,14 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldContrast: 1.0,
                 newContrast: 1.8
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.contrastAdjustment, 1.8, accuracy: 0.0001)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.contrastAdjustment, 1.0, accuracy: 0.0001)
         }
 
@@ -126,14 +128,14 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldHighlights: 0.0,
                 newHighlights: 0.3
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.highlightsAdjustment, 0.3, accuracy: 0.0001)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.highlightsAdjustment, 0.0, accuracy: 0.0001)
         }
 
@@ -143,14 +145,14 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldShadows: 0.0,
                 newShadows: 0.4
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.shadowsAdjustment, 0.4, accuracy: 0.0001)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.shadowsAdjustment, 0.0, accuracy: 0.0001)
         }
 
@@ -160,14 +162,14 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldHue: 0.0,
                 newHue: 30.0
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.hueAdjustment, 30.0, accuracy: 0.0001)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.hueAdjustment, 0.0, accuracy: 0.0001)
         }
 
@@ -177,14 +179,14 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldSharpness: 0.0,
                 newSharpness: 0.8
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.sharpnessAdjustment, 0.8, accuracy: 0.0001)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.sharpnessAdjustment, 0.0, accuracy: 0.0001)
         }
 
@@ -194,14 +196,14 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldRadius: 0.0,
                 newRadius: 5.0
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.gaussianBlurRadius, 5.0, accuracy: 0.0001)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.gaussianBlurRadius, 0.0, accuracy: 0.0001)
         }
     }
@@ -210,7 +212,9 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
     @MainActor
     func testDecorationEventsInvalidateCache() {
         let (project, element) = makeProjectWithImageElement()
-        let history = EditorHistory(project: project, renderSessions: ImageRenderSessionStore())
+        // 履歴に渡した管理役と同じインスタンスで、キャッシュを観察する。
+        let store = ImageRenderSessionStore()
+        let history = EditorHistory(project: project, renderSessions: store)
         let cachedImage = makeSolidImage(color: .green, size: CGSize(width: 4, height: 4))
 
         XCTContext.runActivity(named: "ティント") { _ in
@@ -221,15 +225,15 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldIntensity: 0.2,
                 newIntensity: 0.7
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.tintColor, UIColor.blue)
             XCTAssertEqual(element.tintIntensity, 0.7, accuracy: 0.0001)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.tintColor, UIColor.red)
             XCTAssertEqual(element.tintIntensity, 0.2, accuracy: 0.0001)
         }
@@ -240,14 +244,14 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldValue: false,
                 newValue: true
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertTrue(element.showFrame)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertFalse(element.showFrame)
         }
 
@@ -257,14 +261,14 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldColor: .black,
                 newColor: .white
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.frameColor, UIColor.white)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.frameColor, UIColor.black)
         }
 
@@ -274,14 +278,14 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldWidth: 1.0,
                 newWidth: 3.0
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.frameWidth, 3.0, accuracy: 0.0001)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.frameWidth, 1.0, accuracy: 0.0001)
         }
 
@@ -291,14 +295,14 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldStyle: .simple,
                 newStyle: .film
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.frameStyle, .film)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertEqual(element.frameStyle, .simple)
         }
 
@@ -312,16 +316,16 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldFrameColor: .black,
                 newFrameColor: .cyan
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertTrue(element.showFrame)
             XCTAssertEqual(element.frameStyle, .badge)
             XCTAssertEqual(element.frameColor.rgbaHexString, UIColor.cyan.rgbaHexString)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertFalse(element.showFrame)
             XCTAssertEqual(element.frameStyle, .simple)
             XCTAssertEqual(element.frameColor.rgbaHexString, UIColor.black.rgbaHexString)
@@ -335,15 +339,15 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
                 oldRadius: 0.0,
                 newRadius: 12.0
             )
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.recordAndApply(event)
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertTrue(element.roundedCorners)
             XCTAssertEqual(element.cornerRadius, 12.0, accuracy: 0.0001)
 
-            element.cachedImage = cachedImage
+            store.storeRenderedImage(cachedImage, of: element)
             history.undo()
-            XCTAssertNil(element.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: element))
             XCTAssertFalse(element.roundedCorners)
             XCTAssertEqual(element.cornerRadius, 0.0, accuracy: 0.0001)
         }
@@ -429,19 +433,23 @@ final class ImageUndoCacheInvalidationTests: XCTestCase {
     ) {
         let (project, element) = makeProjectWithImageElement()
         let editorViewModel = EditorViewModel(project: project)
+        // エディタが持つ管理役と同じインスタンスで、キャッシュを観察する。
+        guard let store = editorViewModel.managedRenderSessions as? ImageRenderSessionStore else {
+            return XCTFail("エディタの管理役は、アプリと同じ具体型")
+        }
         editorViewModel.selectElement(element)
         element.saturationAdjustment = 0.5
         operate(editorViewModel, element)
         let marker = makeSolidImage(color: .green, size: CGSize(width: 4, height: 4))
 
-        element.cachedImage = marker
+        store.storeRenderedImage(marker, of: element)
         editorViewModel.undo()
         XCTAssertEqual(element.saturationAdjustment, 0.5, accuracy: 0.0001, "\(name) の Undo")
-        XCTAssertFalse(element.cachedImage === marker, "\(name) の Undo")
+        XCTAssertFalse(store.cachedRenderedImage(of: element) === marker, "\(name) の Undo")
 
-        element.cachedImage = marker
+        store.storeRenderedImage(marker, of: element)
         editorViewModel.redo()
         XCTAssertEqual(element.saturationAdjustment, 1.0, accuracy: 0.0001, "\(name) の Redo")
-        XCTAssertFalse(element.cachedImage === marker, "\(name) の Redo")
+        XCTAssertFalse(store.cachedRenderedImage(of: element) === marker, "\(name) の Redo")
     }
 }

@@ -73,7 +73,7 @@ final class ImageUpscaleRestrictionIntegrationTests: XCTestCase {
         XCTAssertNil(viewModel.aiTools.lastUpscaleErrorMessage)
         let updated = try XCTUnwrap(viewModel.project.elements.first as? ImageElement)
         XCTAssertTrue(updated.hasAppliedUpscale)
-        XCTAssertEqual(try XCTUnwrap(updated.originalImage).size, CGSize(width: 128, height: 128))
+        XCTAssertEqual(try XCTUnwrap(viewModel.sessionStore.originalImage(of: updated)).size, CGSize(width: 128, height: 128))
     }
 
     // MARK: - Helpers

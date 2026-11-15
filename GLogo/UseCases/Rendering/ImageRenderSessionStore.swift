@@ -4,9 +4,9 @@ import UIKit
 
 /// エディタで表示・編集する画像要素の、描画のセッションの管理役。`EditorViewModel` が1つ持ち、寿命はエディタと同じ。
 ///
-/// 第17回の中間段階として、セッションはまだ要素が持ち、ここは要素のセッションを返すだけにする（所有の移動は第20回）。
+/// 中間段階として、セッションはまだ要素が持ち、ここは要素のセッションを返すだけにする（所有の移動は第21回）。
 /// 受け取る側の入口は、ここから画像を受け取る。状態を変える側（編集中の切り替え・キャッシュの書き込み・失効・メモリ警告）も、
-/// 第19回からここを通す。Model の中の失効（画像の差し替え・復元・初期値への戻し）だけは、まだ要素が自分のセッションに行う。
+/// 第19回からここを通す。画像の差し替え・復元・初期値への戻しの失効も、第20回から履歴イベントの範囲でここを通す。
 /// 保存は受付で元画像だけをここから受け取る。保存用の複製はここを通さず、保存の範囲（`SaveProjectSnapshot`）で扱う（第18回）。
 /// 要素は ID ではなくインスタンスで識別する（保存用の複製は、元の要素と同じ ID を持つため）。
 @MainActor
@@ -41,6 +41,10 @@ final class ImageRenderSessionStore: ImageRenderSessionReading, ImageRenderSessi
 
     func invalidate(_ scope: ImageRenderCache.Invalidation, of element: ImageElement) {
         session(of: element).invalidate(scope)
+    }
+
+    func invalidateForSourceChange(of element: ImageElement) {
+        session(of: element).invalidateForSourceChange()
     }
 
     func storeRenderedImage(_ image: UIImage?, of element: ImageElement) {

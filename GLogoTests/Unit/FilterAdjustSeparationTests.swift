@@ -314,14 +314,14 @@ final class FilterAdjustSeparationTests: XCTestCase {
         flushMainRunLoop()
 
         elementViewModel.filters.applyFilterPreset(FilterCatalog.noir)
-        _ = element.image
+        _ = editorViewModel.sessionStore.displayImage(of: element)
 
         XCTAssertEqual(spy.generatePreviewImageCallCount, 1)
         XCTAssertEqual(spy.instantPreviewCallCount, 1)
         XCTAssertEqual(spy.applyFiltersCallCount, 0)
         XCTAssertTrue(waitUntil(timeout: 1.0) { spy.applyFiltersAsyncCallCount == 1 })
 
-        _ = element.image
+        _ = editorViewModel.sessionStore.displayImage(of: element)
 
         XCTAssertEqual(spy.applyFiltersAsyncCallCount, 1)
         XCTAssertEqual(spy.applyFiltersCallCount, 0)
@@ -346,15 +346,15 @@ final class FilterAdjustSeparationTests: XCTestCase {
         flushMainRunLoop()
 
         elementViewModel.filters.applyFilterPreset(FilterCatalog.noir)
-        XCTAssertEqual(element.image?.pngData(), previewImage.pngData())
+        XCTAssertEqual(editorViewModel.sessionStore.displayImage(of: element)?.pngData(), previewImage.pngData())
         XCTAssertTrue(waitUntil(timeout: 0.3) { spy.applyFiltersAsyncCallCount == 1 })
 
         elementViewModel.filters.applyFilterPreset(FilterCatalog.crisp)
-        XCTAssertEqual(element.image?.pngData(), previewImage.pngData())
+        XCTAssertEqual(editorViewModel.sessionStore.displayImage(of: element)?.pngData(), previewImage.pngData())
 
         RunLoop.main.run(until: Date().addingTimeInterval(0.20))
         XCTAssertEqual(
-            element.image?.pngData(),
+            editorViewModel.sessionStore.displayImage(of: element)?.pngData(),
             previewImage.pngData(),
             "古い async 完了で新しいプリセット選択中のプレビューが終了しないこと"
         )
@@ -362,7 +362,7 @@ final class FilterAdjustSeparationTests: XCTestCase {
         XCTAssertTrue(waitUntil(timeout: 1.0) { spy.applyFiltersAsyncCallCount == 2 })
         RunLoop.main.run(until: Date().addingTimeInterval(0.30))
 
-        XCTAssertEqual(element.image?.pngData(), secondFullImage.pngData())
+        XCTAssertEqual(editorViewModel.sessionStore.displayImage(of: element)?.pngData(), secondFullImage.pngData())
     }
 
     /// プリセットIDからレンダリング経路が正しく判定されることを確認

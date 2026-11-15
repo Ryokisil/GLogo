@@ -10,7 +10,7 @@ protocol ImageAppearanceEvent: EditorEvent {
 
 extension ImageAppearanceEvent {
     var renderInvalidationsAfterApply: [ImageRenderInvalidation] {
-        [ImageRenderInvalidation(elementId: elementId, scope: .rendered)]
+        [ImageRenderInvalidation(elementId: elementId, scope: .cache(.rendered))]
     }
 
     var renderInvalidationsAfterRevert: [ImageRenderInvalidation] {

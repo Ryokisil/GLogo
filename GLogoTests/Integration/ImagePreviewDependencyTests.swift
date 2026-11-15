@@ -1,9 +1,11 @@
 // 描画依存の独立性、生成経路での引き継ぎ、サムネイルとメモリ警告の接続を検証する。
+// 画像とキャッシュは、テストごとに1つの管理役（エディタがあるときはエディタの管理役と同じインスタンス）で観察する。
 
 import UIKit
 import XCTest
 @testable import GLogo
 
+@MainActor
 final class ImagePreviewDependencyTests: XCTestCase {
     func test_defaultDependency_reusesSharedService() throws {
         let first = ImageElementFactory().makeElement(imageData: Data())
@@ -17,22 +19,25 @@ final class ImagePreviewDependencyTests: XCTestCase {
     func test_rendering_isolatesServicesAndResets() throws {
         let firstService = PreviewDependencySpy(color: .red)
         let secondService = PreviewDependencySpy(color: .blue)
+        let store = ImageRenderSessionStore()
         let first = try element(service: firstService)
         let second = try element(service: secondService)
         first.appliedFilterPresetId = "hdr_fixture"
         first.brightnessAdjustment = 0.25
-        XCTAssertTrue(first.image === firstService.output)
-        XCTAssertTrue(second.image === secondService.output)
-        XCTAssertTrue(first.getInstantPreview() === firstService.output)
-        XCTAssertTrue(second.getInstantPreview() === secondService.output)
+        XCTAssertTrue(store.displayImage(of: first) === firstService.output)
+        XCTAssertTrue(store.displayImage(of: second) === secondService.output)
+        XCTAssertTrue(store.instantPreview(of: first) === firstService.output)
+        XCTAssertTrue(store.instantPreview(of: second) === secondService.output)
         XCTAssertEqual(firstService.state.mode, .hdr)
         XCTAssertEqual(firstService.state.brightness, 0.25)
         XCTAssertEqual(secondService.state.mode, .sdr)
         XCTAssertEqual(secondService.state.brightness, 0)
         first.replaceImageSource(with: Data(), resetAdjustments: false)
+        // 共有の描画サービスのリセットは、差し替えのイベントの範囲（ソースの変更）で、履歴が管理役に求める。
+        store.invalidateForSourceChange(of: first)
         XCTAssertEqual(firstService.state.resets, 1)
         XCTAssertEqual(secondService.state.resets, 0)
-        XCTAssertTrue(second.image === secondService.output)
+        XCTAssertTrue(store.displayImage(of: second) === secondService.output)
         XCTAssertEqual(secondService.state.syncCalls, 1, "他要素の差し替えで描画結果を失わない")
     }
 
@@ -40,12 +45,13 @@ final class ImagePreviewDependencyTests: XCTestCase {
     func test_asyncRendering_keepsBoundService() async throws {
         let firstService = PreviewDependencySpy(color: .red)
         let secondService = PreviewDependencySpy(color: .blue)
+        let store = ImageRenderSessionStore()
         let first = try element(service: firstService)
         let second = try element(service: secondService)
-        let rendered = await first.renderFullQualityImageAsync()
+        let rendered = await store.fullQualityImage(of: first)
         XCTAssertTrue(rendered === firstService.output)
-        XCTAssertNil(first.cachedImage, "世代照合前の結果はModelへ書き込まない")
-        let secondRendered = await second.renderFullQualityImageAsync()
+        XCTAssertNil(store.cachedRenderedImage(of: first), "世代照合前の結果はキャッシュへ書き込まない")
+        let secondRendered = await store.fullQualityImage(of: second)
         XCTAssertTrue(secondRendered === secondService.output)
         XCTAssertEqual(firstService.state.asyncCalls, 1)
         XCTAssertEqual(secondService.state.asyncCalls, 1)
@@ -55,6 +61,7 @@ final class ImagePreviewDependencyTests: XCTestCase {
     func test_initializersAndCopies_preserveDependency() throws {
         let service = PreviewDependencySpy(color: .orange)
         let missing = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = ImageRenderSessionStore()
         let factory = ImageElementFactory(previewService: service)
         // 保存データ由来のソースは Model の初期化で直接作り、複製の各分岐も通す。
         let legacySources: [ImageElement.ImageSource] = [.fileName(""), .path(missing.path), .url(missing)]
@@ -69,7 +76,7 @@ final class ImagePreviewDependencyTests: XCTestCase {
             XCTAssertTrue(element.previewService === service)
             XCTAssertTrue(copy.previewService === service)
             XCTAssertTrue(element.renderCopy().previewService === service)
-            XCTAssertNil(copy.cachedImage)
+            XCTAssertNil(store.cachedRenderedImage(of: copy))
             XCTAssertNotEqual(element.id, copy.id)
         }
     }
@@ -81,6 +88,7 @@ final class ImagePreviewDependencyTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         let data = try encoder.encode(project)
+        let store = ImageRenderSessionStore()
         let first = PreviewDependencySpy(color: .red)
         let second = PreviewDependencySpy(color: .blue)
         for service in [first, second] {
@@ -88,7 +96,7 @@ final class ImagePreviewDependencyTests: XCTestCase {
             let decoded = try decoder.decode(LogoProject.self, from: data)
             let image = try XCTUnwrap(decoded.elements.first as? ImageElement)
             XCTAssertTrue(image.previewService === service)
-            XCTAssertTrue(image.image === service.output)
+            XCTAssertTrue(store.displayImage(of: image) === service.output)
             XCTAssertEqual(try encoder.encode(decoded), data)
         }
         XCTAssertEqual(first.state.syncCalls, 1)
@@ -96,6 +104,7 @@ final class ImagePreviewDependencyTests: XCTestCase {
     }
 
     func test_importBuilder_propagatesDependency() throws {
+        let store = ImageRenderSessionStore()
         let service = PreviewDependencySpy(color: .yellow)
         let importer = ImageImportCoordinator(useCase: ImageImportUseCase(
             elementBuilder: ImageImportElementBuilder(elementFactory: ImageElementFactory(previewService: service))))
@@ -105,7 +114,7 @@ final class ImagePreviewDependencyTests: XCTestCase {
                 source: .imageData(data), project: LogoProject(), viewportSize: CGSize(width: 320, height: 640),
                 assetIdentifier: nil, canvasSize: canvas))
             XCTAssertTrue(result.element.previewService === service)
-            XCTAssertTrue(result.element.image === service.output)
+            XCTAssertTrue(store.displayImage(of: result.element) === service.output)
         }
     }
 
@@ -153,11 +162,11 @@ final class ImagePreviewDependencyTests: XCTestCase {
         let separate = PreviewDependencySpy(color: .blue)
         let unused = PreviewDependencySpy(color: .green)
         let images = try [element(service: shared), element(service: shared), element(service: separate)]
-        for image in images { XCTAssertNotNil(image.image) }
+        for image in images { XCTAssertNotNil(renderSessions.displayImage(of: image)) }
         ImageCacheReleaseUseCase.releaseCaches(
             in: images, defaultService: ImagePreviewService.shared, renderSessions: renderSessions
         )
-        for image in images { XCTAssertNil(image.cachedImage) }
+        for image in images { XCTAssertNil(renderSessions.cachedRenderedImage(of: image)) }
         XCTAssertEqual(shared.state.resets, 1)
         XCTAssertEqual(separate.state.resets, 1)
         XCTAssertEqual(unused.state.resets, 0)
@@ -173,10 +182,10 @@ final class ImagePreviewDependencyTests: XCTestCase {
         let project = LogoProject()
         project.addElement(image)
         let editor = EditorViewModel(project: project)
-        XCTAssertNotNil(image.image)
+        XCTAssertNotNil(editor.sessionStore.displayImage(of: image))
         NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
         await fulfillment(of: [reset], timeout: 2)
-        XCTAssertNil(image.cachedImage)
+        XCTAssertNil(editor.sessionStore.cachedRenderedImage(of: image))
         XCTAssertEqual(service.state.resets, 1)
         withExtendedLifetime(editor) {}
     }

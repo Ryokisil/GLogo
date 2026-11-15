@@ -52,7 +52,7 @@ final class LogoProjectPolymorphicCodingRegressionTests: XCTestCase {
         XCTAssertEqual(image.originalImportOrder, 1)
         XCTAssertTrue(image.hasAppliedUpscale)
         XCTAssertTrue(image.previewService === fixed.preview, "入れ子の画像要素へ描画サービスが届く")
-        XCTAssertTrue(image.originalImage === fixed.resolver.image, "入れ子の画像要素へ取得先が届く")
+        XCTAssertTrue(ImageRenderSessionStore().originalImage(of: image) === fixed.resolver.image, "入れ子の画像要素へ取得先が届く")
     }
 
     /// 旧形式（type なし）の固定 JSON でも同じく戻り、依存が届くこと。旧形式にない属性は既定値になる
@@ -68,7 +68,7 @@ final class LogoProjectPolymorphicCodingRegressionTests: XCTestCase {
         XCTAssertEqual(image.originalImportOrder, 0)
         XCTAssertFalse(image.hasAppliedUpscale)
         XCTAssertTrue(image.previewService === fixed.preview, "旧形式でも入れ子の画像要素へ描画サービスが届く")
-        XCTAssertTrue(image.originalImage === fixed.resolver.image, "旧形式でも入れ子の画像要素へ取得先が届く")
+        XCTAssertTrue(ImageRenderSessionStore().originalImage(of: image) === fixed.resolver.image, "旧形式でも入れ子の画像要素へ取得先が届く")
     }
 
     /// 依存が欠けた Decoder では、新旧どちらの形式でも、画像要素の復元が欠けたキーを示すエラーで失敗すること

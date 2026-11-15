@@ -38,7 +38,7 @@ final class ImageRenderValidityIntegrationTests: XCTestCase {
             default: panels.imageAdjustment.updateImageAdjustment(.brightness, value: 0.5)
             }
             await fulfillment(of: [finished], timeout: 1)
-            XCTAssertNil(image.cachedImage)
+            XCTAssertNil(editor.sessionStore.cachedRenderedImage(of: image))
             withExtendedLifetime(panels) {}
         }
     }
@@ -101,8 +101,8 @@ final class ImageRenderValidityIntegrationTests: XCTestCase {
 
             apply(change, to: image, editor: editor)
             let marker = UIImage()
-            image.cachedImage = marker
-            let wasUsingCache = image.image === marker
+            editor.sessionStore.storeRenderedImage(marker, of: image)
+            let wasUsingCache = editor.sessionStore.displayImage(of: image) === marker
             let selected = editor.selectedElement
             let history = editor.getHistoryDescriptions()
             let modified = editor.isProjectModified
@@ -113,8 +113,8 @@ final class ImageRenderValidityIntegrationTests: XCTestCase {
             renderer.finish(0, with: UIImage())
             await fulfillment(of: [returned], timeout: 1)
 
-            XCTAssertTrue(image.cachedImage === marker, "\(change)")
-            XCTAssertEqual(image.image === marker, wasUsingCache, "古い完了で編集状態を変えない: \(change)")
+            XCTAssertTrue(editor.sessionStore.cachedRenderedImage(of: image) === marker, "\(change)")
+            XCTAssertEqual(editor.sessionStore.displayImage(of: image) === marker, wasUsingCache, "古い完了で編集状態を変えない: \(change)")
             XCTAssertTrue(editor.selectedElement === selected)
             XCTAssertEqual(editor.getHistoryDescriptions(), history)
             XCTAssertEqual(editor.isProjectModified, modified)
@@ -157,7 +157,7 @@ final class ImageRenderValidityIntegrationTests: XCTestCase {
         await fulfillment(of: [started], timeout: 1)
         editor.updateProjectName("Changed")
         image.position = CGPoint(x: 10, y: 20)
-        image.cachedImage = UIImage()
+        editor.sessionStore.storeRenderedImage(UIImage(), of: image)
         editor.selectElement(image)
         let history = editor.getHistoryDescriptions()
         let result = UIImage()
@@ -165,8 +165,8 @@ final class ImageRenderValidityIntegrationTests: XCTestCase {
         renderer.onReturn = { returned.fulfill() }
         renderer.finish(0, with: result)
         await fulfillment(of: [returned], timeout: 1)
-        XCTAssertTrue(image.cachedImage === result)
-        XCTAssertTrue(image.image === result, "有効な描画完了でプレビュー状態を終了する")
+        XCTAssertTrue(editor.sessionStore.cachedRenderedImage(of: image) === result)
+        XCTAssertTrue(editor.sessionStore.displayImage(of: image) === result, "有効な描画完了でプレビュー状態を終了する")
         XCTAssertEqual(image.position, CGPoint(x: 10, y: 20))
         XCTAssertEqual(editor.getHistoryDescriptions(), history)
         withExtendedLifetime(panels) {}
@@ -190,15 +190,15 @@ final class ImageRenderValidityIntegrationTests: XCTestCase {
                 let dispatched = try XCTUnwrap(scheduler.pending)
                 apply(change, to: image, editor: editor)
                 let marker = UIImage()
-                image.cachedImage = marker
-                let wasUsingCache = image.image === marker
+                editor.sessionStore.storeRenderedImage(marker, of: image)
+                let wasUsingCache = editor.sessionStore.displayImage(of: image) === marker
                 let changed = expectation(description: "失効した通知は届かない")
                 changed.isInverted = true
                 let observation = editor.objectWillChange.sink { changed.fulfill() }
                 dispatched()
                 await fulfillment(of: [changed], timeout: 0.05)
-                XCTAssertTrue(image.cachedImage === marker, "\(curve) / \(change)")
-                XCTAssertEqual(image.image === marker, wasUsingCache)
+                XCTAssertTrue(editor.sessionStore.cachedRenderedImage(of: image) === marker, "\(curve) / \(change)")
+                XCTAssertEqual(editor.sessionStore.displayImage(of: image) === marker, wasUsingCache)
                 withExtendedLifetime((panels, observation)) {}
             }
         }
@@ -219,10 +219,10 @@ final class ImageRenderValidityIntegrationTests: XCTestCase {
         scheduler.runPending()
         await fulfillment(of: [changed], timeout: 1)
         XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
-        XCTAssertNil(image.cachedImage)
+        XCTAssertNil(editor.sessionStore.cachedRenderedImage(of: image))
         let marker = UIImage()
-        image.cachedImage = marker
-        XCTAssertTrue(image.image === marker)
+        editor.sessionStore.storeRenderedImage(marker, of: image)
+        XCTAssertTrue(editor.sessionStore.displayImage(of: image) === marker)
         withExtendedLifetime((panels, observation)) {}
     }
 
@@ -254,8 +254,8 @@ final class ImageRenderValidityIntegrationTests: XCTestCase {
             panels.filters.applyFilterPreset(FilterCatalog.vintageWarm)
             apply(change, to: image, editor: editor)
             let marker = UIImage()
-            image.cachedImage = marker
-            XCTAssertTrue(image.image === marker, "古い描画を待たず確定品質へ戻る: \(change)")
+            editor.sessionStore.storeRenderedImage(marker, of: image)
+            XCTAssertTrue(editor.sessionStore.displayImage(of: image) === marker, "古い描画を待たず確定品質へ戻る: \(change)")
             withExtendedLifetime(panels) {}
         }
     }

@@ -55,7 +55,9 @@ final class PhotoLibrarySaveTests: XCTestCase {
     /// これがダメなケース
     /// - フィルターが適用されずに元画像が保存される
     /// - キャッシュされた古い画像が保存される
+    @MainActor
     func testSaveAppliesFiltersCorrectly() {
+        let store = ImageRenderSessionStore()
         // テスト用画像データを作成
         let originalSize = CGSize(width: 100, height: 100)
         let testImage = createTestImage(size: originalSize)
@@ -70,8 +72,8 @@ final class PhotoLibrarySaveTests: XCTestCase {
         imageElement.brightnessAdjustment = 0.5  // 明度も上げる
 
         // フィルター適用前後で画像が違うことを確認
-        guard let originalImage = imageElement.originalImage,
-              let filteredImage = imageElement.getFilteredImageForce() else {
+        guard let originalImage = store.originalImage(of: imageElement),
+              let filteredImage = store.filteredImage(of: imageElement) else {
             XCTFail("画像の取得に失敗")
             return
         }
@@ -154,11 +156,11 @@ final class PhotoLibrarySaveTests: XCTestCase {
         let imageElement = ImageElementFactory().makeElement(imageData: corruptedData)
         viewModel.addElement(imageElement)
 
-        // originalImageが正しくnilになることを確認
-        XCTAssertNil(imageElement.originalImage, "破損データの場合、originalImageはnilであるべき")
+        // originalImageが正しくnilになることを確認（エディタの管理役と同じインスタンスで観察する）
+        XCTAssertNil(viewModel.sessionStore.originalImage(of: imageElement), "破損データの場合、originalImageはnilであるべき")
 
         // 強制フィルター適用が失敗することを確認
-        XCTAssertNil(imageElement.getFilteredImageForce(), "破損データはフィルター適用に失敗すべき")
+        XCTAssertNil(viewModel.sessionStore.filteredImage(of: imageElement), "破損データはフィルター適用に失敗すべき")
     }
 
     /// getFilteredImageForceメソッドの動作確認テスト
@@ -171,7 +173,9 @@ final class PhotoLibrarySaveTests: XCTestCase {
     /// - キャッシュが効いてしまい古い画像が返される
     /// - フィルター設定が無視される
     /// - メソッドが例外を投げる
+    @MainActor
     func testGetFilteredImageForceIgnoresCache() {
+        let store = ImageRenderSessionStore()
         let originalSize = CGSize(width: 300, height: 300)
         let testImage = createTestImage(size: originalSize)
         guard let imageData = testImage.pngData() else {
@@ -182,14 +186,14 @@ final class PhotoLibrarySaveTests: XCTestCase {
         let imageElement = ImageElementFactory().makeElement(imageData: imageData)
 
         // 初期状態でフィルター適用画像を取得（キャッシュされる）
-        let initialFiltered = imageElement.image
+        let initialFiltered = store.displayImage(of: imageElement)
 
         // フィルターを追加
         imageElement.saturationAdjustment = 1.8
         imageElement.brightnessAdjustment = 0.3
 
         // getFilteredImageForceで新しいフィルター設定の画像を取得
-        guard let forcedFilteredImage = imageElement.getFilteredImageForce() else {
+        guard let forcedFilteredImage = store.filteredImage(of: imageElement) else {
             XCTFail("getFilteredImageForceが画像を返さない")
             return
         }
@@ -198,7 +202,7 @@ final class PhotoLibrarySaveTests: XCTestCase {
         XCTAssertNotNil(forcedFilteredImage, "フィルター強制適用画像が生成されるべき")
 
         // ピクセル次元（cgImageベース）でサイズが保持されていることを確認
-        if let originalCG = imageElement.originalImage?.cgImage, let forcedCG = forcedFilteredImage.cgImage {
+        if let originalCG = store.originalImage(of: imageElement)?.cgImage, let forcedCG = forcedFilteredImage.cgImage {
             XCTAssertEqual(forcedCG.width, originalCG.width, "フィルター適用後も幅のピクセル数は保持されるべき")
             XCTAssertEqual(forcedCG.height, originalCG.height, "フィルター適用後も高さのピクセル数は保持されるべき")
         }

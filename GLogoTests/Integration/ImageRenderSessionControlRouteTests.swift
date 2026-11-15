@@ -73,7 +73,7 @@ final class ImageRenderSessionControlRouteTests: XCTestCase {
             Control(.startEditing, image),
             Control(.fullQualityImage, image), Control(.storeRenderedImage, image), Control(.endEditing, image)
         ])
-        XCTAssertNotNil(image.cachedImage, "書き込んだ表示画像が残る")
+        XCTAssertNotNil(context.spy.forwarding.cachedRenderedImage(of: image), "書き込んだ表示画像が残る")
     }
 
     /// 古くなった加工の結果（新しい予約・編集で失効）は、書き込みも編集中の終了も求めない。
@@ -110,7 +110,7 @@ final class ImageRenderSessionControlRouteTests: XCTestCase {
         XCTAssertEqual(context.spy.controls, [], "描画中に編集された要素の結果")
     }
 
-    /// Revert の適用と Redo は表示画像と元画像を、Undo は表示画像だけを失効させる。
+    /// Revert の適用と Redo は、調整値の初期化の範囲（`.adjustments`）と初期状態への戻しの範囲（`.revert`）を、Undo は表示画像だけを失効させる。
     /// 失効させない範囲（Undo の元画像・プロキシ・プレビュー元画像、適用のプロキシ）は、取得し直さないことで確かめる。
     func test_revertHistory_invalidatesScopesThroughStore() {
         let source = CountingSource()
@@ -119,15 +119,17 @@ final class ImageRenderSessionControlRouteTests: XCTestCase {
             .makeElement(imageData: snapshotImage(.red).pngData()!))
         let image = context.image
         image.saturationAdjustment = 0.5
-        warm(image)
+        warm(image, context.spy.forwarding)
 
         context.editor.revertSelectedImageToInitialState()
-        XCTAssertEqual(context.spy.controls, [Control(.endEditing, image), Control(.invalidate(.revert), image)])
+        XCTAssertEqual(context.spy.controls, [
+            Control(.endEditing, image), Control(.invalidate(.adjustments), image), Control(.invalidate(.revert), image)
+        ])
         var counts = (source.originalCalls, source.editingCalls, preview.generateCalls)
-        warm(image)
+        warm(image, context.spy.forwarding)
         XCTAssertEqual(source.originalCalls, counts.0 + 1, "適用：元画像を取得し直す")
         XCTAssertEqual(source.editingCalls, counts.1, "適用：プロキシは残る")
-        XCTAssertEqual(preview.generateCalls, counts.2 + 1, "適用：調整値の初期化で、プレビュー元画像を作り直す（Model の中の失効）")
+        XCTAssertEqual(preview.generateCalls, counts.2 + 1, "適用：調整値の初期化の範囲で、プレビュー元画像を作り直す")
 
         context.spy.removeAllRequests()
         context.editor.undo()
@@ -135,7 +137,7 @@ final class ImageRenderSessionControlRouteTests: XCTestCase {
         XCTAssertEqual(image.saturationAdjustment, 0.5, accuracy: 0.0001)
         counts = (source.originalCalls, source.editingCalls, preview.generateCalls)
         let fullCalls = preview.fullCalls
-        warm(image)
+        warm(image, context.spy.forwarding)
         XCTAssertEqual(source.originalCalls, counts.0, "Undo：元画像は残る")
         XCTAssertEqual(source.editingCalls, counts.1, "Undo：プロキシは残る")
         XCTAssertEqual(preview.generateCalls, counts.2, "Undo：プレビュー元画像は残る")
@@ -143,9 +145,11 @@ final class ImageRenderSessionControlRouteTests: XCTestCase {
 
         context.spy.removeAllRequests()
         context.editor.redo()
-        XCTAssertEqual(context.spy.controls, [Control(.invalidate(.revert), image), Control(.endEditing, image)])
+        XCTAssertEqual(context.spy.controls, [
+            Control(.invalidate(.adjustments), image), Control(.invalidate(.revert), image), Control(.endEditing, image)
+        ])
         counts = (source.originalCalls, source.editingCalls, preview.generateCalls)
-        warm(image)
+        warm(image, context.spy.forwarding)
         XCTAssertEqual(source.originalCalls, counts.0 + 1, "Redo：元画像を取得し直す")
         XCTAssertEqual(source.editingCalls, counts.1, "Redo：プロキシは残る")
     }
@@ -223,11 +227,11 @@ final class ImageRenderSessionControlRouteTests: XCTestCase {
         return Context(editor: editor, panels: panels, spy: spy, scheduler: scheduler, image: image)
     }
 
-    /// 元画像・プレビュー元画像（とプロキシ）・表示画像を、要素のキャッシュに載せる。
-    private func warm(_ image: ImageElement) {
-        _ = image.originalImage
-        _ = image.getInstantPreview()
-        _ = image.image
+    /// 元画像・プレビュー元画像（とプロキシ）・表示画像を、キャッシュに載せる。偽物の記録に残さないよう、偽物の中の管理役を使う。
+    private func warm(_ image: ImageElement, _ store: ImageRenderSessionStore) {
+        _ = store.originalImage(of: image)
+        _ = store.instantPreview(of: image)
+        _ = store.displayImage(of: image)
     }
 
     private func finish(_ renderer: ControlledImageRenderer, _ id: Int) async {

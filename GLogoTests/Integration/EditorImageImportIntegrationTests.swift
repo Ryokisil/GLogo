@@ -123,7 +123,7 @@ final class EditorImageImportIntegrationTests: XCTestCase {
         XCTAssertEqual(first.zIndex, 100)
         XCTAssertEqual(second.zIndex, 101)
         for element in [first, second] {
-            XCTAssertNotNil(element.originalImage)
+            XCTAssertNotNil(editor.sessionStore.originalImage(of: element))
             XCTAssertEqual(element.position.x + element.size.width / 2, 160, accuracy: 0.001)
             XCTAssertEqual(element.position.y + element.size.height / 2, 160, accuracy: 0.001)
         }

@@ -118,14 +118,16 @@ final class ImageSourceResolverTests: XCTestCase {
         XCTAssertEqual(resolved.size, originalImage.size)
     }
 
-    /// ImageElement が設定済み resolver 経由で元画像を取得し、結果をキャッシュすることを検証
+    /// ImageElement が設定済み resolver 経由で元画像を取得し、結果をキャッシュすることを検証（管理役を通して取得する）
+    @MainActor
     func test_originalImage_usesResolverCache() throws {
+        let store = ImageRenderSessionStore()
         let expectedImage = makeSolidImage(size: CGSize(width: 18, height: 18), color: .orange)
         let resolver = CountingImageSourceResolver(originalImage: expectedImage)
 
         let element = ImageElementFactory(sourceResolver: resolver).makeElement(imageData: Data(), importOrder: 0)
-        let first = try XCTUnwrap(element.originalImage)
-        let second = try XCTUnwrap(element.originalImage)
+        let first = try XCTUnwrap(store.originalImage(of: element))
+        let second = try XCTUnwrap(store.originalImage(of: element))
 
         XCTAssertEqual(first.size, expectedImage.size)
         XCTAssertEqual(second.size, expectedImage.size)

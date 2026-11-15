@@ -17,6 +17,9 @@ protocol ImageRenderSessionControlling: AnyObject {
     /// 指定した範囲のキャッシュを消す。共有の描画サービスのキャッシュは消さない。
     func invalidate(_ scope: ImageRenderCache.Invalidation, of element: ImageElement)
 
+    /// 画像ソースの変更（差し替え・復元）のあとで、要素の4つのキャッシュと、要素の描画サービスの共有のキャッシュを消す。
+    func invalidateForSourceChange(of element: ImageElement)
+
     /// 確定した表示画像をキャッシュに書き込む。採用するかの判定は、呼び出し側が先に行う。
     func storeRenderedImage(_ image: UIImage?, of element: ImageElement)
 

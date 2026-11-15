@@ -36,6 +36,7 @@ final class RenderSessionSpy: ImageRenderSessionReading, ImageRenderSessionContr
         case startEditing
         case endEditing
         case invalidate(ImageRenderCache.Invalidation)
+        case invalidateForSourceChange
         case storeRenderedImage
         case fullQualityImage
     }
@@ -68,8 +69,9 @@ final class RenderSessionSpy: ImageRenderSessionReading, ImageRenderSessionContr
     private(set) var controls: [Control] = []
 
     /// 状態の変更を渡す先。アプリと同じ実装（要素のセッションへ委譲する）。
-    /// 今の管理役は状態を持たないため、別のインスタンスでも同じ要素のセッションに届く。所有を移す第20回で、この形を見直す。
-    private let forwarding = ImageRenderSessionStore()
+    /// キャッシュを観察するテストは、このインスタンスを使う（偽物の記録に残さずに、準備や観察ができる）。
+    /// 今の管理役は状態を持たないため、別のインスタンスでも同じ要素のセッションに届く。所有を移す第21回で、この形を見直す。
+    let forwarding = ImageRenderSessionStore()
 
     init(
         original: UIImage? = nil,
@@ -120,6 +122,11 @@ final class RenderSessionSpy: ImageRenderSessionReading, ImageRenderSessionContr
     func invalidate(_ scope: ImageRenderCache.Invalidation, of element: ImageElement) {
         record(Control(.invalidate(scope), element), element)
         forwarding.invalidate(scope, of: element)
+    }
+
+    func invalidateForSourceChange(of element: ImageElement) {
+        record(Control(.invalidateForSourceChange, element), element)
+        forwarding.invalidateForSourceChange(of: element)
     }
 
     func storeRenderedImage(_ image: UIImage?, of element: ImageElement) {

@@ -1,47 +1,52 @@
 // 要素・コピー・復元・インポート間で取得依存とキャッシュが混ざらないことを検証する。
+// キャッシュは、テストごとに1つ作った管理役（同じインスタンス）で観察する。
 
 import UIKit
 import XCTest
 @testable import GLogo
 
+@MainActor
 final class ImageSourceIsolationTests: XCTestCase {
     func test_originalImages_keepIndependentCaches() {
+        let store = ImageRenderSessionStore()
         let red = SourceResolverSpy(image: snapshotImage(.red))
         let blue = SourceResolverSpy(image: snapshotImage(.blue))
         let first = ImageElementFactory(sourceResolver: red).makeElement(imageData: Data())
         let second = ImageElementFactory(sourceResolver: blue).makeElement(imageData: Data())
-        XCTAssertTrue(first.originalImage === red.image)
-        XCTAssertTrue(second.originalImage === blue.image)
-        XCTAssertTrue(first.originalImage === red.image)
+        XCTAssertTrue(store.originalImage(of: first) === red.image)
+        XCTAssertTrue(store.originalImage(of: second) === blue.image)
+        XCTAssertTrue(store.originalImage(of: first) === red.image)
         XCTAssertEqual(red.originalCalls, 1)
         XCTAssertEqual(blue.originalCalls, 1)
-        first.handleMemoryWarning()
-        XCTAssertTrue(first.originalImage === red.image)
-        XCTAssertTrue(second.originalImage === blue.image)
+        store.invalidate(.all, of: first)
+        XCTAssertTrue(store.originalImage(of: first) === red.image)
+        XCTAssertTrue(store.originalImage(of: second) === blue.image)
         XCTAssertEqual(red.originalCalls, 2)
         XCTAssertEqual(blue.originalCalls, 1)
     }
 
     func test_proxyImages_useEachResolverAndCache() {
+        let store = ImageRenderSessionStore()
         let firstResolver = SourceResolverSpy(image: snapshotImage(.red))
         let secondResolver = SourceResolverSpy(image: snapshotImage(.blue))
         let first = ImageElementFactory(sourceResolver: firstResolver).makeElement(imageData: Data())
         let second = ImageElementFactory(sourceResolver: secondResolver).makeElement(imageData: Data())
         first.originalImageIdentifier = "first-proxy"
         second.originalImageIdentifier = "second-proxy"
-        XCTAssertNotNil(first.getInstantPreview())
-        XCTAssertNotNil(second.getInstantPreview())
-        XCTAssertNotNil(first.getInstantPreview())
+        XCTAssertNotNil(store.instantPreview(of: first))
+        XCTAssertNotNil(store.instantPreview(of: second))
+        XCTAssertNotNil(store.instantPreview(of: first))
         XCTAssertEqual(firstResolver.editingIdentifiers, ["first-proxy"])
         XCTAssertEqual(secondResolver.editingIdentifiers, ["second-proxy"])
-        first.handleMemoryWarning()
-        XCTAssertNotNil(first.getInstantPreview())
-        XCTAssertNotNil(second.getInstantPreview())
+        store.invalidate(.all, of: first)
+        XCTAssertNotNil(store.instantPreview(of: first))
+        XCTAssertNotNil(store.instantPreview(of: second))
         XCTAssertEqual(firstResolver.editingIdentifiers.count, 2)
         XCTAssertEqual(secondResolver.editingIdentifiers.count, 1)
     }
 
     func test_initializersAndCopies_keepResolver() throws {
+        let store = ImageRenderSessionStore()
         let resolver = SourceResolverSpy(image: snapshotImage(.orange))
         let missingPath = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
         let factory = ImageElementFactory(sourceResolver: resolver)
@@ -56,51 +61,55 @@ final class ImageSourceIsolationTests: XCTestCase {
             ImageElement(source: $0, size: nil, sourceResolver: resolver, previewService: ImagePreviewService.shared)
         }
         for element in elements {
-            XCTAssertTrue(element.originalImage === resolver.image)
+            XCTAssertTrue(store.originalImage(of: element) === resolver.image)
             let beforeCopy = resolver.originalCalls
             let copy = try XCTUnwrap(element.copy() as? ImageElement)
             XCTAssertNotEqual(copy.id, element.id)
-            XCTAssertTrue(copy.originalImage === resolver.image)
+            XCTAssertTrue(store.originalImage(of: copy) === resolver.image)
             XCTAssertEqual(resolver.originalCalls, beforeCopy + 1, "コピーは独自の元画像キャッシュを持つ")
-            copy.handleMemoryWarning()
-            XCTAssertTrue(copy.originalImage === resolver.image)
-            XCTAssertTrue(element.originalImage === resolver.image)
+            store.invalidate(.all, of: copy)
+            XCTAssertTrue(store.originalImage(of: copy) === resolver.image)
+            XCTAssertTrue(store.originalImage(of: element) === resolver.image)
             XCTAssertEqual(resolver.originalCalls, beforeCopy + 2)
         }
     }
 
     func test_restoreSource_usesResolverAndInvalidatesCache() {
+        let store = ImageRenderSessionStore()
         let resolver = SourceResolverSpy(image: snapshotImage(.red))
         let element = ImageElementFactory(sourceResolver: resolver).makeElement(imageData: Data())
-        XCTAssertTrue(element.originalImage === resolver.image)
+        XCTAssertTrue(store.originalImage(of: element) === resolver.image)
         resolver.image = snapshotImage(.blue)
         element.restoreImageSource(imageData: Data([1]), fileName: "ignored", url: nil,
                                    path: "/restored.png", originalIdentifier: "restored", hasAppliedUpscale: true)
         XCTAssertEqual(resolver.lastPath, "/restored.png")
         XCTAssertNil(resolver.lastData, "復元時もパスを優先し、下位ソースを残さない")
         XCTAssertEqual(resolver.originalCalls, 2, "サイズ復元はキャッシュを使わず取得する")
-        XCTAssertTrue(element.originalImage === resolver.image)
+        // キャッシュの失効は、差し替えのイベントの巻き戻しの範囲（ソースの変更）で、履歴が管理役に求める。
+        store.invalidateForSourceChange(of: element)
+        XCTAssertTrue(store.originalImage(of: element) === resolver.image)
         XCTAssertEqual(resolver.originalCalls, 3, "復元後の初回取得で元画像キャッシュを更新する")
         XCTAssertEqual(element.originalImageIdentifier, "restored")
         XCTAssertTrue(element.hasAppliedUpscale)
-        element.clearRevertImageCaches()
-        XCTAssertTrue(element.originalImage === resolver.image)
+        store.invalidate(.revert, of: element)
+        XCTAssertTrue(store.originalImage(of: element) === resolver.image)
         XCTAssertEqual(resolver.originalCalls, 4)
     }
 
     /// 保存の範囲は、受付時に解決済みの元画像を複製へ固定する（第18回で、固定を renderCopy() から範囲へ移した）。
     @MainActor
     func test_saveSnapshot_pinsResolvedImage() throws {
+        let store = ImageRenderSessionStore()
         let original = snapshotImage(.red)
         let resolver = SourceResolverSpy(image: original)
         let element = ImageElementFactory(sourceResolver: resolver).makeElement(imageData: Data())
         let project = LogoProject()
         project.addElement(element)
-        let snapshot = SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
+        let snapshot = SaveProjectSnapshot(project: project, renderSessions: store)
         let copy = try XCTUnwrap(snapshot.project.elements.first as? ImageElement)
         resolver.image = snapshotImage(.blue)
-        element.handleMemoryWarning()
-        XCTAssertTrue(element.originalImage === resolver.image)
+        store.invalidate(.all, of: element)
+        XCTAssertTrue(store.originalImage(of: element) === resolver.image)
         let count = resolver.originalCalls
         XCTAssertTrue(snapshot.originalImage(of: copy) === original)
         XCTAssertEqual(resolver.originalCalls, count, "保存用コピーは固定済み画像を使う")
@@ -108,6 +117,7 @@ final class ImageSourceIsolationTests: XCTestCase {
     }
 
     func test_projectDecode_isolatesResolverWithoutChangingFormat() throws {
+        let store = ImageRenderSessionStore()
         let project = LogoProject()
         project.addElement(ImageElementFactory().makeElement(imageData: snapshotImage(.green).pngData()!))
         let data = try JSONEncoder().encode(project)
@@ -117,13 +127,13 @@ final class ImageSourceIsolationTests: XCTestCase {
         let secondDecoder = JSONDecoder.live(sourceResolver: secondResolver)
         let first = try firstDecoder.decode(LogoProject.self, from: data)
         let second = try secondDecoder.decode(LogoProject.self, from: data)
-        XCTAssertTrue((first.elements.first as? ImageElement)?.originalImage === firstResolver.image)
-        XCTAssertTrue((second.elements.first as? ImageElement)?.originalImage === secondResolver.image)
+        XCTAssertTrue(store.originalImage(of: try XCTUnwrap(first.elements.first as? ImageElement)) === firstResolver.image)
+        XCTAssertTrue(store.originalImage(of: try XCTUnwrap(second.elements.first as? ImageElement)) === secondResolver.image)
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         XCTAssertEqual(try encoder.encode(first), try encoder.encode(second), "取得依存を保存形式に混ぜない")
         let normal = try JSONDecoder.live().decode(LogoProject.self, from: data)
-        let normalImage = try XCTUnwrap((normal.elements.first as? ImageElement)?.originalImage)
+        let normalImage = try XCTUnwrap(store.originalImage(of: try XCTUnwrap(normal.elements.first as? ImageElement)))
         XCTAssertFalse(normalImage === firstResolver.image)
         XCTAssertFalse(normalImage === secondResolver.image)
         XCTAssertEqual(firstResolver.originalCalls, 1)
@@ -131,6 +141,7 @@ final class ImageSourceIsolationTests: XCTestCase {
     }
 
     func test_importBuilder_propagatesResolver() throws {
+        let store = ImageRenderSessionStore()
         for canvas in [nil, CGSize(width: 800, height: 600)] as [CGSize?] {
             let resolver = SourceResolverSpy(image: snapshotImage(.yellow))
             let coordinator = ImageImportCoordinator(useCase: ImageImportUseCase(
@@ -138,7 +149,7 @@ final class ImageSourceIsolationTests: XCTestCase {
             let result = try XCTUnwrap(coordinator.importImage(
                 source: .imageData(snapshotImage(.red).pngData()!), project: LogoProject(),
                 viewportSize: CGSize(width: 320, height: 640), assetIdentifier: nil, canvasSize: canvas))
-            XCTAssertTrue(result.element.originalImage === resolver.image)
+            XCTAssertTrue(store.originalImage(of: result.element) === resolver.image)
             XCTAssertEqual(result.element.originalImportOrder, 1)
             XCTAssertEqual(result.element.imageRole, .base)
         }

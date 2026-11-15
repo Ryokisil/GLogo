@@ -23,11 +23,11 @@ final class ImageRenderInvalidationHistoryTests: XCTestCase {
                 ("Undo", { XCTAssertTrue(fixture.history.undo()) }),
                 ("Redo", { XCTAssertTrue(fixture.history.redo()) })
             ] as [(String, () -> Void)] {
-                fixture.image.cachedImage = marker
+                fixture.renderSessions.forwarding.storeRenderedImage(marker, of: fixture.image)
                 fixture.renderSessions.removeAllRequests()
                 operate()
                 XCTAssertEqual(fixture.renderSessions.controls, expected, "\(name) の\(step)")
-                XCTAssertNil(fixture.image.cachedImage, "\(name) の\(step)で表示画像が消える")
+                XCTAssertNil(fixture.renderSessions.forwarding.cachedRenderedImage(of: fixture.image), "\(name) の\(step)で表示画像が消える")
             }
         }
     }
@@ -48,6 +48,72 @@ final class ImageRenderInvalidationHistoryTests: XCTestCase {
         observedValue = nil
         fixture.history.undo()
         XCTAssertEqual(observedValue, 1.0, "巻き戻しのあとで、呼び出しが返る前に失効させる")
+    }
+
+    /// 差し替えのイベントは、適用・Undo・Redo の直後に、ソースの変更の失効を1回だけ求める。
+    /// 失効の時点で、ソースと編集値はもう変わっている（差し替えでは初期値、Undo では差し替え前の値）。
+    func test_contentReplacement_invalidatesSourceChangeAfterEachStep() throws {
+        let fixture = Fixture()
+        let image = fixture.image
+        let oldData = image.imageData
+        let initialSaturation = image.saturationAdjustment
+        image.saturationAdjustment = initialSaturation + 0.6
+        let newData = try XCTUnwrap(snapshotImage(.blue).pngData())
+        var observed: [(data: Data?, saturation: CGFloat)] = []
+        fixture.renderSessions.onControl = { _, element in
+            observed.append((element.imageData, element.saturationAdjustment))
+        }
+        let event = ImageContentReplacedEvent(
+            element: image, newImageData: newData, newOriginalImageIdentifier: "new", newHasAppliedUpscale: false
+        )
+        let expected = [RenderSessionSpy.Control(.invalidateForSourceChange, image)]
+
+        fixture.history.recordAndApply(event)
+        XCTAssertEqual(fixture.renderSessions.controls, expected, "適用")
+        XCTAssertEqual(observed.last?.data, newData)
+        XCTAssertEqual(observed.last?.saturation, initialSaturation)
+
+        fixture.renderSessions.removeAllRequests()
+        fixture.history.undo()
+        XCTAssertEqual(fixture.renderSessions.controls, expected, "Undo")
+        XCTAssertEqual(observed.last?.data, oldData)
+        XCTAssertEqual(observed.last?.saturation, initialSaturation + 0.6)
+
+        fixture.renderSessions.removeAllRequests()
+        fixture.history.redo()
+        XCTAssertEqual(fixture.renderSessions.controls, expected, "Redo")
+        XCTAssertEqual(observed.last?.data, newData)
+        XCTAssertEqual(observed.count, 3)
+    }
+
+    /// Revert のイベントは、適用・Redo で `.adjustments` と `.revert` を、Undo で `.rendered` を求める。
+    /// 失効の時点で、編集値はもう初期値（適用）・Revert 前の値（Undo）になっている。
+    func test_revert_invalidatesAfterValuesChange() {
+        let fixture = Fixture()
+        let image = fixture.image
+        let initialSaturation = image.saturationAdjustment
+        image.saturationAdjustment = initialSaturation + 0.6
+        var observed: [CGFloat] = []
+        fixture.renderSessions.onControl = { _, element in observed.append(element.saturationAdjustment) }
+        let event = ImageRevertedToInitialStateEvent(element: image, metadataStore: MetadataStoreSpy())
+
+        fixture.history.recordAndApply(event)
+        XCTAssertEqual(fixture.renderSessions.controls, [
+            RenderSessionSpy.Control(.invalidate(.adjustments), image), RenderSessionSpy.Control(.invalidate(.revert), image)
+        ])
+        XCTAssertEqual(observed, [initialSaturation, initialSaturation])
+
+        fixture.renderSessions.removeAllRequests()
+        observed.removeAll()
+        fixture.history.undo()
+        XCTAssertEqual(fixture.renderSessions.controls, [RenderSessionSpy.Control(.invalidate(.rendered), image)])
+        XCTAssertEqual(observed, [initialSaturation + 0.6])
+
+        fixture.renderSessions.removeAllRequests()
+        fixture.history.redo()
+        XCTAssertEqual(fixture.renderSessions.controls, [
+            RenderSessionSpy.Control(.invalidate(.adjustments), image), RenderSessionSpy.Control(.invalidate(.revert), image)
+        ])
     }
 
     /// 示された ID の画像要素がプロジェクトにないときは、何も求めない（イベント側の扱いと同じ）。

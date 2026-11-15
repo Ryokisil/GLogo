@@ -53,7 +53,7 @@ final class ImageRenderRefreshUseCaseTests: XCTestCase {
             renderer.onReturn = { returned.fulfill() }
             renderer.finish(index, with: index == 1 ? latestImage : UIImage())
             await fulfillment(of: [returned], timeout: 1)
-            XCTAssertTrue(image.cachedImage === latestImage)
+            XCTAssertTrue(editor.sessionStore.cachedRenderedImage(of: image) === latestImage)
             XCTAssertEqual(updates, 1)
         }
     }
@@ -79,6 +79,6 @@ final class ImageRenderRefreshUseCaseTests: XCTestCase {
         renderer.onReturn = { returned.fulfill() }
         renderer.finish(0, with: UIImage())
         await fulfillment(of: [returned], timeout: 1)
-        XCTAssertNil(image.cachedImage)
+        XCTAssertNil(editor.sessionStore.cachedRenderedImage(of: image))
     }
 }

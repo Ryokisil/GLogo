@@ -13,15 +13,18 @@ struct ImageRevertedToInitialStateEvent: EditorEvent {
         "画像を初期状態に戻しました"
     }
 
-    /// 適用（Redo を含む）では、表示画像と元画像を失効させる（取得し直した元画像に、初期状態の値で描き直す）。
-    /// 調整値の初期化に伴う Model の中の失効は、第20回まで `resetAdjustmentsToInitialState()` の中に残す。
+    /// 適用（Redo を含む）では、調整値の初期化に伴う失効（表示画像・プレビュー元画像）と、
+    /// 初期状態への戻しに伴う失効（表示画像・元画像）を合わせて行う。プロキシは残す。
     var renderInvalidationsAfterApply: [ImageRenderInvalidation] {
-        [ImageRenderInvalidation(elementId: elementId, scope: .revert)]
+        [
+            ImageRenderInvalidation(elementId: elementId, scope: .cache(.adjustments)),
+            ImageRenderInvalidation(elementId: elementId, scope: .cache(.revert))
+        ]
     }
 
     /// 巻き戻し（Undo）では、編集値を戻すだけなので表示画像だけを失効させる（元画像・プロキシ・プレビュー元画像は残す）。
     var renderInvalidationsAfterRevert: [ImageRenderInvalidation] {
-        [ImageRenderInvalidation(elementId: elementId, scope: .rendered)]
+        [ImageRenderInvalidation(elementId: elementId, scope: .cache(.rendered))]
     }
 
     /// 初期化
@@ -81,8 +84,15 @@ struct ImageContentReplacedEvent: EditorEvent {
         return "画像内容を差し替えました"
     }
 
-    // 描画キャッシュは、今は Model の差し替え・復元（`replaceImageSource`・`restoreImageSource`）の中で、
-    // 共有の描画サービスのキャッシュと一緒に消す。ここでは失効を示さない（第20回で、ここへ移す）。
+    /// 適用では画像ソースが変わるため、要素の4つのキャッシュと、描画サービスの共有のキャッシュを消す。
+    var renderInvalidationsAfterApply: [ImageRenderInvalidation] {
+        [ImageRenderInvalidation(elementId: elementId, scope: .sourceChange)]
+    }
+
+    /// 巻き戻しでも画像ソースが戻るため、適用と同じ範囲を消す。
+    var renderInvalidationsAfterRevert: [ImageRenderInvalidation] {
+        renderInvalidationsAfterApply
+    }
 
     /// 差し替え前の画像ソースと編集値を、対象の画像要素から記録する
     /// - Parameters:
@@ -147,7 +157,7 @@ struct ImageContentReplacedEvent: EditorEvent {
         element.size = preservedSize
 
         // 差し替えで初期スナップショットへ戻した30項目を、すべて差し替え前の値へ戻す。
-        // 画像キャッシュは restoreImageSource で破棄済みのため、ここで改めて無効化しない。
+        // 描画キャッシュは、巻き戻しの直後に履歴が消す（renderInvalidationsAfterRevert）。
         element.applyEditState(oldEditState)
     }
 }

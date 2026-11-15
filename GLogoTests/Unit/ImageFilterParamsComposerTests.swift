@@ -54,13 +54,14 @@ final class ImageFilterParamsComposerTests: XCTestCase {
     }
 
     /// 要素に設定した全調整値が、取り違えなく描画サービスへ届くことを確認する。
+    @MainActor
     func test_elementRendering_passesAllAdjustments() throws {
         let spy = FilterParamsSpy()
         let element = try makeElement(service: spy)
         let expected = makeDistinctValues()
         apply(expected, to: element)
 
-        XCTAssertNotNil(element.getFilteredImageForce())
+        XCTAssertNotNil(ImageRenderSessionStore().filteredImage(of: element))
         let params = try XCTUnwrap(spy.lastParams)
         assertParams(params, equal: expected)
     }

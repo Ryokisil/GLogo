@@ -40,14 +40,16 @@ final class ImageElementFactoryTests: XCTestCase {
             imageData: data, canvasSize: CGSize(width: 800, height: 600)).metadata)
     }
 
+    @MainActor
     func test_invalidData_keepsDataWithDefaultSize() {
+        let store = ImageRenderSessionStore()
         let data = Data([0, 1, 2, 3])
         let elements = [ImageElementFactory().makeElement(imageData: data),
                         ImageElementFactory().makeElement(imageData: data, canvasSize: CGSize(width: 800, height: 600))]
         for element in elements {
             XCTAssertEqual(element.size, CGSize(width: 100, height: 100))
             XCTAssertEqual(element.imageData, data)
-            XCTAssertNil(element.originalImage)
+            XCTAssertNil(store.originalImage(of: element))
             XCTAssertNil(element.metadata)
         }
     }

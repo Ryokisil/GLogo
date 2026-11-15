@@ -20,8 +20,9 @@ struct FixedDecodingDependencies: Sendable {
     }
 
     /// 画像要素がこの組の依存を使っているか。取得先は振る舞い（返した画像）で、描画サービスは同一性で確かめる。
+    /// 第20回で Model の取得の API を外したため、要素のセッションから直接取得する（所有を移す第21回で見直す）。
     func isUsed(by image: ImageElement) -> Bool {
-        image.previewService === preview && image.originalImage === resolver.image
+        image.previewService === preview && image.renderSession.originalImage(of: image) === resolver.image
     }
 }
 

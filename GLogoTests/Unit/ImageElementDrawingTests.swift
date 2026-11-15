@@ -1,6 +1,6 @@
 // キャンバスの描画（drawOnCanvas）と削除のエフェクト（renderSnapshot）が、どの画像を描くかを、描かれた色で検証する。
 // どちらもエディタの管理役（ImageRenderSessionStore）から画像を受け取る。Model の draw(in:) は、第18回で保存の合成も使わなくなったが、
-// 要素の API として残るため、あわせて確かめる（外すかは第20回で判断する）。
+// 要素の API として残るため、あわせて確かめる（第21回で、基底の描画の入口から画像要素を外す）。
 // 取得先と描画サービスは、画像ごと・品質ごとに別の単色を返す偽物にし、取り違えを色の違いで見分ける。
 
 import UIKit
@@ -10,69 +10,75 @@ import XCTest
 @MainActor
 final class ImageElementDrawingTests: XCTestCase {
     func test_draw_notEditing_drawsFullQuality() throws {
+        let store = ImageRenderSessionStore()
         let element = makeElement(
             source: DrawingSourceStub(original: Colors.original, proxy: Colors.proxy),
             preview: DrawingPreviewStub(fullQuality: Colors.fullQuality, previewQuality: Colors.previewQuality,
                                         previewBase: Colors.previewBase, instant: Colors.instant)
         )
 
-        try assertDrawn(element, color: .green, "編集中でなければ、フル品質で加工した画像を描く")
+        try assertDrawn(element, store: store, color: .green, "編集中でなければ、フル品質で加工した画像を描く")
     }
 
     func test_draw_editing_drawsInstantPreview() throws {
+        let store = ImageRenderSessionStore()
         let element = makeElement(
             source: DrawingSourceStub(original: Colors.original, proxy: Colors.proxy),
             preview: DrawingPreviewStub(fullQuality: Colors.fullQuality, previewQuality: Colors.previewQuality,
                                         previewBase: Colors.previewBase, instant: Colors.instant)
         )
-        element.startEditing()
+        store.startEditing(element)
 
-        try assertDrawn(element, color: .magenta, "編集中は、即時プレビューを描く")
+        try assertDrawn(element, store: store, color: .magenta, "編集中は、即時プレビューを描く")
     }
 
     func test_draw_editingWithoutInstantPreview_drawsPreviewQuality() throws {
+        let store = ImageRenderSessionStore()
         let element = makeElement(
             source: DrawingSourceStub(original: Colors.original, proxy: Colors.proxy),
             preview: DrawingPreviewStub(fullQuality: Colors.fullQuality, previewQuality: Colors.previewQuality,
                                         previewBase: nil, instant: nil)
         )
-        element.startEditing()
+        store.startEditing(element)
 
-        try assertDrawn(element, color: .yellow, "即時プレビューがなければ、フォールバックの画像をプレビュー品質で加工して描く")
+        try assertDrawn(element, store: store, color: .yellow, "即時プレビューがなければ、フォールバックの画像をプレビュー品質で加工して描く")
     }
 
     func test_draw_editingFallback_usesProxyOnly() throws {
+        let store = ImageRenderSessionStore()
         let element = makeElement(
             source: DrawingSourceStub(original: nil, proxy: Colors.proxy),
             preview: DrawingPreviewStub(fullQuality: Colors.fullQuality, previewQuality: nil,
                                         previewBase: nil, instant: nil)
         )
-        element.startEditing()
+        store.startEditing(element)
 
-        try assertDrawn(element, color: .blue, "元画像が取れず、プロキシだけが取れるときは、プロキシをそのまま描く")
+        try assertDrawn(element, store: store, color: .blue, "元画像が取れず、プロキシだけが取れるときは、プロキシをそのまま描く")
     }
 
     func test_draw_editingFallback_usesOriginalOnly() throws {
+        let store = ImageRenderSessionStore()
         let element = makeElement(
             source: DrawingSourceStub(original: Colors.original, proxy: nil),
             preview: DrawingPreviewStub(fullQuality: Colors.fullQuality, previewQuality: nil,
                                         previewBase: nil, instant: nil)
         )
-        element.startEditing()
+        store.startEditing(element)
 
-        try assertDrawn(element, color: .red, "プロキシが取れず、元画像だけが取れるときは、元画像をそのまま描く")
+        try assertDrawn(element, store: store, color: .red, "プロキシが取れず、元画像だけが取れるときは、元画像をそのまま描く")
     }
 
     func test_draw_nothingAvailable_drawsNothing() throws {
+        let store = ImageRenderSessionStore()
         for editing in [false, true] {
             let element = makeElement(
                 source: DrawingSourceStub(original: nil, proxy: nil),
                 preview: DrawingPreviewStub(fullQuality: Colors.fullQuality, previewQuality: Colors.previewQuality,
                                             previewBase: Colors.previewBase, instant: Colors.instant)
             )
-            if editing { element.startEditing() }
+            if editing { store.startEditing(element) }
 
-            try assertDrawn(element, color: nil, "元画像もプロキシも取れなければ、何も描かない（編集中: \(editing)）")
+            try assertDrawn(element, store: store, color: nil, "元画像もプロキシも取れなければ、何も描かない（編集中: \(editing)）")
         }
     }
 
@@ -86,16 +92,16 @@ final class ImageElementDrawingTests: XCTestCase {
         return element
     }
 
-    /// キャンバスの描き方（drawOnCanvas）・削除エフェクト（renderSnapshot）・Model の draw(in:) の3つで、
+    /// キャンバスの描き方（drawOnCanvas）・削除エフェクト（renderSnapshot）・Model の draw(in:) の3つで、編集中の切り替えと同じ管理役を使って、
     /// 要素の中央に描かれた色を確かめる。nil は「何も描かない」。
     private func assertDrawn(
         _ element: ImageElement,
+        store renderSessions: ImageRenderSessionStore,
         color expected: UIColor?,
         _ message: String,
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
-        let renderSessions = ImageRenderSessionStore()
         let onCanvas = drawCanvas { element.drawOnCanvas(in: $0, renderSessions: renderSessions) }
         try assertColor(of: onCanvas, at: CGPoint(x: 20, y: 20), equals: expected, "drawOnCanvas: \(message)",
                         file: file, line: line)

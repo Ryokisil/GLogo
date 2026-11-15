@@ -23,8 +23,8 @@ struct ImageElementMetadataRevertUseCase {
 
     /// 画像要素を初期状態へ戻し、関連するメタデータ履歴も巻き戻す
     ///
-    /// 表示画像と元画像の失効は、Revert のイベントが示し、履歴が適用の直後にエディタの管理役で行う（第19回）。
-    /// 調整値の初期化に伴う Model の中の失効（`resetAdjustmentsToInitialState()`）は、第20回まで残す。
+    /// ここでは値だけを戻す。描画キャッシュの失効（表示画像・プレビュー元画像・元画像）は、Revert のイベントが示し、
+    /// 履歴が適用の直後にエディタの管理役で行う。
     /// - Parameters:
     ///   - imageElement: リバート対象の画像要素
     /// - Returns: メタデータ履歴のリバート結果。対象履歴がない場合は `.noChanges`

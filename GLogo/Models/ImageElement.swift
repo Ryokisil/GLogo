@@ -93,7 +93,7 @@ class ImageElement: LogoElement {
     /// 取得・描画・キャッシュの管理。要素と同じ寿命を持ち、初期化のたびに作る（複製・保存用の複製とは共有しない）。
     /// 処理を移した中間段階で、所有と依存の向きの整理は残る（docs/architecture/Models/ImageElement.md の第16回・第17回）。
     /// エディタの管理役（`ImageRenderSessionStore`）と保存の範囲（`SaveProjectSnapshot`）が読むので internal にしている。
-    /// この2つのほかは、ここを直接使わない（所有を移す第20回で、要素から外す）。
+    /// この2つのほかは、ここを直接使わない（所有を移す第21回で、要素から外す）。
     let renderSession: ImageRenderSession
 
     /// 元画像・プロキシ取得の実行時依存。要素ごとに固定し、永続化しない。
@@ -206,12 +206,6 @@ class ImageElement: LogoElement {
     /// 画像メタデータ
     var metadata: ImageMetadata?
     
-    /// 履歴と描画完了処理から利用する既存の読み書き口。
-    var cachedImage: UIImage? {
-        get { renderSession.renderedImage }
-        set { renderSession.renderedImage = newValue }
-    }
-    
     /// 色調補正（彩度調整）
     var saturationAdjustment: CGFloat = 1.0 { didSet { editRevision &+= 1 } }
     
@@ -308,31 +302,6 @@ class ImageElement: LogoElement {
     /// 要素の種類
     override var type: LogoElementType {
         return .image
-    }
-    
-    /// 元画像を取得
-    var originalImage: UIImage? {
-        renderSession.originalImage(of: self)
-    }
-    
-    /// 画像を取得
-    var image: UIImage? {
-        renderSession.displayImage(of: self)
-    }
-
-    /// フィルター適用済み画像を強制的に生成（表示画像のキャッシュは使わない。元画像のキャッシュは使う）
-    func getFilteredImageForce() -> UIImage? {
-        renderSession.filteredImage(of: self)
-    }
-
-    /// フル品質のフィルター適用結果を非同期で生成する
-    ///
-    /// 表示画像のキャッシュ書き込みを伴わないため、呼び出し側で世代管理後に採用可否を判定できる。
-    /// - Parameters: なし
-    /// - Returns: フィルター適用済み画像。元画像未解決時は nil
-    @MainActor
-    func renderFullQualityImageAsync() async -> UIImage? {
-        await renderSession.fullQualityImageAsync(of: self)
     }
     
     /// ローカル保存用Imageのエンコードキー
@@ -539,16 +508,13 @@ class ImageElement: LogoElement {
         }
     }
     
-    /// 元の画像に戻す
+    /// 元の画像に戻す（編集値だけ。描画キャッシュの失効は、呼び出した履歴イベントの範囲で行う）
     func resetToOriginal() {
         applyEditState(initialAdjustmentSnapshot.editState)
         editHistory.removeAll()
-
-        // キャッシュをクリアして再描画を促す
-        renderSession.invalidate(.adjustments)
     }
 
-    /// 画像ソースを差し替える
+    /// 画像ソースを差し替える（値と配置サイズだけ。描画キャッシュは、差し替えのイベントの範囲で履歴が消す）
     /// - Parameters:
     ///   - imageData: 差し替える画像データ
     ///   - resetAdjustments: フィルター調整値を初期化するかどうか
@@ -572,11 +538,9 @@ class ImageElement: LogoElement {
         if resetAdjustments {
             resetToOriginal()
         }
-
-        clearImageCaches()
     }
 
-    /// 画像ソースを復元する
+    /// 画像ソースを復元する（値と配置サイズだけ。描画キャッシュは、差し替えのイベントの巻き戻しの範囲で履歴が消す）
     /// - Parameters:
     ///   - imageData: 復元する画像データ
     ///   - fileName: 復元する画像ファイル名
@@ -612,8 +576,6 @@ class ImageElement: LogoElement {
            ) {
             updateSize(for: image.size)
         }
-
-        clearImageCaches()
     }
     
     /// 画像のサイズに基づいて要素のサイズを更新
@@ -621,38 +583,6 @@ class ImageElement: LogoElement {
         size = ImageSizeCalculator.fittedSize(imageSize: imageSize, canvasSize: canvasSize)
     }
     
-    /// 画像キャッシュをクリアする
-    private func clearImageCaches() {
-        renderSession.invalidateForSourceChange()
-    }
-
-    /// レンダリング済み画像のキャッシュを無効化
-    ///
-    /// 画像調整の値だけが更新された場合に、表示の再描画を確実に行うために使用します。
-    func invalidateRenderedImageCache() {
-        renderSession.invalidate(.rendered)
-    }
-
-    /// メモリ警告時に画像キャッシュを解放する
-    func handleMemoryWarning() {
-        renderSession.invalidate(.all)
-    }
-    
-    /// 即座プレビュー用の画像を取得（低解像度、高速処理）
-    func getInstantPreview() -> UIImage? {
-        renderSession.instantPreview(of: self)
-    }
-
-    /// 編集開始をマーク
-    func startEditing() {
-        renderSession.startEditing()
-    }
-
-    /// 編集終了をマーク。描画のセッションとキャッシュは破棄しない
-    func endEditing() {
-        renderSession.endEditing()
-    }
-
     /// 適用中プリセットからレンダリング経路を判定。描画のセッションが、描画の時点で読む
     /// - Parameters: なし
     /// - Returns: レンダリング経路
@@ -815,15 +745,11 @@ class ImageElement: LogoElement {
 
     // MARK: - Revert Support
 
-    /// 画像要素内で保持する調整値を初期状態に戻す
+    /// 画像要素内で保持する調整値を初期状態に戻す（編集値だけ。描画キャッシュの失効は、Revert のイベントの範囲で行う）
     /// - Parameters: なし
     /// - Returns: なし
     func resetAdjustmentsToInitialState() {
-        // フィルター設定をリセット
         resetToOriginal()
-
-        // キャッシュをクリア
-        clearRevertImageCaches()
     }
 
     /// 既存呼び出し元向けに調整値リセットを維持する互換口
@@ -836,13 +762,6 @@ class ImageElement: LogoElement {
         resetAdjustmentsToInitialState()
     }
 
-    /// リバート後に再解決すべき画像キャッシュをクリアする
-    /// - Parameters: なし
-    /// - Returns: なし
-    func clearRevertImageCaches() {
-        renderSession.invalidate(.revert)
-    }
-    
     /// 初期状態から外れた調整値変更があるかを確認
     /// - Parameters: なし
     /// - Returns: 現在値が初期スナップショットから外れている場合はtrue、そうでなければfalse

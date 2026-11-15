@@ -1,5 +1,5 @@
-// 管理役（ImageRenderSessionStore）が、要素自身のセッションと同じ画像を返し、取得・加工の回数も変えないことを確かめる。
-// 第17回の時点では、管理役は要素のセッションを返すだけなので、キャッシュと編集中の状態も要素の API と共有する。
+// 管理役（ImageRenderSessionStore）が、要素ごとのセッションの画像を返し、キャッシュと編集中の状態を、同じ管理役の操作で変えることを確かめる。
+// 第20回で Model の取得・キャッシュの API を外したため、比べる相手は Model の draw(in:)（第21回まで残る）だけにした。
 
 import UIKit
 import XCTest
@@ -7,41 +7,40 @@ import XCTest
 
 @MainActor
 final class ImageRenderSessionStoreTests: XCTestCase {
-    func test_images_matchElementSession() {
+    func test_images_returnSessionResults() {
         let fixture = Fixture()
         let element = fixture.element
         let store = ImageRenderSessionStore()
 
         let original = store.originalImage(of: element)
         XCTAssertTrue(original === fixture.source.original)
-        XCTAssertTrue(element.originalImage === original, "元画像のキャッシュを要素と共有する")
-        XCTAssertEqual(fixture.source.originalCount, 1, "管理役と要素の API を合わせて、取得は1回")
+        XCTAssertTrue(store.originalImage(of: element) === original, "2回目は元画像のキャッシュを使う")
+        XCTAssertEqual(fixture.source.originalCount, 1)
 
         let display = store.displayImage(of: element)
         XCTAssertTrue(display === fixture.preview.fullQuality)
-        XCTAssertTrue(element.cachedImage === display, "表示画像のキャッシュを要素と共有する")
-        XCTAssertTrue(element.image === display)
+        XCTAssertTrue(store.cachedRenderedImage(of: element) === display, "表示画像をキャッシュする")
         XCTAssertTrue(store.drawingImage(of: element) === display, "編集中でなければ、表示画像を描く")
         XCTAssertEqual(fixture.preview.counts.applyFull, 1, "フル品質の加工は1回")
 
         XCTAssertTrue(store.previewService(of: element) === element.previewService)
     }
 
-    func test_editingState_sharedWithElement() {
+    func test_editingState_followsStoreControls() {
         let fixture = Fixture()
         let element = fixture.element
         let store = ImageRenderSessionStore()
 
-        element.startEditing()
-        XCTAssertTrue(store.drawingImage(of: element) === fixture.preview.instant, "要素の API で始めた編集中の状態を、管理役も使う")
+        store.startEditing(element)
+        XCTAssertTrue(store.drawingImage(of: element) === fixture.preview.instant, "編集中は即時プレビューを描く")
 
-        element.endEditing()
+        store.endEditing(element)
         XCTAssertTrue(store.drawingImage(of: element) === fixture.preview.fullQuality)
     }
 
-    /// 同じ手順を、管理役と Model の API（キャンバスの以前の経路の draw(in:) を含む）で行い、
-    /// 取得先と描画サービスの呼び出しの回数が、手順ごとに同じになることを確かめる。
-    func test_callCounts_matchModelRoute() throws {
+    /// 同じ手順で、管理役の描く画像と Model の draw(in:)（第21回まで残る入口）が、
+    /// 取得先と描画サービスを同じ回数だけ呼ぶことを確かめる。編集中の切り替えは、どちらも管理役で行う。
+    func test_callCounts_matchModelDraw() throws {
         let viaStore = Fixture()
         let viaModel = Fixture()
         let store = ImageRenderSessionStore()
@@ -55,47 +54,36 @@ final class ImageRenderSessionStoreTests: XCTestCase {
             XCTAssertEqual(viaStore.preview.counts, viaModel.preview.counts, "描画サービス: \(step)", file: file, line: line)
         }
 
-        _ = store.originalImage(of: viaStore.element)
-        _ = viaModel.element.originalImage
-        assertSameCounts("元画像")
-
-        _ = store.displayImage(of: viaStore.element)
-        _ = viaModel.element.image
-        assertSameCounts("表示画像")
-
         _ = store.drawingImage(of: viaStore.element)
         viaModel.element.draw(in: context)
         assertSameCounts("キャンバスに描く画像")
 
-        viaStore.element.startEditing()
-        viaModel.element.startEditing()
+        store.startEditing(viaStore.element)
+        store.startEditing(viaModel.element)
         _ = store.drawingImage(of: viaStore.element)
         viaModel.element.draw(in: context)
         assertSameCounts("編集中のキャンバスに描く画像")
 
-        _ = store.displayImage(of: viaStore.element)
-        _ = viaModel.element.image
-        assertSameCounts("編集中の表示画像")
-
-        viaStore.element.endEditing()
-        viaModel.element.endEditing()
+        store.endEditing(viaStore.element)
+        store.endEditing(viaModel.element)
         _ = store.drawingImage(of: viaStore.element)
         viaModel.element.draw(in: context)
         assertSameCounts("編集を終えたあとのキャンバスに描く画像")
     }
 
-    /// 保存用の複製は元の要素と同じ ID を持つが、インスタンスが違うので、セッションもキャッシュも共有しない。
-    func test_renderCopy_usesSeparateSession() {
-        let fixture = Fixture()
-        let element = fixture.element
+    /// 管理役は要素を ID ではなくインスタンスで識別するため、同じ ID を持つ別の要素のキャッシュを取り違えない。
+    /// 保存用の複製の独立は、保存の範囲を通したテスト（`SaveProjectSnapshotTests` の
+    /// `test_snapshot_servesOnlyOwnCopies` と `test_snapshots_keepIndependentCaches`）で確かめる。
+    func test_sameIDElements_keepSeparateCaches() {
+        let element = Fixture().element
+        let other = Fixture().element
+        other.id = element.id
         let store = ImageRenderSessionStore()
-        let copy = element.renderCopy()
-        XCTAssertEqual(copy.id, element.id)
 
-        XCTAssertNotNil(store.displayImage(of: copy))
+        XCTAssertNotNil(store.displayImage(of: other))
 
-        XCTAssertNotNil(copy.cachedImage)
-        XCTAssertNil(element.cachedImage, "同じ ID でも、インスタンスが違えばキャッシュを共有しない")
+        XCTAssertNotNil(store.cachedRenderedImage(of: other))
+        XCTAssertNil(store.cachedRenderedImage(of: element), "同じ ID でも、インスタンスが違えばキャッシュを共有しない")
     }
 
     private func makeContext() throws -> CGContext {

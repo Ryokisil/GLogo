@@ -28,12 +28,14 @@ final class ManualBackgroundRemovalCoordinateIntegrationTests: XCTestCase {
     @MainActor
     private func verifyEditingFlow(type: UTType, orientation: Int, usesProxy: Bool) throws {
         let sourceData = try makeEncodedImage(type: type, orientation: orientation)
+        // 編集画面へ渡す管理役と、画像の観察に使う管理役は、同じインスタンスにする。
+        let store = ImageRenderSessionStore()
         let element = ImageElementFactory().makeElement(imageData: sourceData)
-        let source = try XCTUnwrap(element.originalImage)
+        let source = try XCTUnwrap(store.originalImage(of: element))
         var completedImage: UIImage?
         let viewModel = ManualBackgroundRemovalViewModel(
             imageElement: element,
-            renderSessions: ImageRenderSessionStore(),
+            renderSessions: store,
             completion: { completedImage = $0 },
             backgroundRemovalUseCase: AppComposition.makeBackgroundRemover(),
             imageSourceResolver: EditingResolutionResolver(usesProxy: usesProxy)
@@ -52,8 +54,8 @@ final class ManualBackgroundRemovalCoordinateIntegrationTests: XCTestCase {
 
         // エディタ確定と同じ PNG 差し替え経路を通し、通常の画像レンダラーも確認する。
         let reloadedElement = ImageElementFactory().makeElement(imageData: try XCTUnwrap(result.pngData()))
-        let reloaded = try XCTUnwrap(reloadedElement.originalImage)
-        let rendered = try XCTUnwrap(reloadedElement.getFilteredImageForce())
+        let reloaded = try XCTUnwrap(store.originalImage(of: reloadedElement))
+        let rendered = try XCTUnwrap(store.filteredImage(of: reloadedElement))
         for image in [preview, result, reloaded, rendered] {
             XCTAssertLessThan(try alpha(in: image, x: 0.7, y: 0.25), 0.05, label)
             XCTAssertGreaterThan(try alpha(in: image, x: 0.7, y: 0.75), 0.95, label)

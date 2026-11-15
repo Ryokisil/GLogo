@@ -7,13 +7,14 @@ import UIKit
 
 /// 要素自身のセッションから画像を返す、保存の範囲の代わり。
 /// 第18回より前に、選定・加工・合成が要素の API（originalImage・getFilteredImageForce・draw(in:)）から受け取っていた形と同じ。
+/// それらの API を第20回で外したため、要素のセッションを直接使う（所有を移す第21回で見直す）。
 struct ElementSessionImages: SaveImageReading {
     func originalImage(of element: ImageElement) -> UIImage? {
-        element.originalImage
+        element.renderSession.originalImage(of: element)
     }
 
     func filteredImage(of element: ImageElement) -> UIImage? {
-        element.getFilteredImageForce()
+        element.renderSession.filteredImage(of: element)
     }
 
     func drawingImage(of element: ImageElement) -> UIImage? {

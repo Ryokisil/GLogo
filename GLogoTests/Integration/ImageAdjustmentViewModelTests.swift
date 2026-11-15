@@ -120,10 +120,10 @@ final class ImageAdjustmentViewModelTests: XCTestCase {
             renderer.onReturn = { returned.fulfill() }
             renderer.finish(0, with: stale)
             await fulfillment(of: [returned], timeout: 1)
-            XCTAssertFalse(image.cachedImage === stale)
+            XCTAssertFalse(editor.sessionStore.cachedRenderedImage(of: image) === stale)
             let marker = UIImage()
-            image.cachedImage = marker
-            XCTAssertFalse(image.image === marker, "古いフィルター完了で手動調整のプレビューを終了しない")
+            editor.sessionStore.storeRenderedImage(marker, of: image)
+            XCTAssertFalse(editor.sessionStore.displayImage(of: image) === marker, "古いフィルター完了で手動調整のプレビューを終了しない")
             withExtendedLifetime(editor) {}
         }
     }
@@ -142,12 +142,12 @@ final class ImageAdjustmentViewModelTests: XCTestCase {
         editor.clearSelection()
         editor.selectElement(image)
         let marker = UIImage()
-        image.cachedImage = marker
+        editor.sessionStore.storeRenderedImage(marker, of: image)
         let returned = expectation(description: "古い描画復帰")
         renderer.onReturn = { returned.fulfill() }
         renderer.finish(0, with: UIImage())
         await fulfillment(of: [returned], timeout: 1)
-        XCTAssertTrue(image.cachedImage === marker, "同じ ID に戻っても旧要求は無効")
+        XCTAssertTrue(editor.sessionStore.cachedRenderedImage(of: image) === marker, "同じ ID に戻っても旧要求は無効")
         XCTAssertTrue(parent.filters.imageElement === image)
     }
 

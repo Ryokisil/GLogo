@@ -18,10 +18,10 @@ final class ElementTransformViewModelTests: XCTestCase {
         transform.applyGestureTransform(kind: .magnify, translation: nil, scale: 1.5, rotation: nil, ended: false)
         transform.applyGestureTransform(kind: .magnify, translation: nil, scale: nil, rotation: nil, ended: true)
         let fullQualityMarker = makeImage()
-        image.cachedImage = fullQualityMarker
-        XCTAssertFalse(image.image === fullQualityMarker, "回転が続く間はプレビュー経路を維持する")
+        editor.sessionStore.storeRenderedImage(fullQualityMarker, of: image)
+        XCTAssertFalse(editor.sessionStore.displayImage(of: image) === fullQualityMarker, "回転が続く間はプレビュー経路を維持する")
         transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: nil, ended: true)
-        XCTAssertTrue(image.image === fullQualityMarker)
+        XCTAssertTrue(editor.sessionStore.displayImage(of: image) === fullQualityMarker)
         XCTAssertTrue(editor.isProjectModified)
         // 同時に動かした回転と拡大縮小は、最後の終了で1件にまとまる。
         XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
@@ -55,8 +55,8 @@ final class ElementTransformViewModelTests: XCTestCase {
         XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
         // 保存の受付で、操作中の描画は通常の描画に戻っている。
         let marker = makeImage()
-        image.cachedImage = marker
-        XCTAssertTrue(image.image === marker)
+        editor.sessionStore.storeRenderedImage(marker, of: image)
+        XCTAssertTrue(editor.sessionStore.displayImage(of: image) === marker)
         saver.finish(.success(()))
         transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: 0.2, ended: false)
         XCTAssertEqual(image.rotation, 0.3, accuracy: 0.0001, "保存前から続く操作は、終わるまで適用しない")
@@ -88,11 +88,11 @@ final class ElementTransformViewModelTests: XCTestCase {
         // 選択中の画像は、ジェスチャーのあいだ操作中の描画になる。
         editor.transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: 0.3, ended: false)
         let marker = makeImage()
-        first.cachedImage = marker
-        XCTAssertFalse(first.image === marker)
+        editor.sessionStore.storeRenderedImage(marker, of: first)
+        XCTAssertFalse(editor.sessionStore.displayImage(of: first) === marker)
         // 選択を切り替えると、切り替え前の画像の操作中の描画を終える。
         editor.selectElement(second)
-        XCTAssertTrue(first.image === marker)
+        XCTAssertTrue(editor.sessionStore.displayImage(of: first) === marker)
     }
 
     @MainActor
@@ -112,8 +112,8 @@ final class ElementTransformViewModelTests: XCTestCase {
         // 親の非同期選択購読が、子の同期選択・操作開始より後に届く順序を再現する。
         RunLoop.main.run(until: Date().addingTimeInterval(0.01))
         let marker = makeImage()
-        first.cachedImage = marker
-        XCTAssertFalse(first.image === marker)
+        editor.sessionStore.storeRenderedImage(marker, of: first)
+        XCTAssertFalse(editor.sessionStore.displayImage(of: first) === marker)
         panel.transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: 0.5, ended: false)
         XCTAssertEqual(first.rotation, 0.5)
         withExtendedLifetime(panel) {}
@@ -517,10 +517,10 @@ final class ElementTransformViewModelTests: XCTestCase {
         editor.selectElement(image)
         editor.transform.applyGestureTransform(kind: .rotate, translation: nil, scale: nil, rotation: 0.3, ended: false)
         let marker = makeImage()
-        image.cachedImage = marker
-        XCTAssertFalse(image.image === marker)
+        editor.sessionStore.storeRenderedImage(marker, of: image)
+        XCTAssertFalse(editor.sessionStore.displayImage(of: image) === marker)
         postWillResignActive()
-        XCTAssertTrue(image.image === marker, "操作中の描画を終えている")
+        XCTAssertTrue(editor.sessionStore.displayImage(of: image) === marker, "操作中の描画を終えている")
         XCTAssertEqual(editor.getHistoryDescriptions().count, 1)
     }
 

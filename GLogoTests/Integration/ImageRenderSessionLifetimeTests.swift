@@ -1,6 +1,6 @@
 // エディタでの画像要素と描画のキャッシュの寿命（削除・Undo・履歴の上限・Redo の履歴の破棄・メモリ警告）の、今の振る舞いを固定する。
-// 第20回で所有を管理役へ移すときと、第21回で解放の時点を変えるときに、変わった点と変わらない点をここで見分ける。
-// キャッシュは、今は要素の API（cachedImage）で観察する。所有を移すときは、観察の場所も管理役へ移す。
+// 第21回で所有を管理役へ移すときと、第22回で解放の時点を変えるときに、変わった点と変わらない点をここで見分ける。
+// キャッシュは、エディタが持つ管理役（同じインスタンス）で観察する（第20回で、要素の API から移した）。
 
 import UIKit
 import XCTest
@@ -21,17 +21,17 @@ final class ImageRenderSessionLifetimeTests: XCTestCase {
             editor.deleteSelectedElement()
         }
         XCTAssertNotNil(weakImage, "削除のイベントが要素を持つ")
-        XCTAssertNotNil(weakImage?.cachedImage, "削除してもキャッシュは残る")
+        XCTAssertNotNil(weakImage.flatMap { editor.sessionStore.cachedRenderedImage(of: $0) }, "削除してもキャッシュは残る")
 
         editor.undo()
 
         let restored = try XCTUnwrap(weakImage)
         XCTAssertTrue(editor.project.elements.contains { $0 === restored }, "削除の Undo は同じインスタンスを戻す")
-        XCTAssertNotNil(restored.cachedImage, "戻した要素は、残っていたキャッシュを使う")
+        XCTAssertNotNil(editor.sessionStore.cachedRenderedImage(of: restored), "戻した要素は、残っていたキャッシュを使う")
     }
 
     /// メモリ警告では、プロジェクトにある要素のキャッシュだけを消し、削除した要素（履歴が持つ）のキャッシュは残る。
-    /// 第21回で、削除した要素も解放の対象にする予定（そのときに期待値を変える）。
+    /// 第22回で、削除した要素も解放の対象にする予定（そのときに期待値を変える）。
     func test_memoryWarning_keepsDeletedElementCache() async throws {
         let released = expectation(description: "メモリ警告の処理の終了")
         let defaultService = ReleaseSignalingPreviewService { released.fulfill() }
@@ -49,8 +49,8 @@ final class ImageRenderSessionLifetimeTests: XCTestCase {
         // 既定の描画サービスは、要素のキャッシュをすべて消したあとで解放される。
         await fulfillment(of: [released], timeout: 2)
 
-        XCTAssertNil(kept.cachedImage, "プロジェクトにある要素のキャッシュは消える")
-        XCTAssertNotNil(deleted.cachedImage, "削除した要素のキャッシュは残る（第21回で変える予定）")
+        XCTAssertNil(editor.sessionStore.cachedRenderedImage(of: kept), "プロジェクトにある要素のキャッシュは消える")
+        XCTAssertNotNil(editor.sessionStore.cachedRenderedImage(of: deleted), "削除した要素のキャッシュは残る（第22回で変える予定）")
     }
 
     /// 削除のイベントが履歴の上限（100件）で押し出されると、削除した要素はキャッシュごと解放される。
@@ -88,7 +88,7 @@ final class ImageRenderSessionLifetimeTests: XCTestCase {
 
         editor.undo()
         XCTAssertNotNil(weakImage, "追加の Undo のあとは、Redo の履歴が持つ")
-        XCTAssertNotNil(weakImage?.cachedImage, "キャッシュも残る")
+        XCTAssertNotNil(weakImage.flatMap { editor.sessionStore.cachedRenderedImage(of: $0) }, "キャッシュも残る")
 
         editor.updateProjectName("other")
         XCTAssertNil(weakImage, "新しい操作で Redo の履歴が消えると解放される")
@@ -99,13 +99,13 @@ final class ImageRenderSessionLifetimeTests: XCTestCase {
         let editor = EditorViewModel(project: LogoProject())
         let image = try makeImage(in: editor)
         editor.addElement(image)
-        image.startEditing()
+        editor.sessionStore.startEditing(image)
         editor.selectElement(image)
         editor.deleteSelectedElement()
         editor.undo()
 
         XCTAssertNotNil(editor.renderSessions.displayImage(of: image))
-        XCTAssertNil(image.cachedImage, "戻した要素は編集中のままで、表示画像をキャッシュしない（即時プレビューを返す）")
+        XCTAssertNil(editor.sessionStore.cachedRenderedImage(of: image), "戻した要素は編集中のままで、表示画像をキャッシュしない（即時プレビューを返す）")
     }
 
     private func makeImage(in editor: EditorViewModel) throws -> ImageElement {
