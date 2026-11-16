@@ -258,6 +258,48 @@ final class SaveProjectSnapshotTests: XCTestCase {
         XCTAssertEqual(source.originalCalls, 1)
     }
 
+    /// 受付では、エディタでまだ取得していない元画像だけを取得してよい（取得したものはエディタのキャッシュに残る）。
+    /// 受付のあとの保存処理（元画像・加工した画像・描画用の画像の受け取り）は、エディタ側の取得・表示画像のキャッシュ・
+    /// 編集中の状態を変えない。エディタで未取得・取得済み・編集中の3つの状態で確かめる。
+    @MainActor
+    func test_saveProcessing_leavesEditorStateUnchanged() throws {
+        for state in ["未取得", "取得済み", "編集中"] {
+            let source = DataOnlySourceResolver(image: snapshotImage(.red))
+            let preview = QualityPreviewService()
+            let image = ImageElement(source: .data(Data([1])), size: nil, sourceResolver: source, previewService: preview)
+            let project = LogoProject()
+            project.addElement(image)
+            let store = ImageRenderSessionStore()
+            var rendered: UIImage?
+            if state != "未取得" {
+                XCTAssertNotNil(store.originalImage(of: image))
+                rendered = try XCTUnwrap(store.displayImage(of: image))
+            }
+            if state == "編集中" {
+                store.startEditing(image)
+                rendered = nil
+            }
+            let callsBefore = source.originalCalls
+
+            let snapshot = SaveProjectSnapshot(project: project, renderSessions: store)
+            XCTAssertEqual(source.originalCalls, callsBefore + (state == "未取得" ? 1 : 0), "\(state)：受付で取得するのは未取得のときだけ")
+            let callsAfterAcceptance = source.originalCalls
+
+            let copy = try XCTUnwrap(snapshot.project.elements.first as? ImageElement)
+            XCTAssertTrue(snapshot.originalImage(of: copy) === source.image, state)
+            XCTAssertNotNil(snapshot.filteredImage(of: copy), state)
+            XCTAssertNotNil(snapshot.drawingImage(of: copy), state)
+
+            XCTAssertEqual(source.originalCalls, callsAfterAcceptance, "\(state)：保存処理は元画像を取得し直さない")
+            XCTAssertTrue(store.cachedRenderedImage(of: image) === rendered, "\(state)：エディタの表示画像のキャッシュは変わらない")
+            XCTAssertTrue(store.originalImage(of: image) === source.image, state)
+            XCTAssertEqual(source.originalCalls, callsAfterAcceptance, "\(state)：エディタの元画像は受付のときのキャッシュのまま")
+            if state == "編集中" {
+                XCTAssertTrue(store.drawingImage(of: image) === preview.instant, "編集中の状態は変わらない")
+            }
+        }
+    }
+
     private func drawBackground(_ background: BackgroundSettings) -> UIImage {
         UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { context in
             background.draw(in: context.cgContext, rect: CGRect(x: 0, y: 0, width: 8, height: 8))
