@@ -90,7 +90,8 @@ struct ImageProcessingService: ImageProcessing {
                     continue
                 }
 
-                element.draw(in: cgContext)
+                // テキストと図形は自分の値で描く。採用漏れは描かれなくなるため、TextShapeDrawingTests で確かめる。
+                (element as? any ContextDrawable)?.draw(in: cgContext)
             }
         }
     }

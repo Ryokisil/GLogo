@@ -391,7 +391,7 @@ struct AnyTextEffect: Codable {
 }
 
 /// テキスト要素クラス
-class TextElement: LogoElement {
+class TextElement: LogoElement, ContextDrawable {
     /// テキスト内容
     var text: String = ""
     
@@ -517,7 +517,7 @@ class TextElement: LogoElement {
     // MARK: - マルチパス描画
 
     /// テキストをマルチパスで描画（グロー → ストローク群 → 塗り＋シャドウ）
-    override func draw(in context: CGContext) {
+    func draw(in context: CGContext) {
         guard isVisible else { return }
 
         context.saveGState()

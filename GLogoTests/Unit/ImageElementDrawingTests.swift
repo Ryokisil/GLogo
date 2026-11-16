@@ -1,6 +1,5 @@
 // キャンバスの描画（drawOnCanvas）と削除のエフェクト（renderSnapshot）が、どの画像を描くかを、描かれた色で検証する。
-// どちらもエディタの管理役（ImageRenderSessionStore）から画像を受け取る。Model の draw(in:) は、第18回で保存の合成も使わなくなったが、
-// 要素の API として残るため、あわせて確かめる（第21回で、基底の描画の入口から画像要素を外す）。
+// どちらもエディタの管理役（ImageRenderSessionStore）から画像を受け取る。画像を受け取らずに描く Model の入口は、第21回で外した。
 // 取得先と描画サービスは、画像ごと・品質ごとに別の単色を返す偽物にし、取り違えを色の違いで見分ける。
 
 import UIKit
@@ -92,7 +91,7 @@ final class ImageElementDrawingTests: XCTestCase {
         return element
     }
 
-    /// キャンバスの描き方（drawOnCanvas）・削除エフェクト（renderSnapshot）・Model の draw(in:) の3つで、編集中の切り替えと同じ管理役を使って、
+    /// キャンバスの描き方（drawOnCanvas）と削除エフェクト（renderSnapshot）で、編集中の切り替えと同じ管理役を使って、
     /// 要素の中央に描かれた色を確かめる。nil は「何も描かない」。
     private func assertDrawn(
         _ element: ImageElement,
@@ -108,10 +107,6 @@ final class ImageElementDrawingTests: XCTestCase {
 
         let snapshot = try XCTUnwrap(element.renderSnapshot(renderSessions: renderSessions), file: file, line: line)
         try assertColor(of: snapshot, at: CGPoint(x: 10, y: 10), equals: expected, "renderSnapshot: \(message)",
-                        file: file, line: line)
-
-        let viaModel = drawCanvas { element.draw(in: $0) }
-        try assertColor(of: viaModel, at: CGPoint(x: 20, y: 20), equals: expected, "draw(in:): \(message)",
                         file: file, line: line)
     }
 

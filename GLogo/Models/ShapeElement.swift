@@ -37,7 +37,7 @@ enum StrokeMode: String, Codable {
 }
 
 /// 図形要素クラス
-class ShapeElement: LogoElement {
+class ShapeElement: LogoElement, ContextDrawable {
     /// 図形の種類
     var shapeType: ShapeType = .rectangle
     
@@ -319,7 +319,7 @@ class ShapeElement: LogoElement {
     }
     
     /// 図形を描画
-    override func draw(in context: CGContext) {
+    func draw(in context: CGContext) {
         guard isVisible else { return }
         
         context.saveGState()

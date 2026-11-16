@@ -162,12 +162,6 @@ class LogoElement: Codable {
         self.name = name
     }
     
-    /// 要素を描画するメソッド（サブクラスでオーバーライド）
-    func draw(in context: CGContext) {
-        // 基本実装（サブクラスでオーバーライド）
-        fatalError("Subclasses must override this method")
-    }
-    
     /// 要素のヒットテスト（タッチ判定）
     func hitTest(_ point: CGPoint) -> Bool {
         // 回転がある場合はより複雑な計算が必要

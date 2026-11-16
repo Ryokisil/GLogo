@@ -676,14 +676,9 @@ class ImageElement: LogoElement {
         ImageFilterParamsComposer.compose(adjustmentValues, recipe: appliedFilterRecipe)
     }
 
-    /// 画像を描画。描く画像はセッションが選び、キャンバスへの描き込みは従来どおりここから呼ぶ
-    /// （UseCases から Infrastructure の具体型を呼ばないため）。キャンバスと削除エフェクトは `draw(in:image:)` を使い、
-    /// 保存の合成は保存の範囲から受け取った画像で描く（第18回）。
-    override func draw(in context: CGContext) {
-        draw(in: context, image: renderSession.drawingImage(of: self))
-    }
-
-    /// 受け取った画像で描画する。キャンバスと削除エフェクトは、エディタの管理役から受け取った画像を渡す。
+    /// 受け取った画像で描画する。キャンバスと削除エフェクトは、エディタの管理役から受け取った画像を渡す
+    /// （保存の合成は、保存の範囲から受け取った画像で `ImageElementRenderer` を直接呼ぶ）。
+    /// 画像を受け取らずに描く入口は持たない（`ContextDrawable` を採用しない。第21回で基底の描画の入口を外した）。
     /// - Parameters:
     ///   - context: 描き込み先
     ///   - image: 描く画像。nil のときは何も描かない

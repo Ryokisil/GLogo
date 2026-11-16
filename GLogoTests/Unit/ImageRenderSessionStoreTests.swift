@@ -1,5 +1,5 @@
 // 管理役（ImageRenderSessionStore）が、要素ごとのセッションの画像を返し、キャッシュと編集中の状態を、同じ管理役の操作で変えることを確かめる。
-// 第20回で Model の取得・キャッシュの API を外したため、比べる相手は Model の draw(in:)（第21回まで残る）だけにした。
+// Model の取得・キャッシュの API（第20回）と、画像を受け取らずに描く Model の入口（第21回）を外したため、Model の経路とは比べない。
 
 import UIKit
 import XCTest
@@ -38,39 +38,6 @@ final class ImageRenderSessionStoreTests: XCTestCase {
         XCTAssertTrue(store.drawingImage(of: element) === fixture.preview.fullQuality)
     }
 
-    /// 同じ手順で、管理役の描く画像と Model の draw(in:)（第21回まで残る入口）が、
-    /// 取得先と描画サービスを同じ回数だけ呼ぶことを確かめる。編集中の切り替えは、どちらも管理役で行う。
-    func test_callCounts_matchModelDraw() throws {
-        let viaStore = Fixture()
-        let viaModel = Fixture()
-        let store = ImageRenderSessionStore()
-        let context = try makeContext()
-
-        func assertSameCounts(_ step: String, file: StaticString = #filePath, line: UInt = #line) {
-            XCTAssertEqual(viaStore.source.originalCount, viaModel.source.originalCount, "元画像の取得: \(step)",
-                           file: file, line: line)
-            XCTAssertEqual(viaStore.source.editingCount, viaModel.source.editingCount, "プロキシの取得: \(step)",
-                           file: file, line: line)
-            XCTAssertEqual(viaStore.preview.counts, viaModel.preview.counts, "描画サービス: \(step)", file: file, line: line)
-        }
-
-        _ = store.drawingImage(of: viaStore.element)
-        viaModel.element.draw(in: context)
-        assertSameCounts("キャンバスに描く画像")
-
-        store.startEditing(viaStore.element)
-        store.startEditing(viaModel.element)
-        _ = store.drawingImage(of: viaStore.element)
-        viaModel.element.draw(in: context)
-        assertSameCounts("編集中のキャンバスに描く画像")
-
-        store.endEditing(viaStore.element)
-        store.endEditing(viaModel.element)
-        _ = store.drawingImage(of: viaStore.element)
-        viaModel.element.draw(in: context)
-        assertSameCounts("編集を終えたあとのキャンバスに描く画像")
-    }
-
     /// 管理役は要素を ID ではなくインスタンスで識別するため、同じ ID を持つ別の要素のキャッシュを取り違えない。
     /// 保存用の複製の独立は、保存の範囲を通したテスト（`SaveProjectSnapshotTests` の
     /// `test_snapshot_servesOnlyOwnCopies` と `test_snapshots_keepIndependentCaches`）で確かめる。
@@ -84,13 +51,6 @@ final class ImageRenderSessionStoreTests: XCTestCase {
 
         XCTAssertNotNil(store.cachedRenderedImage(of: other))
         XCTAssertNil(store.cachedRenderedImage(of: element), "同じ ID でも、インスタンスが違えばキャッシュを共有しない")
-    }
-
-    private func makeContext() throws -> CGContext {
-        try XCTUnwrap(CGContext(
-            data: nil, width: 40, height: 40, bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ))
     }
 }
 
