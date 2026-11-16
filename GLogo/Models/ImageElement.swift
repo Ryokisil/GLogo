@@ -90,17 +90,13 @@ class ImageElement: LogoElement {
         )
     }
 
-    /// 取得・描画・キャッシュの管理。要素と同じ寿命を持ち、初期化のたびに作る（複製・保存用の複製とは共有しない）。
-    /// 処理を移した中間段階で、所有と依存の向きの整理は残る（docs/architecture/Models/ImageElement.md の第16回・第17回）。
-    /// エディタの管理役（`ImageRenderSessionStore`）と保存の範囲（`SaveProjectSnapshot`）が読むので internal にしている。
-    /// この2つのほかは、ここを直接使わない（所有を移す第21回で、要素から外す）。
-    let renderSession: ImageRenderSession
-
     /// 元画像・プロキシ取得の実行時依存。要素ごとに固定し、永続化しない。
-    private var sourceResolver: any ImageSourceResolving { renderSession.sourceResolver }
+    /// 描画のセッション（取得・描画・キャッシュ）は要素が持たず、エディタの管理役（`ImageRenderSessionStore`）と
+    /// 保存の範囲（`SaveProjectSnapshot`）が、この依存で作って持つ（第21回）。複製は依存だけを引き継ぐ。
+    let sourceResolver: any ImageSourceResolving
 
     /// 描画とサムネイルで共有する生成時の依存。保存データには含めない。
-    var previewService: any ImagePreviewing { renderSession.previewService }
+    let previewService: any ImagePreviewing
 
     /// 画像ファイル名
     var imageFileName: String? { didSet { editRevision &+= 1 } }
@@ -405,7 +401,8 @@ class ImageElement: LogoElement {
         guard let previewService = decoder.userInfo[.imagePreviewService] as? any ImagePreviewing else {
             throw MissingDecodingDependencyError(key: .imagePreviewService)
         }
-        self.renderSession = ImageRenderSession(sourceResolver: sourceResolver, previewService: previewService)
+        self.sourceResolver = sourceResolver
+        self.previewService = previewService
         let container = try decoder.container(keyedBy: ImageCodingKeys.self)
         
         // インポート順番管理用のプロパティをデコード（後方互換性のためデフォルト値を提供）
@@ -482,7 +479,8 @@ class ImageElement: LogoElement {
         sourceResolver: any ImageSourceResolving,
         previewService: any ImagePreviewing
     ) {
-        self.renderSession = ImageRenderSession(sourceResolver: sourceResolver, previewService: previewService)
+        self.sourceResolver = sourceResolver
+        self.previewService = previewService
         self.originalImportOrder = importOrder
         self.canvasSize = canvasSize
 

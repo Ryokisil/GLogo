@@ -6,6 +6,8 @@ import Foundation
 ///
 /// イベントの適用・巻き戻しの直後に、イベントが示す描画キャッシュをエディタの管理役で失効させる。
 /// 失効は同じ同期の呼び出しの中で行い、タスクなどへ遅らせない（次の描画より前に古い表示画像を消すため）。
+/// 操作の最後には、解放された要素のセッションを管理役に回収させる。上限の切り捨てや Redo の履歴の破棄で要素が解放されたとき、
+/// 描画を待たずに、その操作の中でキャッシュの画像まで解放するため（切り捨て・破棄より前に回収すると、まだ解放されていない）。
 @MainActor
 class EditorHistory {
     /// 履歴の移動をまたぐ非同期要求を失効させる。Undo／Redo しても巻き戻さない。
@@ -57,6 +59,7 @@ class EditorHistory {
 
         // 取り消し履歴をクリア
         undoneEventStack.removeAll()
+        renderSessions.reclaimReleasedSessions()
     }
 
     /// 最後のイベントを巻き戻す。
@@ -75,6 +78,7 @@ class EditorHistory {
 
         // 取り消し履歴に追加
         undoneEventStack.append(lastEvent)
+        renderSessions.reclaimReleasedSessions()
 
         return true
     }
@@ -93,6 +97,7 @@ class EditorHistory {
 
         // イベント履歴に追加
         eventStack.append(lastUndoneEvent)
+        renderSessions.reclaimReleasedSessions()
 
         return true
     }
@@ -112,6 +117,7 @@ class EditorHistory {
         restorationRevision &+= 1
         eventStack.removeAll()
         undoneEventStack.removeAll()
+        renderSessions.reclaimReleasedSessions()
     }
 
     /// アンドゥスタックの深さ（履歴の数）

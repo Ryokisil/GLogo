@@ -6,7 +6,7 @@ import UIKit
 ///
 /// 受け取る側は、Model の取得・描画の API を使わず、ここから画像を受け取る。
 /// 状態を変える操作（編集中の切り替え・キャッシュの書き込み・失効）は含めない。
-/// 返す画像と、取得・加工・キャッシュの時点は、要素のセッション（`ImageRenderSession`）の同じ名前の処理と同じにする。
+/// 返す画像と、取得・加工・キャッシュの時点は、管理役が要素ごとに持つセッション（`ImageRenderSession`）の同じ名前の処理と同じにする。
 @MainActor
 protocol ImageRenderSessionReading: AnyObject {
     /// 元画像。初めて求めたときに取得してキャッシュする。

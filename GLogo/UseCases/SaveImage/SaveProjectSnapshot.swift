@@ -7,14 +7,22 @@ import UIKit
 /// MainActor 上で全ての可変要素をコピーし、画像要素の元画像をエディタの管理役から受け取って固定した後、Coordinator の単一タスクへ渡す。
 /// 管理役は受付の間だけ使い、保持しない（バックグラウンドの保存処理へ持ち込まない）。
 /// 画像は自分の複製のものだけを返し、複製はインスタンスで引き当てる（複製は元の要素と同じ ID を持つため、ID では見分けない）。
-/// 第18回の中間段階として、セッションはまだ複製（`ImageElement`）が持つ（所有を移すのは第21回）。
+/// 複製のセッションは、この範囲が複製の依存で作って持つ（第21回）。エディタの管理役の表には登録しない。
+/// 受付でエディタから元画像を受け取るとき、エディタで未取得なら、エディタ側で取得とキャッシュが起きる（エディタの状態として残る）。
+/// 受付のあとの保存処理は、自分のセッションだけを使い、エディタ側の状態を変えない。
 /// 内部 Model は Sendable ではないため、引き渡した後は他の処理から読み書きしない。
 final class SaveProjectSnapshot: SaveImageReading, @unchecked Sendable {
     let project: LogoProject
 
-    /// 自分の画像要素の複製を、インスタンスで引き当てる表。
+    /// 画像要素の複製と、そのセッション。
+    private struct ImageCopy {
+        let element: ImageElement
+        let session: ImageRenderSession
+    }
+
+    /// 自分の画像要素の複製とセッションを、複製のインスタンスで引き当てる表。
     /// 複製を持ち続け、範囲の寿命のあいだ、識別子が別のインスタンスに使い回されないようにする。
-    private let imageCopies: [ObjectIdentifier: ImageElement]
+    private let imageCopies: [ObjectIdentifier: ImageCopy]
 
     /// - Parameters:
     ///   - source: 編集中のプロジェクト
@@ -24,15 +32,18 @@ final class SaveProjectSnapshot: SaveImageReading, @unchecked Sendable {
         let project = LogoProject(name: source.name, canvasSize: source.canvasSize)
         project.id = source.id
         project.backgroundSettings = source.backgroundSettings.renderCopy()
-        var imageCopies: [ObjectIdentifier: ImageElement] = [:]
+        var imageCopies: [ObjectIdentifier: ImageCopy] = [:]
         project.elements = source.elements.map { element in
             let copy: LogoElement
             if let image = element as? ImageElement {
                 let imageCopy = image.renderCopy()
+                let session = ImageRenderSession(
+                    sourceResolver: imageCopy.sourceResolver, previewService: imageCopy.previewService
+                )
                 // 属性を写したあとで元画像を受け取り、受付の時点の画像に固定する（UIImage は再圧縮・複製しない）。
                 // 複製はソースの参照を持たないため、後のソースの差し替えや削除の影響を受けない。
-                imageCopy.renderSession.fixOriginalImage(renderSessions.originalImage(of: image))
-                imageCopies[ObjectIdentifier(imageCopy)] = imageCopy
+                session.fixOriginalImage(renderSessions.originalImage(of: image))
+                imageCopies[ObjectIdentifier(imageCopy)] = ImageCopy(element: imageCopy, session: session)
                 copy = imageCopy
             } else {
                 copy = element.copy()
@@ -61,6 +72,7 @@ final class SaveProjectSnapshot: SaveImageReading, @unchecked Sendable {
 
     /// 自分の複製のセッション。範囲に含まれない要素には nil を返す（同じ ID でも、インスタンスが違えば含めない）。
     private func session(of element: ImageElement) -> ImageRenderSession? {
-        imageCopies[ObjectIdentifier(element)]?.renderSession
+        guard let copy = imageCopies[ObjectIdentifier(element)], copy.element === element else { return nil }
+        return copy.session
     }
 }

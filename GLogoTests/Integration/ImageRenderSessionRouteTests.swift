@@ -1,7 +1,7 @@
 // 受け取る側の入口（キャンバス・削除エフェクト・画像一覧・AI・フィルターのサムネイル・手動背景除去・背景ぼかしマスク）が、
 // エディタの管理役を通して画像を受け取ることを確かめる。
-// 第17回の時点では管理役も要素のセッションを返すため、同じ画像が届くことだけでは接続漏れに気づけない。
-// そこで問い合わせを記録する偽物の管理役をエディタに渡し、要素自身のセッション（赤）とは別の画像を返させて、
+// アプリの管理役と、ほかの経路（要素の依存で作ったセッション）は同じ画像を返すため、同じ画像が届くことだけでは接続漏れに気づけない。
+// そこで問い合わせを記録する偽物の管理役をエディタに渡し、要素の元画像（赤）とは別の画像を返させて、
 // 問い合わせの記録と、届いた画像（描かれた色・受け取った画像のインスタンス）の両方で見分ける。
 
 import Combine
@@ -205,7 +205,7 @@ final class ImageRenderSessionRouteTests: XCTestCase {
         return (editor, element)
     }
 
-    /// 要素自身のセッションは赤い元画像を使う。キャンバスの (10, 10) から 20×20 に置く。
+    /// 要素の元画像は赤（偽物の管理役を通らない経路で描くと赤になる）。キャンバスの (10, 10) から 20×20 に置く。
     private func makeImageElement() throws -> ImageElement {
         let element = ImageElementFactory().makeElement(imageData: try XCTUnwrap(snapshotImage(.red).pngData()))
         element.position = CGPoint(x: 10, y: 10)

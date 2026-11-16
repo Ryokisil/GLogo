@@ -260,7 +260,8 @@ final class SaveProjectSnapshotTests: XCTestCase {
 
     /// 受付では、エディタでまだ取得していない元画像だけを取得してよい（取得したものはエディタのキャッシュに残る）。
     /// 受付のあとの保存処理（元画像・加工した画像・描画用の画像の受け取り）は、エディタ側の取得・表示画像のキャッシュ・
-    /// 編集中の状態を変えない。エディタで未取得・取得済み・編集中の3つの状態で確かめる。
+    /// 編集中の状態を変えない。保存用の複製は、エディタの管理役の表に登録しない（表の確認は、回収も生成もしない口で行う）。
+    /// エディタで未取得・取得済み・編集中の3つの状態で確かめる。
     @MainActor
     func test_saveProcessing_leavesEditorStateUnchanged() throws {
         for state in ["未取得", "取得済み", "編集中"] {
@@ -280,9 +281,11 @@ final class SaveProjectSnapshotTests: XCTestCase {
                 rendered = nil
             }
             let callsBefore = source.originalCalls
+            XCTAssertEqual(store.registeredSessionCount, state == "未取得" ? 0 : 1, state)
 
             let snapshot = SaveProjectSnapshot(project: project, renderSessions: store)
             XCTAssertEqual(source.originalCalls, callsBefore + (state == "未取得" ? 1 : 0), "\(state)：受付で取得するのは未取得のときだけ")
+            XCTAssertEqual(store.registeredSessionCount, 1, "\(state)：受付で登録してよいのは編集元の要素の分だけ")
             let callsAfterAcceptance = source.originalCalls
 
             let copy = try XCTUnwrap(snapshot.project.elements.first as? ImageElement)
@@ -291,6 +294,8 @@ final class SaveProjectSnapshotTests: XCTestCase {
             XCTAssertNotNil(snapshot.drawingImage(of: copy), state)
 
             XCTAssertEqual(source.originalCalls, callsAfterAcceptance, "\(state)：保存処理は元画像を取得し直さない")
+            XCTAssertEqual(store.registeredSessionCount, 1, "\(state)：保存用の複製は、エディタの表に登録しない")
+            XCTAssertFalse(store.hasSession(for: copy), state)
             XCTAssertTrue(store.cachedRenderedImage(of: image) === rendered, "\(state)：エディタの表示画像のキャッシュは変わらない")
             XCTAssertTrue(store.originalImage(of: image) === source.image, state)
             XCTAssertEqual(source.originalCalls, callsAfterAcceptance, "\(state)：エディタの元画像は受付のときのキャッシュのまま")

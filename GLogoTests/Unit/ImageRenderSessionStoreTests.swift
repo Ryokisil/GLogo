@@ -1,4 +1,5 @@
 // 管理役（ImageRenderSessionStore）が、要素ごとのセッションの画像を返し、キャッシュと編集中の状態を、同じ管理役の操作で変えることを確かめる。
+// 第21回で管理役がセッションを持つ形にしたため、別の管理役との独立・回収・管理役自身の解放もここで確かめる。
 // Model の取得・キャッシュの API（第20回）と、画像を受け取らずに描く Model の入口（第21回）を外したため、Model の経路とは比べない。
 
 import UIKit
@@ -52,6 +53,74 @@ final class ImageRenderSessionStoreTests: XCTestCase {
         XCTAssertNotNil(store.cachedRenderedImage(of: other))
         XCTAssertNil(store.cachedRenderedImage(of: element), "同じ ID でも、インスタンスが違えばキャッシュを共有しない")
     }
+
+    /// セッションは管理役が持つため、別の管理役とは、同じ要素でも取得・キャッシュ・編集中の状態を共有しない。
+    func test_separateStores_keepSeparateState() {
+        let fixture = Fixture()
+        let element = fixture.element
+        let first = ImageRenderSessionStore()
+        let second = ImageRenderSessionStore()
+
+        XCTAssertNotNil(first.displayImage(of: element))
+        first.startEditing(element)
+
+        XCTAssertNil(second.cachedRenderedImage(of: element), "表示画像のキャッシュは、もう一方に届かない")
+        XCTAssertTrue(second.drawingImage(of: element) === fixture.preview.fullQuality, "編集中の状態も届かない")
+        XCTAssertEqual(fixture.source.originalCount, 2, "元画像は、それぞれの管理役が取得する")
+        XCTAssertTrue(first.drawingImage(of: element) === fixture.preview.instant)
+    }
+
+    /// 回収は、解放された要素のセッションだけを、キャッシュの画像ごと捨てる。生きている要素のキャッシュには触れない。
+    /// 件数と有無の確認は、回収もセッションの生成もしない口で行う。
+    func test_reclaim_dropsOnlyReleasedSessions() throws {
+        let store = ImageRenderSessionStore()
+        let alive = Fixture()
+        weak var releasedElement: ImageElement?
+        weak var releasedImage: UIImage?
+        XCTAssertEqual(store.registeredSessionCount, 0)
+        XCTAssertFalse(store.hasSession(for: alive.element))
+        _ = store.previewService(of: alive.element)
+        XCTAssertFalse(store.hasSession(for: alive.element), "描画サービスの引き当てでは、セッションを作らない")
+
+        let aliveRendered = try XCTUnwrap(store.displayImage(of: alive.element))
+        do {
+            let released = ImageElement(
+                source: .data(Data()), size: nil, sourceResolver: FreshImageSource(), previewService: CountingPreview()
+            )
+            releasedElement = released
+            releasedImage = store.originalImage(of: released)
+        }
+        XCTAssertNil(releasedElement, "管理役は要素を弱く持つ")
+        XCTAssertNotNil(releasedImage, "回収の前は、解放された要素のキャッシュも残る")
+        XCTAssertEqual(store.registeredSessionCount, 2, "観察では回収しない")
+
+        store.reclaimReleasedSessions()
+
+        XCTAssertNil(releasedImage, "解放された要素のキャッシュの画像まで解放する")
+        XCTAssertEqual(store.registeredSessionCount, 1)
+        XCTAssertTrue(store.hasSession(for: alive.element))
+        XCTAssertTrue(store.cachedRenderedImage(of: alive.element) === aliveRendered, "生きている要素のキャッシュは残す")
+        XCTAssertEqual(alive.source.originalCount, 1)
+    }
+
+    /// 管理役が解放されると、要素が生きていても、管理役が持っていたセッションとキャッシュの画像は解放される。
+    func test_storeRelease_releasesSessions() throws {
+        let element = ImageElement(
+            source: .data(Data()), size: nil, sourceResolver: FreshImageSource(), previewService: CountingPreview()
+        )
+        weak var store: ImageRenderSessionStore?
+        weak var original: UIImage?
+        do {
+            let owned = ImageRenderSessionStore()
+            store = owned
+            original = owned.originalImage(of: element)
+            XCTAssertNotNil(original)
+        }
+
+        XCTAssertNil(store)
+        XCTAssertNil(original, "要素はキャッシュを持たない")
+        XCTAssertNotNil(ImageRenderSessionStore().originalImage(of: element), "要素の依存は残り、別の管理役が取得し直せる")
+    }
 }
 
 // MARK: - 偽物
@@ -93,6 +162,24 @@ private final class CountingSource: ImageSourceResolving, @unchecked Sendable {
     ) -> UIImage? {
         editingCount += 1
         return proxy
+    }
+}
+
+/// 呼ぶたびに新しい元画像を返し、自分では持たない取得先。キャッシュの画像の解放を弱参照で確かめるのに使う。
+private final class FreshImageSource: ImageSourceResolving, @unchecked Sendable {
+    func resolveOriginalImage(imageData: Data?, fileName: String?, url: URL?, path: String?) -> UIImage? {
+        snapshotImage(.red)
+    }
+
+    func resolveEditingImage(
+        identifier: String?,
+        fileName: String?,
+        originalPath: String?,
+        originalImageProvider: () -> UIImage?,
+        proxyTargetLongSide: CGFloat,
+        highResThresholdMP: CGFloat
+    ) -> UIImage? {
+        originalImageProvider()
     }
 }
 

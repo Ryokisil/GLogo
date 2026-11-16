@@ -6,10 +6,11 @@ import UIKit
 
 /// 要求を順に記録する管理役の偽物。
 ///
-/// 読み取りは、決めておいた画像を返す。返す画像を要素自身のセッションの画像と別にしておくと、
+/// 読み取りは、決めておいた画像を返す。返す画像を要素の元画像と別にしておくと、
 /// 描かれた色や受け取った画像からも、管理役を通ったかを見分けられる
-/// （今は管理役も要素のセッションを返すため、同じ画像が届くことだけでは接続漏れに気づけない）。
-/// 状態の変更は、読み取りとは別に記録してから、アプリと同じ管理役へそのまま渡す（編集中の状態やキャッシュは、これまでどおり変わる）。
+/// （アプリの管理役もほかの経路も要素の依存から同じ画像を作るため、同じ画像が届くことだけでは接続漏れに気づけない）。
+/// 状態の変更は、読み取りとは別に記録してから、中に持つ唯一の管理役（`forwarding`）へそのまま渡す。
+/// エディタに渡す管理役はこの偽物だけなので、セッション・キャッシュ・編集中の状態は `forwarding` にだけ集まる。
 @MainActor
 final class RenderSessionSpy: ImageRenderSessionReading, ImageRenderSessionControlling {
     /// 読み取りの種類
@@ -67,10 +68,12 @@ final class RenderSessionSpy: ImageRenderSessionReading, ImageRenderSessionContr
 
     private(set) var requests: [Request] = []
     private(set) var controls: [Control] = []
+    /// 回収を求められた回数。要素を持たないため、状態の変更の記録（`controls`）とは分ける。
+    private(set) var reclaimCount = 0
 
-    /// 状態の変更を渡す先。アプリと同じ実装（要素のセッションへ委譲する）。
+    /// 状態の変更を渡す先。アプリと同じ実装で、セッションを持つのはこのインスタンスだけ。
     /// キャッシュを観察するテストは、このインスタンスを使う（偽物の記録に残さずに、準備や観察ができる）。
-    /// 今の管理役は状態を持たないため、別のインスタンスでも同じ要素のセッションに届く。所有を移す第21回で、この形を見直す。
+    /// 別の管理役では、同じ要素でも状態を共有しない（第21回）。
     let forwarding = ImageRenderSessionStore()
 
     init(
@@ -137,6 +140,11 @@ final class RenderSessionSpy: ImageRenderSessionReading, ImageRenderSessionContr
     func fullQualityImage(of element: ImageElement) async -> UIImage? {
         record(Control(.fullQualityImage, element), element)
         return await forwarding.fullQualityImage(of: element)
+    }
+
+    func reclaimReleasedSessions() {
+        reclaimCount += 1
+        forwarding.reclaimReleasedSessions()
     }
 
     // MARK: - 記録

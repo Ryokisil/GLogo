@@ -5,21 +5,34 @@
 import UIKit
 @testable import GLogo
 
-/// 要素自身のセッションから画像を返す、保存の範囲の代わり。
-/// 第18回より前に、選定・加工・合成が要素の API（originalImage・getFilteredImageForce・draw(in:)）から受け取っていた形と同じ。
-/// それらの API を第20回で外したため、要素のセッションを直接使う（所有を移す第21回で見直す）。
-struct ElementSessionImages: SaveImageReading {
+/// 要素の依存でセッションを作り、そこから画像を返す、保存の範囲の代わり（複製も元画像の固定もしない）。
+/// 第18回より前に、選定・加工・合成が要素自身から画像を受け取っていた形に近い。
+/// 第21回で要素がセッションを持たなくなったため、この補助の中で要素ごとにセッションを作って持つ。
+/// 補助は呼び出しごとに作るため、キャッシュは呼び出しをまたがず、エディタの管理役のキャッシュや編集中の状態も見ない
+/// （それに頼るテストは、管理役や保存の範囲を明示して渡す）。
+final class ElementSessionImages: SaveImageReading {
+    private var sessions: [ObjectIdentifier: (element: ImageElement, session: ImageRenderSession)] = [:]
+
     func originalImage(of element: ImageElement) -> UIImage? {
-        element.renderSession.originalImage(of: element)
+        session(of: element).originalImage(of: element)
     }
 
     func filteredImage(of element: ImageElement) -> UIImage? {
-        element.renderSession.filteredImage(of: element)
+        session(of: element).filteredImage(of: element)
     }
 
     func drawingImage(of element: ImageElement) -> UIImage? {
-        // 以前の合成が、加工済みの画像を得られなかった画像要素で使った draw(in:) と同じ画像
-        element.renderSession.drawingImage(of: element)
+        // 以前の合成が、加工済みの画像を得られなかった画像要素で描いた画像と同じ選び方
+        session(of: element).drawingImage(of: element)
+    }
+
+    private func session(of element: ImageElement) -> ImageRenderSession {
+        if let entry = sessions[ObjectIdentifier(element)], entry.element === element {
+            return entry.session
+        }
+        let session = ImageRenderSession(sourceResolver: element.sourceResolver, previewService: element.previewService)
+        sessions[ObjectIdentifier(element)] = (element, session)
+        return session
     }
 }
 
@@ -40,7 +53,8 @@ extension ImageProcessingService {
 }
 
 extension SaveImageCoordinator {
-    // アプリの管理役と同じ実装（要素のセッションを返す）を渡す。スナップショットは本体の入口で1つだけ作る。
+    // アプリと同じ実装の新しい管理役を渡す（元画像は、その管理役が要素の依存で取得する）。スナップショットは本体の入口で1つだけ作る。
+    // 呼び出し側のテストは、エディタの管理役のキャッシュや編集中の状態に頼らない（頼るテストは、管理役を明示して渡す）。
 
     @MainActor
     func save(

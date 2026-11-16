@@ -1,5 +1,6 @@
 // 履歴から外れた画像要素の、描画のキャッシュの画像そのものが、描画を挟まずに解放される時点を固定する。
-// 上限の直前と Redo できる間は保持し、履歴の破棄の直後に解放する。所有を管理役へ移すとき（第21回）も、同じテストで確かめる。
+// 上限の直前と Redo できる間は保持し、履歴の破棄・全消去の直後に解放する。第21回で所有を管理役へ移したあとは、履歴の操作の最後の回収で
+// 解放される（表の件数は、回収もセッションの生成もしない口で確かめる）。管理役（エディタ）自身の解放でも解放される。
 // 非同期の処理が要素を持つあいだに履歴から外れた場合は、処理が終わったあとの次の回収の契機（新しい操作・Undo・Redo・メモリ警告の
 // それぞれ）の直後に解放されることを確かめる。観察は、エディタが持つ管理役（具体型）と同じインスタンスで行う。
 
@@ -27,9 +28,11 @@ final class ImageRenderSessionReclamationTests: XCTestCase {
             editor.updateProjectName("name\(index)")
         }
         watched.assertAlive("上限の直前")
+        XCTAssertEqual(store.registeredSessionCount, 1, "上限の直前")
 
         editor.updateProjectName("name99")
         watched.assertReleased("上限で押し出された直後")
+        XCTAssertEqual(store.registeredSessionCount, 0, "押し出した操作の中で、表からも回収する")
     }
 
     /// 追加を Undo して Redo できる間は保持し、新しい操作で Redo の履歴が消えた直後に解放される。
@@ -45,9 +48,51 @@ final class ImageRenderSessionReclamationTests: XCTestCase {
 
         editor.undo()
         watched.assertAlive("Redo できる間")
+        XCTAssertEqual(store.registeredSessionCount, 1, "Redo できる間")
 
         editor.updateProjectName("other")
         watched.assertReleased("Redo の履歴が消えた直後")
+        XCTAssertEqual(store.registeredSessionCount, 0, "Redo の履歴を消した操作の中で、表からも回収する")
+    }
+
+    /// 履歴の全消去の直後に、履歴だけが持っていた要素のセッションを、キャッシュの画像ごと回収する。
+    func test_clearHistory_releasesCachedImages() throws {
+        let project = LogoProject()
+        let store = ImageRenderSessionStore()
+        let history = EditorHistory(project: project, renderSessions: store)
+        var watched = Watched()
+        do {
+            let (image, source, preview) = makeImage()
+            history.recordAndApply(ElementAddedEvent(element: image))
+            watched = try warm(image, source: source, preview: preview, store: store)
+            history.recordAndApply(ElementRemovedEvent(element: image, index: 0))
+        }
+        watched.assertAlive("全消去の前")
+        XCTAssertEqual(store.registeredSessionCount, 1)
+
+        history.clearHistory()
+        watched.assertReleased("全消去の直後")
+        XCTAssertEqual(store.registeredSessionCount, 0)
+    }
+
+    /// エディタ（と、その管理役）が解放されると、要素が生きていても、キャッシュの画像は解放される（要素はキャッシュを持たない）。
+    func test_editorRelease_releasesCachedImages() throws {
+        let (image, source, preview) = makeImage()
+        var watched = Watched()
+        weak var releasedEditor: EditorViewModel?
+        do {
+            let editor = EditorViewModel(project: LogoProject())
+            releasedEditor = editor
+            editor.addElement(image)
+            watched = try warm(image, source: source, preview: preview, store: editor.sessionStore)
+        }
+
+        XCTAssertNil(releasedEditor, "エディタは解放される")
+        XCTAssertTrue(watched.element === image)
+        XCTAssertNil(watched.original, "元画像")
+        XCTAssertNil(watched.proxy, "プロキシ")
+        XCTAssertNil(watched.previewBase, "プレビュー元画像")
+        XCTAssertNil(watched.rendered, "表示画像")
     }
 
     // MARK: - 履歴の外で要素が解放される経路
@@ -99,6 +144,7 @@ final class ImageRenderSessionReclamationTests: XCTestCase {
 
                 await fire(trigger, editor: editor, signal: signal)
                 watched.assertReleased("\(label)：契機の直後")
+                XCTAssertEqual(editor.sessionStore.registeredSessionCount, 0, "\(label)：契機の直後：表の項目")
                 XCTAssertTrue(editor.project.elements.isEmpty, "\(label)：古い結果は適用しない")
                 observation.cancel()
             }
@@ -140,6 +186,7 @@ final class ImageRenderSessionReclamationTests: XCTestCase {
 
             await fire(trigger, editor: editor, signal: signal)
             watched.assertReleased("描画の戻りのあと・\(trigger)")
+            XCTAssertEqual(editor.sessionStore.registeredSessionCount, 0, "描画の戻りのあと・\(trigger)：表の項目")
             withExtendedLifetime(panels) {}
         }
     }
@@ -179,6 +226,7 @@ final class ImageRenderSessionReclamationTests: XCTestCase {
 
             await fire(trigger, editor: editor, signal: signal)
             watched.assertReleased("予約の期限のあと・\(trigger)")
+            XCTAssertEqual(editor.sessionStore.registeredSessionCount, 0, "予約の期限のあと・\(trigger)：表の項目")
             withExtendedLifetime(panels) {}
         }
     }
@@ -221,6 +269,7 @@ final class ImageRenderSessionReclamationTests: XCTestCase {
 
             await fire(trigger, editor: editor, signal: signal)
             watched.assertReleased("生成の戻りのあと・\(trigger)")
+            XCTAssertEqual(editor.sessionStore.registeredSessionCount, 0, "生成の戻りのあと・\(trigger)：表の項目")
             withExtendedLifetime(panels) {}
         }
     }

@@ -6,6 +6,7 @@ import UIKit
 ///
 /// 読み取り用の `ImageRenderSessionReading` と同じ管理役のインスタンスが実装する（所有を移したあとも状態が分かれないようにするため）。
 /// View には渡さず、エディタ・編集パネル・履歴・描画の更新・メモリ警告の解放が使う。要素はインスタンスで識別する。
+/// セッションは管理役が要素ごとに作って持つ（第21回）。要素が解放されたあとのセッションは、`reclaimReleasedSessions()` で捨てる。
 @MainActor
 protocol ImageRenderSessionControlling: AnyObject {
     /// 編集中にし、表示画像のキャッシュを消す（以後の描画は即時プレビューを使う）。
@@ -27,6 +28,11 @@ protocol ImageRenderSessionControlling: AnyObject {
     /// 表示画像のキャッシュへの書き込みと編集の終了は、結果を採用すると判定した呼び出し側が行う
     /// （元画像が未取得なら、取得した元画像はここでキャッシュに入る）。
     func fullQualityImage(of element: ImageElement) async -> UIImage?
+
+    /// 解放された要素のセッションを、キャッシュの画像ごと捨てる。生きている要素のセッションには触れない。
+    /// 履歴の操作（適用・Undo・Redo・全消去）の最後と、メモリ警告の解放の最初に呼ぶ。非同期の処理が要素を持っていた場合は、
+    /// 処理が終わって要素が解放されても、次にここが呼ばれるまでセッションが残る（時間の上限はない）。
+    func reclaimReleasedSessions()
 }
 
 /// 読み取りと状態の変更の両方を使う側（エディタ・編集パネル・メモリ警告の解放）が受け取る管理役。

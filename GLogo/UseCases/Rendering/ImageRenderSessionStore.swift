@@ -4,13 +4,23 @@ import UIKit
 
 /// エディタで表示・編集する画像要素の、描画のセッションの管理役。`EditorViewModel` が1つ持ち、寿命はエディタと同じ。
 ///
-/// 中間段階として、セッションはまだ要素が持ち、ここは要素のセッションを返すだけにする（所有の移動は第21回）。
-/// 受け取る側の入口は、ここから画像を受け取る。状態を変える側（編集中の切り替え・キャッシュの書き込み・失効・メモリ警告）も、
-/// 第19回からここを通す。画像の差し替え・復元・初期値への戻しの失効も、第20回から履歴イベントの範囲でここを通す。
-/// 保存は受付で元画像だけをここから受け取る。保存用の複製はここを通さず、保存の範囲（`SaveProjectSnapshot`）で扱う（第18回）。
-/// 要素は ID ではなくインスタンスで識別する（保存用の複製は、元の要素と同じ ID を持つため）。
+/// セッションは、要素ごとに最初に求められたときに要素の依存（取得先・描画サービス）で作り、表で持つ（第21回）。
+/// 要素は弱く持ち、要素が解放されたあとのセッションは、回収の契機（`reclaimReleasedSessions()`）で捨てる。
+/// 管理役が解放されると、持っていたセッションもキャッシュの画像ごと解放される。別の管理役とは状態を共有しない。
+/// 受け取る側の入口・状態を変える側・履歴イベントが示す失効は、すべてここを通す（第17回〜第20回）。
+/// 保存は受付で元画像だけをここから受け取る。保存用の複製はここに登録せず、保存の範囲（`SaveProjectSnapshot`）が扱う。
+/// 要素は ID ではなくインスタンスで識別する（保存用の複製や Undo で戻る要素は、別のインスタンスでも同じ ID を持つことがあるため）。
 @MainActor
 final class ImageRenderSessionStore: ImageRenderSessionReading, ImageRenderSessionControlling {
+    /// 要素1つ分のセッション。要素は弱く持ち、要素の寿命を延ばさない。
+    private struct Entry {
+        weak var element: ImageElement?
+        let session: ImageRenderSession
+    }
+
+    /// 要素のインスタンスで引き当てる表。解放された要素の分は、回収の契機まで残る。
+    private var entries: [ObjectIdentifier: Entry] = [:]
+
     // MARK: - 読み取り
 
     func originalImage(of element: ImageElement) -> UIImage? {
@@ -25,8 +35,9 @@ final class ImageRenderSessionStore: ImageRenderSessionReading, ImageRenderSessi
         session(of: element).drawingImage(of: element)
     }
 
+    /// 要素が持つ描画サービス。セッションは作らない。
     func previewService(of element: ImageElement) -> any ImagePreviewing {
-        session(of: element).previewService
+        element.previewService
     }
 
     // MARK: - 状態の変更
@@ -55,6 +66,10 @@ final class ImageRenderSessionStore: ImageRenderSessionReading, ImageRenderSessi
         await session(of: element).fullQualityImageAsync(of: element)
     }
 
+    func reclaimReleasedSessions() {
+        entries = entries.filter { $0.value.element != nil }
+    }
+
     // MARK: - 観察（テスト）
 
     // Protocol には含めない。テストは、注入した具体型のこのインスタンスで観察する（コードと同じ持ち主を見るため）。
@@ -74,8 +89,27 @@ final class ImageRenderSessionStore: ImageRenderSessionReading, ImageRenderSessi
         session(of: element).filteredImage(of: element)
     }
 
-    /// 要素のインスタンスごとのセッション。今は要素が持つものを返す。
+    /// 表に残っているセッションの数（解放された要素の分も含む）。回収もセッションの生成もしない。
+    var registeredSessionCount: Int {
+        entries.count
+    }
+
+    /// 要素のセッションが表にあるか。回収もセッションの生成もしない。
+    func hasSession(for element: ImageElement) -> Bool {
+        entries[ObjectIdentifier(element)]?.element === element
+    }
+
+    // MARK: - 表
+
+    /// 要素のインスタンスごとのセッション。無ければ要素の依存で作って表に入れる。
     private func session(of element: ImageElement) -> ImageRenderSession {
-        element.renderSession
+        let key = ObjectIdentifier(element)
+        // 解放された要素の識別子が別のインスタンスに使い回されても、古いセッションを返さないよう、同じ要素かを確かめる。
+        if let entry = entries[key], entry.element === element {
+            return entry.session
+        }
+        let session = ImageRenderSession(sourceResolver: element.sourceResolver, previewService: element.previewService)
+        entries[key] = Entry(element: element, session: session)
+        return session
     }
 }
