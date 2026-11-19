@@ -42,6 +42,11 @@ final class ImageRenderSession {
         set { cache.renderedImage = newValue }
     }
 
+    /// キャッシュの今の中身。取得も生成もしない（メモリ警告の解放の判定と、テストの観察に使う）。
+    var cachedImages: ImageRenderCache {
+        cache
+    }
+
     /// 操作に応じた範囲でキャッシュを消す。共有の描画サービスのキャッシュは消さない。
     func invalidate(_ scope: ImageRenderCache.Invalidation) {
         cache.invalidate(scope)

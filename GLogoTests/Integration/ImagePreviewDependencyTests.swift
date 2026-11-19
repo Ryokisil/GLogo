@@ -170,7 +170,11 @@ final class ImagePreviewDependencyTests: XCTestCase {
         XCTAssertEqual(shared.state.resets, 1)
         XCTAssertEqual(separate.state.resets, 1)
         XCTAssertEqual(unused.state.resets, 0)
-        ImageCacheReleaseUseCase.releaseCaches(in: [], defaultService: ImagePreviewService.shared, renderSessions: renderSessions)
+        // 要素も表のセッションもなければ、要素のサービスは解放しない。第22回から、表に残る生きている要素はプロジェクトに
+        // 渡していなくても（プロジェクトにない要素として）対象になるため、表が空の管理役で確かめる（ImageCacheReleaseUseCaseTests）。
+        ImageCacheReleaseUseCase.releaseCaches(
+            in: [], defaultService: ImagePreviewService.shared, renderSessions: ImageRenderSessionStore()
+        )
         XCTAssertEqual(shared.state.resets, 1)
     }
 

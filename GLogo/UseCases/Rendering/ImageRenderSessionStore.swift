@@ -7,6 +7,7 @@ import UIKit
 /// セッションは、要素ごとに最初に求められたときに要素の依存（取得先・描画サービス）で作り、表で持つ（第21回）。
 /// 要素は弱く持ち、要素が解放されたあとのセッションは、回収の契機（`reclaimReleasedSessions()`）で捨てる。
 /// 管理役が解放されると、持っていたセッションもキャッシュの画像ごと解放される。別の管理役とは状態を共有しない。
+/// メモリ警告の解放は、表の生きている要素を列挙し、プロジェクトにない要素のキャッシュも消す（第22回。範囲は解放の UseCase が決める）。
 /// 受け取る側の入口・状態を変える側・履歴イベントが示す失効は、すべてここを通す（第17回〜第20回）。
 /// 保存は受付で元画像だけをここから受け取る。保存用の複製はここに登録せず、保存の範囲（`SaveProjectSnapshot`）が扱う。
 /// 要素は ID ではなくインスタンスで識別する（保存用の複製や Undo で戻る要素は、別のインスタンスでも同じ ID を持つことがあるため）。
@@ -70,6 +71,14 @@ final class ImageRenderSessionStore: ImageRenderSessionReading, ImageRenderSessi
         entries = entries.filter { $0.value.element != nil }
     }
 
+    var registeredElements: [ImageElement] {
+        entries.values.compactMap(\.element)
+    }
+
+    func hasCachedOriginalImage(of element: ImageElement) -> Bool {
+        registeredSession(of: element)?.cachedImages.originalImage != nil
+    }
+
     // MARK: - 観察（テスト）
 
     // Protocol には含めない。テストは、注入した具体型のこのインスタンスで観察する（コードと同じ持ち主を見るため）。
@@ -96,20 +105,30 @@ final class ImageRenderSessionStore: ImageRenderSessionReading, ImageRenderSessi
 
     /// 要素のセッションが表にあるか。回収もセッションの生成もしない。
     func hasSession(for element: ImageElement) -> Bool {
-        entries[ObjectIdentifier(element)]?.element === element
+        registeredSession(of: element) != nil
+    }
+
+    /// 要素のキャッシュの今の中身。セッションがなければ nil。取得・生成・回収をしない。
+    func cachedImages(of element: ImageElement) -> ImageRenderCache? {
+        registeredSession(of: element)?.cachedImages
     }
 
     // MARK: - 表
 
     /// 要素のインスタンスごとのセッション。無ければ要素の依存で作って表に入れる。
     private func session(of element: ImageElement) -> ImageRenderSession {
-        let key = ObjectIdentifier(element)
-        // 解放された要素の識別子が別のインスタンスに使い回されても、古いセッションを返さないよう、同じ要素かを確かめる。
-        if let entry = entries[key], entry.element === element {
-            return entry.session
+        if let session = registeredSession(of: element) {
+            return session
         }
         let session = ImageRenderSession(sourceResolver: element.sourceResolver, previewService: element.previewService)
-        entries[key] = Entry(element: element, session: session)
+        entries[ObjectIdentifier(element)] = Entry(element: element, session: session)
         return session
+    }
+
+    /// 表にある要素のセッション。無ければ作らずに nil を返す。
+    private func registeredSession(of element: ImageElement) -> ImageRenderSession? {
+        // 解放された要素の識別子が別のインスタンスに使い回されても、古いセッションを返さないよう、同じ要素かを確かめる。
+        guard let entry = entries[ObjectIdentifier(element)], entry.element === element else { return nil }
+        return entry.session
     }
 }

@@ -19,6 +19,7 @@ final class RenderSessionSpy: ImageRenderSessionReading, ImageRenderSessionContr
         case displayImage
         case drawingImage
         case previewService
+        case hasCachedOriginalImage
     }
 
     /// 読み取りの種類と、対象の要素のインスタンス
@@ -145,6 +146,17 @@ final class RenderSessionSpy: ImageRenderSessionReading, ImageRenderSessionContr
     func reclaimReleasedSessions() {
         reclaimCount += 1
         forwarding.reclaimReleasedSessions()
+    }
+
+    /// セッションを持つ要素は、中の管理役（`forwarding`）の表から返す。要素を持たない問い合わせなので記録しない。
+    var registeredElements: [ImageElement] {
+        forwarding.registeredElements
+    }
+
+    /// 元画像のキャッシュは、中の管理役（`forwarding`）のものを答える（読み取りの偽物の画像は、キャッシュに入らない）。
+    func hasCachedOriginalImage(of element: ImageElement) -> Bool {
+        record(Request(.hasCachedOriginalImage, element), element)
+        return forwarding.hasCachedOriginalImage(of: element)
     }
 
     // MARK: - 記録

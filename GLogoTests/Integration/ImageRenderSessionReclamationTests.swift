@@ -2,7 +2,8 @@
 // 上限の直前と Redo できる間は保持し、履歴の破棄・全消去の直後に解放する。第21回で所有を管理役へ移したあとは、履歴の操作の最後の回収で
 // 解放される（表の件数は、回収もセッションの生成もしない口で確かめる）。管理役（エディタ）自身の解放でも解放される。
 // 非同期の処理が要素を持つあいだに履歴から外れた場合は、処理が終わったあとの次の回収の契機（新しい操作・Undo・Redo・メモリ警告の
-// それぞれ）の直後に解放されることを確かめる。観察は、エディタが持つ管理役（具体型）と同じインスタンスで行う。
+// それぞれ）の直後に解放されることを確かめる。第22回で、処理の途中にメモリ警告が来た場合に、プロジェクトにない要素として
+// キャッシュを消し、完了した結果を書き戻さないことも確かめる。観察は、エディタが持つ管理役（具体型）と同じインスタンスで行う。
 
 import Combine
 import UIKit
@@ -274,6 +275,173 @@ final class ImageRenderSessionReclamationTests: XCTestCase {
         }
     }
 
+    // MARK: - 非同期の処理の途中のメモリ警告（第22回）
+
+    // 処理だけが要素を持つ間（削除が履歴から押し出されたあと）にメモリ警告が来ると、その要素はプロジェクトにない要素として
+    // キャッシュを消す（データを持ち、元画像がキャッシュにあるため4種類とも）。処理自身が持つ画像は、処理の終わりまで残ることが
+    // あるため、画像の弱参照ではなく、管理役のキャッシュの中身で確かめる。完了した古い結果がキャッシュを書き戻さないことも確かめる。
+    // 完了のあとを観察するため、警告のあとはテストが要素を持つ（警告の時点では、処理だけが持つ）。
+
+    /// AI の処理（背景除去・背景ぼかし・高画質化）の途中のメモリ警告で、キャッシュを消し、完了した結果を書き戻さない。
+    func test_aiWarningBeforeCompletion_releasesCaches() async throws {
+        for operation in AIOperation.allCases {
+            let label = "\(operation)"
+            let started = expectation(description: "開始: \(label)")
+            let processor = ReleaseTimingAIProcessor(started: started)
+            let (editor, signal) = makeEditor()
+            let tools = AIToolsViewModel(
+                edits: editor.imageEdits, renderSessions: editor.renderSessions,
+                backgroundRemovalUseCase: processor,
+                imageUpscaleUseCase: ImageUpscaleUseCase(lanczosPipeline: processor, realESRGANPipeline: processor),
+                selection: editor.$selectedElement.eraseToAnyPublisher()
+            )
+            var watched = Watched()
+            do {
+                let (image, source, preview) = makeImage()
+                editor.addElement(image)
+                editor.selectElement(image)
+                watched = try warm(image, source: source, preview: preview, store: editor.sessionStore)
+                switch operation {
+                case .removal: tools.requestAIBackgroundRemoval(for: image)
+                case .blur: tools.requestAIBackgroundBlur(for: image)
+                case .upscale: tools.requestImageUpscale(for: image, method: .lanczos)
+                }
+            }
+            await fulfillment(of: [started], timeout: 2)
+            deleteAndOverflow(editor)
+            watched.assertAlive("\(label)：処理中")
+
+            await signal.postWarningAndWait(in: self)
+            let element = try XCTUnwrap(watched.element, "\(label)：処理が持つ")
+            assertEmptyCache(editor.sessionStore, element, "\(label)：警告の直後")
+
+            let finished = expectation(description: "完了: \(label)")
+            let processing = operation == .upscale ? tools.$isProcessingUpscale : tools.$isProcessingAI
+            let observation = processing.dropFirst().filter { !$0 }.sink { _ in finished.fulfill() }
+            await processor.finish(operation == .upscale ? "upscale" : "ai")
+            await fulfillment(of: [finished], timeout: 2)
+            await Task.yield()
+
+            assertEmptyCache(editor.sessionStore, element, "\(label)：完了のあと")
+            XCTAssertTrue(editor.project.elements.isEmpty, "\(label)：古い結果は適用しない")
+            observation.cancel()
+        }
+    }
+
+    /// フル品質の描画の途中のメモリ警告で、キャッシュを消し、戻った描画の結果を書き戻さない。
+    func test_renderWarningBeforeCompletion_releasesCaches() async throws {
+        let scheduler = ManualImageRenderScheduler()
+        let renderer = ControlledImageRenderer()
+        let refresh = ImageRenderRefreshUseCase(renderScheduler: scheduler, renderFullQuality: renderer.render)
+        let (editor, signal) = makeEditor()
+        let panels = ElementViewModel(editorViewModel: editor, imageRefresh: refresh)
+        let started = expectation(description: "描画開始")
+        renderer.onStart = { started.fulfill() }
+        var watched = Watched()
+        do {
+            let (image, source, preview) = makeImage()
+            editor.addElement(image)
+            editor.selectElement(image)
+            panels.filters.applyFilterPreset(FilterCatalog.vintageWarm)
+            scheduler.runPending()
+            await fulfillment(of: [started], timeout: 2)
+            // フィルターの適用で編集中になるため、描画の途中で編集を終えてから4種類をキャッシュに載せる。
+            editor.sessionStore.endEditing(image)
+            watched = try warm(image, source: source, preview: preview, store: editor.sessionStore)
+        }
+        deleteAndOverflow(editor)
+        watched.assertAlive("描画中")
+
+        await signal.postWarningAndWait(in: self)
+        let element = try XCTUnwrap(watched.element, "描画が持つ")
+        assertEmptyCache(editor.sessionStore, element, "警告の直後")
+
+        let returned = expectation(description: "描画の戻り")
+        renderer.onReturn = { returned.fulfill() }
+        renderer.finish(0, with: freshImage(.green))
+        await fulfillment(of: [returned], timeout: 2)
+        await Task.yield()
+
+        assertEmptyCache(editor.sessionStore, element, "描画の戻りのあと")
+        withExtendedLifetime(panels) {}
+    }
+
+    /// 間引きの予約の期限の前のメモリ警告で、キャッシュを消す。取り消した予約は描画を始めないため、書き戻す結果はない。
+    func test_pendingWarningBeforeDeadline_releasesCaches() async throws {
+        let renderer = ControlledImageRenderer()
+        // 警告の処理を待つ間に期限が来ないよう、期限を長めにする。
+        let refresh = ImageRenderRefreshUseCase(renderScheduler: RenderScheduler(debounce: 1.0), renderFullQuality: renderer.render)
+        let (editor, signal) = makeEditor()
+        let panels = ElementViewModel(editorViewModel: editor, imageRefresh: refresh)
+        var startedCount = 0
+        renderer.onStart = { startedCount += 1 }
+        var watched = Watched()
+        do {
+            let (image, source, preview) = makeImage()
+            editor.addElement(image)
+            editor.selectElement(image)
+            panels.filters.applyFilterPreset(FilterCatalog.vintageWarm)
+            editor.sessionStore.endEditing(image)
+            watched = try warm(image, source: source, preview: preview, store: editor.sessionStore)
+        }
+        deleteAndOverflow(editor)
+        watched.assertAlive("予約の期限の前")
+
+        await signal.postWarningAndWait(in: self)
+        do {
+            let element = try XCTUnwrap(watched.element, "予約が持つ")
+            assertEmptyCache(editor.sessionStore, element, "警告の直後")
+        }
+
+        for _ in 0..<150 where watched.element != nil {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertNil(watched.element, "予約の期限のあと：要素")
+        XCTAssertEqual(startedCount, 0, "取り消した予約は描画を始めない")
+        withExtendedLifetime(panels) {}
+    }
+
+    /// フィルターのサムネイルの生成の途中のメモリ警告で、キャッシュを消し、生成が戻ってもキャッシュを書き戻さない。
+    func test_thumbnailWarningBeforeCompletion_releasesCaches() async throws {
+        let (editor, signal) = makeEditor()
+        let panels = ElementViewModel(
+            editorViewModel: editor, imageRefresh: ImageRenderRefreshUseCase(renderScheduler: ManualImageRenderScheduler())
+        )
+        let started = expectation(description: "生成開始")
+        var watched = Watched()
+        var thumbnail: Task<Void, Never>?
+        var suspendedPreview: FreshPreview?
+        do {
+            let (image, source, preview) = makeImage()
+            editor.addElement(image)
+            editor.selectElement(image)
+            watched = try warm(image, source: source, preview: preview, store: editor.sessionStore)
+            preview.suspendAsync(onStart: { started.fulfill() })
+            suspendedPreview = preview
+            thumbnail = Task { @MainActor in
+                _ = await panels.filters.generateFilterPreview(
+                    for: FilterCatalog.vintageWarm, targetSize: CGSize(width: 4, height: 4)
+                )
+            }
+        }
+        await fulfillment(of: [started], timeout: 2)
+        deleteAndOverflow(editor)
+        watched.assertAlive("生成中")
+
+        await signal.postWarningAndWait(in: self)
+        let element = try XCTUnwrap(watched.element, "生成が持つ")
+        assertEmptyCache(editor.sessionStore, element, "警告の直後")
+
+        suspendedPreview?.resumeAsync()
+        suspendedPreview = nil
+        await thumbnail?.value
+        thumbnail = nil
+        await Task.yield()
+
+        assertEmptyCache(editor.sessionStore, element, "生成の戻りのあと")
+        withExtendedLifetime(panels) {}
+    }
+
     // MARK: - Helpers
 
     private enum AIOperation: CaseIterable {
@@ -326,6 +494,20 @@ final class ImageRenderSessionReclamationTests: XCTestCase {
         case .memoryWarning:
             await signal.postWarningAndWait(in: self)
         }
+    }
+
+    /// 管理役のキャッシュが4種類とも空であること。取得・生成をしない口で見る（セッションは表に残っている）。
+    private func assertEmptyCache(
+        _ store: ImageRenderSessionStore, _ element: ImageElement, _ label: String,
+        file: StaticString = #filePath, line: UInt = #line
+    ) {
+        guard let cache = store.cachedImages(of: element) else {
+            return XCTFail("\(label)：セッションがない", file: file, line: line)
+        }
+        XCTAssertNil(cache.originalImage, "\(label)：元画像", file: file, line: line)
+        XCTAssertNil(cache.proxyImage, "\(label)：プロキシ", file: file, line: line)
+        XCTAssertNil(cache.previewBaseImage, "\(label)：プレビュー元画像", file: file, line: line)
+        XCTAssertNil(cache.renderedImage, "\(label)：表示画像", file: file, line: line)
     }
 
     /// 呼ぶたびに新しい画像を返し、自分では弱くしか参照しない取得先と描画サービスを持つ画像要素。

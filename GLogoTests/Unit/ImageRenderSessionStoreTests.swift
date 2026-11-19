@@ -121,6 +121,38 @@ final class ImageRenderSessionStoreTests: XCTestCase {
         XCTAssertNil(original, "要素はキャッシュを持たない")
         XCTAssertNotNil(ImageRenderSessionStore().originalImage(of: element), "要素の依存は残り、別の管理役が取得し直せる")
     }
+
+    /// 表の要素の列挙は、生きている要素だけを返し、回収もセッションの生成もしない（第22回）。
+    func test_registeredElements_listsOnlyAlive() {
+        let store = ImageRenderSessionStore()
+        let alive = Fixture()
+        let unregistered = Fixture()
+        XCTAssertNotNil(store.displayImage(of: alive.element))
+        do {
+            let released = Fixture()
+            XCTAssertNotNil(store.displayImage(of: released.element))
+        }
+
+        let listed = store.registeredElements
+        XCTAssertEqual(listed.count, 1)
+        XCTAssertTrue(listed.first === alive.element)
+        XCTAssertFalse(store.hasSession(for: unregistered.element))
+        XCTAssertEqual(store.registeredSessionCount, 2, "列挙では、解放された要素の分を回収しない")
+    }
+
+    /// 元画像のキャッシュの有無は、元画像を取得せず、セッションも作らずに答える（第22回）。
+    func test_hasCachedOriginalImage_doesNotFetch() {
+        let store = ImageRenderSessionStore()
+        let fixture = Fixture()
+
+        XCTAssertFalse(store.hasCachedOriginalImage(of: fixture.element))
+        XCTAssertFalse(store.hasSession(for: fixture.element), "セッションを作らない")
+        XCTAssertNotNil(store.instantPreview(of: fixture.element))
+        XCTAssertTrue(store.hasCachedOriginalImage(of: fixture.element))
+        store.invalidate(.revert, of: fixture.element)
+        XCTAssertFalse(store.hasCachedOriginalImage(of: fixture.element))
+        XCTAssertEqual(fixture.source.originalCount, 1, "答えるために元画像を取得しない")
+    }
 }
 
 // MARK: - 偽物

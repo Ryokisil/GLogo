@@ -196,6 +196,31 @@ final class ImageRenderSessionControlRouteTests: XCTestCase {
         ])
     }
 
+    /// メモリ警告では、削除した要素（プロジェクトにない要素）も、管理役で元画像のキャッシュを確かめて範囲を決めて消し、
+    /// 描画サービスを引き当てる（第22回）。元画像を中の管理役のキャッシュに載せたデータの要素なので、すべてのキャッシュを消す。
+    func test_memoryWarning_releasesDetachedThroughStore() async {
+        let released = expectation(description: "既定の描画サービスの解放")
+        let context = makeContext(defaultService: ReleaseSignalingService { released.fulfill() })
+        let deleted = ImageElementFactory().makeElement(imageData: snapshotImage(.blue).pngData()!)
+        context.editor.addElement(deleted)
+        warm(deleted, context.spy.forwarding)
+        context.editor.selectElement(deleted)
+        context.editor.deleteSelectedElement()
+        context.spy.removeAllRequests()
+        let reclaimsBefore = context.spy.reclaimCount
+
+        NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+        await fulfillment(of: [released], timeout: 2)
+
+        XCTAssertEqual(context.spy.reclaimCount, reclaimsBefore + 1, "回収を1回求める")
+        XCTAssertEqual(context.spy.controls, [Control(.invalidate(.all), context.image), Control(.invalidate(.all), deleted)])
+        XCTAssertEqual(context.spy.requests, [
+            RenderSessionSpy.Request(.previewService, context.image),
+            RenderSessionSpy.Request(.hasCachedOriginalImage, deleted),
+            RenderSessionSpy.Request(.previewService, deleted),
+        ])
+    }
+
     // MARK: - Helpers
 
     private struct Context {

@@ -1,5 +1,6 @@
-// エディタでの画像要素と描画のキャッシュの寿命（削除・Undo・履歴の上限・Redo の履歴の破棄・メモリ警告）の、今の振る舞いを固定する。
-// 第21回で所有を管理役へ移したあとも同じ期待値で成り立つ。第22回で解放の時点を変えるときに、変わった点と変わらない点をここで見分ける。
+// エディタでの画像要素と描画のキャッシュの寿命（削除・Undo・履歴の上限・Redo の履歴の破棄・メモリ警告）の振る舞いを固定する。
+// 第21回で所有を管理役へ移したあとも同じ期待値で成り立つ。第22回で、メモリ警告のときに削除した要素のキャッシュも消す形に変えた
+// （変わったのはメモリ警告のテストの期待値だけ。そのあとの Undo の表示が変わらないことも、ここで確かめる）。
 // キャッシュは、エディタが持つ管理役（同じインスタンス）で観察する（第20回で、要素の API から移した）。
 
 import UIKit
@@ -30,9 +31,9 @@ final class ImageRenderSessionLifetimeTests: XCTestCase {
         XCTAssertNotNil(editor.sessionStore.cachedRenderedImage(of: restored), "戻した要素は、残っていたキャッシュを使う")
     }
 
-    /// メモリ警告では、プロジェクトにある要素のキャッシュだけを消し、削除した要素（履歴が持つ）のキャッシュは残る。
-    /// 第22回で、削除した要素も解放の対象にする予定（そのときに期待値を変える）。
-    func test_memoryWarning_keepsDeletedElementCache() async throws {
+    /// メモリ警告では、プロジェクトにある要素に加えて、削除した要素（履歴が持つ）のキャッシュも消す（第22回で変えた）。
+    /// 削除した要素は、データを持ち元画像がキャッシュにあるため、元画像を含めて消す。セッションは表に残る（要素が生きているため）。
+    func test_memoryWarning_releasesDeletedElementCache() async throws {
         let released = expectation(description: "メモリ警告の処理の終了")
         let defaultService = ReleaseSignalingPreviewService { released.fulfill() }
         let editor = EditorViewModel(project: LogoProject(), dependencies: .live(previewService: defaultService))
@@ -42,15 +43,25 @@ final class ImageRenderSessionLifetimeTests: XCTestCase {
         editor.addElement(deleted)
         XCTAssertNotNil(editor.renderSessions.displayImage(of: kept))
         XCTAssertNotNil(editor.renderSessions.displayImage(of: deleted))
+        XCTAssertNotNil(editor.sessionStore.instantPreview(of: deleted), "プロキシとプレビュー元画像もキャッシュに載せる")
         editor.selectElement(deleted)
         editor.deleteSelectedElement()
+        let warmed = try XCTUnwrap(editor.sessionStore.cachedImages(of: deleted))
+        XCTAssertTrue(
+            warmed.renderedImage != nil && warmed.originalImage != nil && warmed.proxyImage != nil && warmed.previewBaseImage != nil,
+            "警告の前は、削除した要素の4種類がキャッシュにある"
+        )
 
         NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
         // 既定の描画サービスは、要素のキャッシュをすべて消したあとで解放される。
         await fulfillment(of: [released], timeout: 2)
 
         XCTAssertNil(editor.sessionStore.cachedRenderedImage(of: kept), "プロジェクトにある要素のキャッシュは消える")
-        XCTAssertNotNil(editor.sessionStore.cachedRenderedImage(of: deleted), "削除した要素のキャッシュは残る（第22回で変える予定）")
+        let deletedCache = try XCTUnwrap(editor.sessionStore.cachedImages(of: deleted), "削除した要素のセッションは表に残る")
+        XCTAssertNil(deletedCache.renderedImage, "削除した要素の表示画像も消える")
+        XCTAssertNil(deletedCache.originalImage, "削除した要素の元画像も消える")
+        XCTAssertNil(deletedCache.proxyImage)
+        XCTAssertNil(deletedCache.previewBaseImage)
     }
 
     /// 削除のイベントが履歴の上限（100件）で押し出されると、削除した要素はキャッシュごと解放される。
