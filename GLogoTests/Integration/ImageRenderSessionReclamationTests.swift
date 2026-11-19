@@ -324,11 +324,7 @@ final class ImageRenderSessionReclamationTests: XCTestCase {
             XCTAssertTrue(editor.canRedo, "Redo できる操作が残っている")
             editor.redo()
         case .memoryWarning:
-            let released = expectation(description: "メモリ警告の処理の終了")
-            signal.expectRelease(released)
-            NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
-            // エディタはメモリ警告を MainActor のタスクで処理し、既定の描画サービスは、回収と要素のキャッシュの解放のあとで解放される。
-            await fulfillment(of: [released], timeout: 2)
+            await signal.postWarningAndWait(in: self)
         }
     }
 
@@ -399,42 +395,6 @@ private struct Watched {
         XCTAssertNil(previewBase, "\(label)：プレビュー元画像", file: file, line: line)
         XCTAssertNil(rendered, "\(label)：表示画像", file: file, line: line)
     }
-}
-
-/// メモリ警告の処理の最後に解放される、エディタの既定の描画サービス。解放されたことを、待っている期待に知らせる。
-/// 解放は MainActor のタスクから呼ばれ、期待の設定はテストから行うため、期待だけを鍵で守る。
-private final class MemoryWarningSignal: ImagePreviewing, @unchecked Sendable {
-    private let lock = NSLock()
-    private var released: XCTestExpectation?
-
-    /// 次の解放で、この期待を満たす。
-    func expectRelease(_ expectation: XCTestExpectation) {
-        lock.withLock { released = expectation }
-    }
-
-    func releaseMemory() {
-        let expectation = lock.withLock {
-            defer { released = nil }
-            return released
-        }
-        expectation?.fulfill()
-    }
-
-    func generatePreviewImage(editingImage: UIImage?, originalImage: UIImage?, mode: ImageRenderMode) -> UIImage? { nil }
-
-    func instantPreview(baseImage: UIImage?, params: ImageFilterParams, quality: RenderQuality, mode: ImageRenderMode) -> UIImage? {
-        nil
-    }
-
-    func applyFilters(to image: UIImage, params: ImageFilterParams, quality: RenderQuality, mode: ImageRenderMode) -> UIImage? {
-        nil
-    }
-
-    func applyFiltersAsync(to image: UIImage, params: ImageFilterParams, quality: RenderQuality, mode: ImageRenderMode) async -> UIImage? {
-        nil
-    }
-
-    func resetCache() {}
 }
 
 /// 呼ぶたびに新しい画像を返す取得先。返したプロキシは弱くだけ覚える。テストのスレッドから同期にだけ呼ばれる。
