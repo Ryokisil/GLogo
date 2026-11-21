@@ -18,19 +18,13 @@ final class ImageElementFactoryTests: XCTestCase {
         }
     }
 
-    func test_canvasSize_drivesLaterResizing() throws {
+    /// キャンバスは最初の配置サイズの基準にだけ使う（差し替え・復元は配置サイズを変えない。ImageElementSourceTests が確かめる）。
+    func test_canvasSize_drivesInitialSize() throws {
         let data = try imageData(size: CGSize(width: 40, height: 20))
         let custom = ImageElementFactory().makeElement(imageData: data, canvasSize: CGSize(width: 800, height: 600))
         XCTAssertEqual(custom.size, CGSize(width: 90, height: 45))
         let tiny = ImageElementFactory().makeElement(imageData: data, canvasSize: CGSize(width: 4, height: 2))
         XCTAssertEqual(tiny.size, CGSize(width: 1, height: 1))
-        // 差し替え・履歴復元も生成時のキャンバスでサイズを決める。
-        let portrait = try imageData(size: CGSize(width: 20, height: 40))
-        custom.replaceImageSource(with: portrait, resetAdjustments: false)
-        XCTAssertEqual(custom.size, CGSize(width: 45, height: 90))
-        custom.restoreImageSource(imageData: data, fileName: nil, url: nil, path: nil,
-                                  originalIdentifier: nil, hasAppliedUpscale: false)
-        XCTAssertEqual(custom.size, CGSize(width: 90, height: 45))
     }
 
     func test_makeElement_doesNotExtractMetadata() throws {

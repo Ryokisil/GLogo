@@ -132,6 +132,26 @@ final class ImageSourceChangeEdgeTests: XCTestCase {
         }
     }
 
+
+    /// 差し替えの Undo 自体では元画像を取得しない。取得は次の表示の1回で、以前の画像を表示する
+    /// （第23回で、復元の中の取り直しを外した）。ファイルを参照するソースでも、Undo の時点では読まない。
+    func test_replacementUndo_fetchesOnNextDisplay() throws {
+        let sources: [(String, ImageElement.ImageSource)] = [("データ", .data(oldData)), ("パス", .path("old.png"))]
+        for (label, oldSource) in sources {
+            let resolver = EdgeSource(dataImages: [oldData: red, newData: blue], pathImages: ["old.png": red])
+            let (editor, store, image) = try makeEditor(source: oldSource, resolver: resolver, preview: EdgePreview())
+            replace(image, with: newData, in: editor)
+            XCTAssertTrue(store.displayImage(of: image) === blue, label)
+            let calls = resolver.originalCalls
+
+            editor.undo()
+            XCTAssertEqual(resolver.originalCalls, calls, "\(label)：Undo の中では元画像を取得しない")
+
+            XCTAssertTrue(store.displayImage(of: image) === red, "\(label)：次の表示で以前の画像に戻る")
+            XCTAssertEqual(resolver.originalCalls, calls + 1, "\(label)：取得は次の表示の1回だけ")
+        }
+    }
+
     /// メタデータの識別子がない・履歴がない・巻き戻しに失敗・見つからないときも、Revert は編集値を初期化し、
     /// 表示画像・元画像・プレビュー元画像を失効させる（プロキシと共有の描画サービスのキャッシュは残す）。
     func test_revertWithoutMetadataRestore_stillInvalidates() throws {

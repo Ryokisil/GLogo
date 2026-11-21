@@ -124,15 +124,13 @@ struct ImageContentReplacedEvent: EditorEvent {
         guard let element = project.element(for: elementId, as: ImageElement.self) else {
             return
         }
-        // 背景除去の適用ではレイアウトサイズを維持する
-        let preservedSize = element.size
+        // 配置サイズは、適用の直前の値のまま（Model の差し替えは配置サイズを変えない）。
         element.replaceImageSource(
             with: newImageData,
             resetAdjustments: true,
             originalIdentifier: newOriginalImageIdentifier,
             hasAppliedUpscale: newHasAppliedUpscale
         )
-        element.size = preservedSize
     }
 
     /// 画像内容を元に戻す
@@ -143,9 +141,7 @@ struct ImageContentReplacedEvent: EditorEvent {
         guard let element = project.element(for: elementId, as: ImageElement.self) else {
             return
         }
-        // Undo時も適用前のレイアウトサイズを維持する
-        let preservedSize = element.size
-
+        // 配置サイズは、巻き戻しの直前の値のまま（Model の復元は配置サイズを変えず、元画像も取得しない）。
         element.restoreImageSource(
             imageData: oldSource.imageData,
             fileName: oldSource.fileName,
@@ -154,7 +150,6 @@ struct ImageContentReplacedEvent: EditorEvent {
             originalIdentifier: oldSource.originalIdentifier,
             hasAppliedUpscale: oldSource.hasAppliedUpscale
         )
-        element.size = preservedSize
 
         // 差し替えで初期スナップショットへ戻した30項目を、すべて差し替え前の値へ戻す。
         // 描画キャッシュは、巻き戻しの直後に履歴が消す（renderInvalidationsAfterRevert）。

@@ -107,21 +107,11 @@ final class ImageElementCopyTests: XCTestCase {
         XCTAssertNil(copy.originalImagePath)
     }
 
-    func test_copy_replacementUsesDefaultCanvas() throws {
-        let original = makeDataElement(try pngData(size: CGSize(width: 40, height: 20)))
-        let copy = try XCTUnwrap(original.copy() as? ImageElement)
-        // 複製元はキャンバス 800x600 で作ったが、複製は既定の 3840x2160 で差し替え後のサイズを決める。
-        copy.replaceImageSource(with: try pngData(size: CGSize(width: 20, height: 40)), resetAdjustments: false)
-        XCTAssertEqual(copy.size, CGSize(width: 162, height: 324))
-        original.replaceImageSource(with: try pngData(size: CGSize(width: 20, height: 40)), resetAdjustments: false)
-        XCTAssertEqual(original.size, CGSize(width: 45, height: 90))
-    }
-
     // MARK: - 生成
 
-    /// 1番目のインポート（ベース画像）として、既定と異なるキャンバスで作る。
+    /// 1番目のインポート（ベース画像）として作る（複製が役割と順序を引き継がないことを見るため）。
     private func makeDataElement(_ data: Data) -> ImageElement {
-        ImageElementFactory().makeElement(imageData: data, canvasSize: CGSize(width: 800, height: 600), importOrder: 1)
+        ImageElementFactory().makeElement(imageData: data, importOrder: 1)
     }
 
     // 保存データ由来のソースは Model の初期化で直接作る。

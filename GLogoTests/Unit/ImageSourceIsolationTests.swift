@@ -82,18 +82,18 @@ final class ImageSourceIsolationTests: XCTestCase {
         resolver.image = snapshotImage(.blue)
         element.restoreImageSource(imageData: Data([1]), fileName: "ignored", url: nil,
                                    path: "/restored.png", originalIdentifier: "restored", hasAppliedUpscale: true)
-        XCTAssertEqual(resolver.lastPath, "/restored.png")
-        XCTAssertNil(resolver.lastData, "復元時もパスを優先し、下位ソースを残さない")
-        XCTAssertEqual(resolver.originalCalls, 2, "サイズ復元はキャッシュを使わず取得する")
+        XCTAssertEqual(resolver.originalCalls, 1, "復元では元画像を取得しない（配置サイズを計算しない。第23回）")
         // キャッシュの失効は、差し替えのイベントの巻き戻しの範囲（ソースの変更）で、履歴が管理役に求める。
         store.invalidateForSourceChange(of: element)
         XCTAssertTrue(store.originalImage(of: element) === resolver.image)
-        XCTAssertEqual(resolver.originalCalls, 3, "復元後の初回取得で元画像キャッシュを更新する")
+        XCTAssertEqual(resolver.originalCalls, 2, "復元後の初回取得で元画像キャッシュを更新する")
+        XCTAssertEqual(resolver.lastPath, "/restored.png")
+        XCTAssertNil(resolver.lastData, "復元時もパスを優先し、下位ソースを残さない")
         XCTAssertEqual(element.originalImageIdentifier, "restored")
         XCTAssertTrue(element.hasAppliedUpscale)
         store.invalidate(.revert, of: element)
         XCTAssertTrue(store.originalImage(of: element) === resolver.image)
-        XCTAssertEqual(resolver.originalCalls, 4)
+        XCTAssertEqual(resolver.originalCalls, 3)
     }
 
     /// 保存の範囲は、受付時に解決済みの元画像を複製へ固定する（第18回で、固定を renderCopy() から範囲へ移した）。

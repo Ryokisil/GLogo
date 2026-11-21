@@ -1,5 +1,5 @@
 // ImageElementの生成を担当するビルダー。
-// importOrderを反映し、必要ならcanvasSizeを持たせて初期化する。
+// importOrderを反映し、キャンバスサイズを基準に最初の配置サイズを決めて初期化する。
 // imageRoleに応じたzIndexもここで決定し、UI側の判断を持ち込まない。
 
 import UIKit
@@ -19,7 +19,7 @@ struct ImageImportElementBuilder {
 
         let imageElement = elementFactory.makeElement(
             imageData: imageData,
-            canvasSize: context.canvasSize ?? ImageElement.defaultCanvasSize,
+            canvasSize: context.canvasSize ?? ImageElementFactory.defaultCanvasSize,
             importOrder: context.existingImageCount + 1
         )
 

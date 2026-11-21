@@ -135,10 +135,10 @@ final class ImageElementCacheTests: XCTestCase {
 
             element.restoreImageSource(imageData: Data([2]), fileName: nil, url: nil, path: nil,
                                        originalIdentifier: "restored", hasAppliedUpscale: false)
-            XCTAssertEqual(source.originalCalls, 3, "復元時のサイズ取得は元画像キャッシュとは独立")
+            XCTAssertEqual(source.originalCalls, 2, "復元では元画像を取得しない（第23回）")
             store.invalidateForSourceChange(of: element)
             XCTAssertTrue(store.instantPreview(of: element) === source.proxy)
-            XCTAssertEqual(source.originalCalls, 4)
+            XCTAssertEqual(source.originalCalls, 3)
             XCTAssertEqual(source.proxyCalls, 3)
             XCTAssertEqual(preview.baseCalls, 3)
             XCTAssertEqual(preview.resetCalls, 2)

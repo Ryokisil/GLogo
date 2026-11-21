@@ -190,12 +190,6 @@ class ImageElement: LogoElement {
         return imageRole == .base
     }
     
-    /// キャンバス指定のない生成と、保存データから復元した要素が使うキャンバスサイズ。
-    static let defaultCanvasSize = CGSize(width: 3840, height: 2160)
-
-    /// キャンバスサイズを保持（表示サイズ計算用）
-    private var canvasSize: CGSize = ImageElement.defaultCanvasSize
-    
     /// 編集履歴
     private var editHistory: [ImageEditOperation] = []
     
@@ -468,13 +462,11 @@ class ImageElement: LogoElement {
     /// 画像データからの生成は `ImageElementFactory` が寸法の読み取りと配置サイズの計算を担当する。
     /// - Parameters:
     ///   - source: 画像ソース。nil の場合はソースを持たない（保存用コピーは元画像を別途固定する）
-    ///   - size: 配置サイズ。nil の場合は既定サイズのまま
-    ///   - canvasSize: 画像差し替え・履歴復元でサイズを計算するキャンバス。保存しない
+    ///   - size: 配置サイズ。nil の場合は既定サイズのまま。あとの差し替え・復元でも変わらない
     ///   - importOrder: インポート順序（1番目はベース画像として扱う）
     init(
         source: ImageSource?,
         size: CGSize?,
-        canvasSize: CGSize = ImageElement.defaultCanvasSize,
         importOrder: Int = 0,
         sourceResolver: any ImageSourceResolving,
         previewService: any ImagePreviewing
@@ -482,7 +474,6 @@ class ImageElement: LogoElement {
         self.sourceResolver = sourceResolver
         self.previewService = previewService
         self.originalImportOrder = importOrder
-        self.canvasSize = canvasSize
 
         super.init(name: "Image")
         originalImageIdentifier = UUID().uuidString
@@ -512,7 +503,8 @@ class ImageElement: LogoElement {
         editHistory.removeAll()
     }
 
-    /// 画像ソースを差し替える（値と配置サイズだけ。描画キャッシュは、差し替えのイベントの範囲で履歴が消す）
+    /// 画像ソースを差し替える（値だけ。描画キャッシュは、差し替えのイベントの範囲で履歴が消す）。
+    /// 配置サイズは変えない（第23回）。画像に合わせて配置し直すときは、呼び出し側が配置サイズを計算する。
     /// - Parameters:
     ///   - imageData: 差し替える画像データ
     ///   - resetAdjustments: フィルター調整値を初期化するかどうか
@@ -529,16 +521,13 @@ class ImageElement: LogoElement {
         originalImageIdentifier = originalIdentifier ?? UUID().uuidString
         self.hasAppliedUpscale = hasAppliedUpscale
 
-        if let imageSize = ImageInitializationLoader().imageSize(imageData: imageData) {
-            updateSize(for: imageSize)
-        }
-
         if resetAdjustments {
             resetToOriginal()
         }
     }
 
-    /// 画像ソースを復元する（値と配置サイズだけ。描画キャッシュは、差し替えのイベントの巻き戻しの範囲で履歴が消す）
+    /// 画像ソースを復元する（値だけ。描画キャッシュは、差し替えのイベントの巻き戻しの範囲で履歴が消す）。
+    /// 配置サイズは変えず、元画像も取得しない（第23回）。元画像は、失効のあとの次の表示で取得する。
     /// - Parameters:
     ///   - imageData: 復元する画像データ
     ///   - fileName: 復元する画像ファイル名
@@ -564,21 +553,6 @@ class ImageElement: LogoElement {
         setImageSource(source)
         originalImageIdentifier = originalIdentifier
         self.hasAppliedUpscale = hasAppliedUpscale
-
-        if source != nil,
-           let image = sourceResolver.resolveOriginalImage(
-               imageData: self.imageData,
-               fileName: imageFileName,
-               url: originalImageURL,
-               path: originalImagePath
-           ) {
-            updateSize(for: image.size)
-        }
-    }
-    
-    /// 画像のサイズに基づいて要素のサイズを更新
-    private func updateSize(for imageSize: CGSize) {
-        size = ImageSizeCalculator.fittedSize(imageSize: imageSize, canvasSize: canvasSize)
     }
     
     /// 適用中プリセットからレンダリング経路を判定。描画のセッションが、描画の時点で読む
