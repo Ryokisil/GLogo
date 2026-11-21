@@ -9,6 +9,16 @@
 
 import UIKit
 
+/// 画像要素を、要素の値と受け取った画像で描く。画像の取得・加工・キャッシュは持たない
+/// （テキスト・図形の描画と同じく Models に置く。第24回で Infrastructure から移した）。
+///
+/// 呼び出し側は、渡す context を UIKit の現在の描画先にしてから呼ぶ（`UIView.draw(_:)` の中、または
+/// `UIGraphicsImageRenderer` の描画ブロックの中）。座標変換・透明度・切り抜きは渡された context に設定し、線と塗りもそこへ描くが、
+/// 画像本体（`UIImage.draw(in:)`）と白系3種のフレームの塗り（`UIBezierPath.fill()`）は現在の描画先に描く。
+/// 両者が違うと、画像本体と白系の塗りだけが別の描画先へ行き、座標変換も切り抜きもかからない。
+/// 透明度は画像本体にかからない（`UIImage.draw(in:)` は描画先の透明度によらず不透明度 1 で描く。今の挙動）。
+///
+/// 保存の合成が、メインスレッドの外（保存のタスク）から同期に呼ぶため、隔離なしのまま保つ（MainActor にしない）。
 struct ImageElementRenderer {
     private struct FrameLayout {
         let imageRect: CGRect
