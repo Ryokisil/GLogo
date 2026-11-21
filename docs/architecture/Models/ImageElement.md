@@ -46,7 +46,7 @@ ResolverとRendererへの抽出はすでに進んでいます。さらに分離�
 | 責務 | 方針 |
 | --- | --- |
 | 画像ソースの識別、編集値、初期状態 | Modelに保持。値のスナップショット化を検討 |
-| 初期化時の読み込み・配置サイズの決定 | [ImageElementFactory](../../../GLogo/UseCases/Import/ImageElementFactory.swift)が境界 `ImageInitializationLoading` 経由で担当。`copy()` のURL読み直しと `replaceImageSource` の寸法取得は、Modelから [ImageInitializationLoader](../../../GLogo/Infrastructure/Import/ImageInitializationLoader.swift) を直接呼ぶ |
+| 初期化時の読み込み・配置サイズの決定 | [ImageElementFactory](../../../GLogo/UseCases/Import/ImageElementFactory.swift)が境界 `ImageInitializationLoading` 経由で担当。`copy()` のURL読み直しは、Modelから [ImageInitializationLoader](../../../GLogo/Infrastructure/Import/ImageInitializationLoader.swift) を直接呼ぶ。差し替え・復元は配置サイズを変えない（第23回で寸法の取得を外した） |
 | 配置サイズの計算 | [ImageSizeCalculator](../../../GLogo/Models/ImageSizeCalculator.swift)で純粋な計算として共有 |
 | 画像ソースの優先順位と取得 | [ImageSourceResolver](../../../GLogo/UseCases/Storage/ImageSourceResolver.swift)とRepositoryを利用 |
 | フィルター、SDR／HDR経路、プレビュー | [ImagePreviewService](../../../GLogo/Infrastructure/Rendering/ImagePreviewService.swift)等を利用 |
@@ -312,7 +312,7 @@ Serenaの参照検索で `ImageFilterParams` の生成元を確認し、合成�
 | 外へ出す③ | 画像取得：`originalImage`・編集用プロキシを読み取り時に読み込みキャッシュする | 第16回で処理を `ImageRenderSession` へ抽出（中間段階。①と同じ）。第17回で画像一覧・AI・編集画面・フィルターのサムネイルは、管理役から受け取る形にした。第18回で保存も、受付は管理役から、選定・加工・合成は保存の範囲（`SaveProjectSnapshot`）から受け取る形にした（Model の `originalImage`・`getFilteredImageForce()` の本番の呼び出し元はなくなった）。第20回でこれらを Model から外した。**第21回で、取得の結果を持つセッションは管理役と保存の範囲が持つ形にした** |
 | 外へ出す④ | キャッシュの持ち主：`renderCache`・`cachedImage`・無効化。履歴イベントから55か所で無効化を呼ぶ（第8回で数え直し。以前の「57か所」は誤り） | 第16回でキャッシュの保持と無効化を `ImageRenderSession` へ抽出（中間段階。①と同じ）。第19回で外からの失効と書き込みを管理役経由にし、履歴イベントの55か所は、失効させる範囲を返して履歴が管理役で失効させる形にした（Model の中の失効は第20回まで残る）。第20回で差し替え・復元・初期値への戻しの失効もイベントの範囲へ移し、`cachedImage` と失効の各メソッドを Model から外した。**第21回でキャッシュの持ち主を管理役（保存用の複製は保存の範囲）へ移した**。**第22回で、メモリ警告のときにプロジェクトにない要素（削除して履歴が持つ要素など）のキャッシュも消す形にした**（取り直して同じ画像に戻らない元画像・プロキシは残す）。`editRevision` による自動失効は別に判断する |
 | 外へ出す⑤ | 編集中の状態：`isCurrentlyEditing`・`startEditing`／`endEditing` | 第16回で `ImageRenderSession` へ抽出（中間段階。①と同じ）。第19回で、編集中の切り替えは管理役経由にした。第20回で `startEditing`／`endEditing` を Model から外した。**第21回で、編集中の状態も管理役が持つセッションに移った** |
-| 外へ出す⑥ | 初期化時の読み込み：7つの初期化入口が画像を読み込みサイズを決める | **第7回で完了**。`copy()` のURL読み直しと画像差し替え時の寸法取得はModelに残る |
+| 外へ出す⑥ | 初期化時の読み込み：7つの初期化入口が画像を読み込みサイズを決める | **第7回で完了**。`copy()` のURL読み直しはModelに残る。画像差し替え・復元の寸法の計算は、**第23回で外した**（差し替え・復元は配置サイズを変えない） |
 | 外へ出す⑦ | メタデータからフレーム値を戻す規則 | **第6回で完了** |
 
 ## 段階3・第6回：使われていない処理の削除と型の分離（2026-11-03）
@@ -993,5 +993,84 @@ Codex の3条件は、次の形で守ります。
 
 - 非同期の処理のあとの保持に上限を設けないことを選んだ。メモリ警告では、解放された要素の分を最初に回収し、生きているプロジェクトにない要素のキャッシュも消す。ただし、確かめたのは警告を受けたときの動きまでで、急なメモリの要求で警告が届く前にアプリが終了される場合までは防げない（保証しない）。
 - プロジェクトにない要素のうち、ファイルを参照するものと元画像がキャッシュにないものは、メモリ警告でも元画像とプロキシを残す。プロジェクトにある要素は、ファイルを参照していても今までどおり元画像まで消す（次の描画で読み直す）。復元をアプリから使うようにするときに、あわせて見直す。
-- Model に残る具体型の参照（寸法の取得・URL の読み直し・`ImageElementRenderer` による描画・背景画像）と、要素が持つ依存の型（UseCases の Protocol）は残る。
+- Model に残る具体型の参照（寸法の取得・URL の読み直し・`ImageElementRenderer` による描画・背景画像）と、要素が持つ依存の型（UseCases の Protocol）は残る。→ 寸法の取得は第23回で外した（下の節）。
+- 保留（Codex 合意）：第17回の「残り」のとおり（`editRevision` による自動失効、表示の非同期化など）。
+
+## 段階3・第23回：差し替え・復元の配置サイズの計算の削除（2026-11-20）
+
+### 計画と確認した経路
+
+Model に残る具体型の参照（README の残件①）を、呼び出し経路・同期と非同期・保存と複製への影響で調べ、1つずつ分けて扱うことにしました（2026-11-20 ユーザー・Codex 合意）。Infrastructure で宣言された37の型名で層ごとに数えると、内側の層からの参照は Model の4か所だけでした（UseCases・ViewModels・Views・Utils は0件）。
+
+| 参照 | 本番の経路 | アプリで通るか | 扱い |
+| --- | --- | --- | --- |
+| 寸法の取得（`replaceImageSource`） | 差し替えのイベント（背景除去・高画質化の適用と Redo）だけ。イベントが直後に元の配置サイズへ戻していた。Undo の復元も、取得先から元画像を取り直してサイズを計算し、イベントが戻していた | 通るが、結果は毎回捨てられる | 第23回（この節） |
+| 描画（`ImageElementRenderer`） | キャンバスと削除エフェクト（`drawOnCanvas`）。保存の合成は Infrastructure から直接呼び、`Task.detached` の中で描く（描画は隔離なしのまま保つ必要がある） | 通る | 第24回の候補。置き場所はその計画で判断する |
+| URL の読み直し（`copy()`） | UI から呼ばれない複製（`duplicateSelectedElement`）と、呼び出し元のない `LogoProject.duplicate` だけ。URL のソースは Decoder だけが作る | 通らない | 第25回の候補。仕様はその計画で判断する |
+| 背景画像（`BackgroundSettings` → `AssetManager`） | キャンバスの描画と、保存の受付の固定（`renderCopy()`） | 通らない（`.image` の背景を作る経路がない） | 第25回のあとで判断する |
+
+第23回では、差し替え（`replaceImageSource`）と復元（`restoreImageSource`）を、ソースの値（と、差し替えで指定したときの編集値の初期化）だけを変える形にしました。
+
+| 確かめたこと | 根拠 |
+| --- | --- |
+| 計算の結果は本番で使われていない | 本番の呼び出し元は差し替えのイベントだけで、直後に元の配置サイズへ戻していた（Serena の参照検索とソース） |
+| 要素の `canvasSize` はサイズの計算にだけ使う | private で、使うのは計算だけ。保存せず、複製にも写していなかった |
+| 復元の中の取り直しを外しても、今のアプリの経路で表示する画像は変わらない | 取り直しはセッションのキャッシュを通らず、結果は捨てていた。履歴は巻き戻しの直後にソースの変更の失効を求め、次の表示で取り直す。データとパスのソースで、Undo のあとの表示をテストで確かめた（外部のファイルが変わる場合は、下の「挙動の範囲」） |
+
+計画は Codex のレビューで補いました。
+
+| 補足 | 対応 |
+| --- | --- |
+| 既存のテストは、Redo のあとの配置サイズを確かめていなかった（編集値だけ） | 2つの入口で、適用・Undo・Redo それぞれの直前に配置サイズを変え、その値が残ることを確かめる形にした。保つのはイベントを作った時点の値ではなく、各操作の直前の値 |
+| `resetAdjustments: false` で編集値を残すことを確かめていなかった | Model のテストで、変更済みの30項目が残ることも確かめ、「指定によらず初期化する」変異を足した |
+| 復元のテストが、古い値の残りを見ていなかった | 4つのソース・識別子・高画質化済みの値を入れた状態から始め、「ソースなし・識別子 nil・高画質化 false」への復元と、パスなし・パスと URL なしの優先順位も試す |
+| 「挙動は変わらない」の範囲 | 下の「挙動の範囲」に分けて書いた |
+
+### 挙動の範囲
+
+- 変わらないもの：今のアプリの経路（背景除去・高画質化の適用と、その Undo・Redo）での配置サイズと、表示する画像。保存・書き出し（受付の時点の配置サイズを使う）、永続化（`canvasSize` は保存していない）、複製（配置サイズは複製元の値を写す）、Revert。
+- 変わるもの：Model を直接呼んだときの契約（差し替え・復元は配置サイズを変えない。以前は画像に合わせて計算していた）。元画像の取得の回数と時点（Undo の中の取り直しがなくなり、次の表示の1回になる）。適用・Redo の中の、差し替えデータからの寸法の読み取り（`UIImage(data:)`）もなくなった。
+- 確かめていないもの：ファイルを参照するソースでは、ファイルを読む時点が Undo から次の表示へ遅れる。そのあいだに外部のファイルが変わった場合や、ファイル名のソースで `UIImage(named:)` のシステムのキャッシュの状態が変わる場合まで含めて、表示が以前と同じとは確かめていない（どちらも、アプリの操作では作られないソース）。
+
+### 変更した範囲
+
+- [ImageElement](../../../GLogo/Models/ImageElement.swift)：差し替えと復元から配置サイズの計算を外した（`ImageInitializationLoader` の寸法の取得と、復元の中の元画像の取得がなくなった）。使われなくなった `canvasSize`（初期化の引数を含む）と `updateSize(for:)` を消した。説明に、配置サイズは変えないこと、画像に合わせて配置し直すときは呼び出し側が計算することを書いた。
+- [ImageContentEvents](../../../GLogo/UseCases/History/Events/ImageContentEvents.swift)：差し替えのイベントの、適用・巻き戻しの前後で配置サイズを覚えて戻す処理（`preservedSize`）を消した。サイズを変えない約束は Model に置き、イベントを通したテストでも確かめる。
+- [ImageElementFactory](../../../GLogo/UseCases/Import/ImageElementFactory.swift)：既定のキャンバス（`defaultCanvasSize`）を `ImageElement` から移し、要素へキャンバスを渡すのをやめた（最初の配置サイズの計算にだけ使う）。[ImageImportElementBuilder](../../../GLogo/UseCases/Import/ImageImportElementBuilder.swift) は参照先と説明を直した。
+- 変えないもの：`ImageInitializationLoader.imageSize`（Factory が境界を通して使う）。`ImageSizeCalculator`（Factory だけが使うようになったが、UseCases から Models への参照は向きが正しいため動かさない）。差し替えの `resetAdjustments` の説明（「フィルター調整値」とあるが、実際は30項目を戻す。README の 2026-11-05 の残件のまま）。
+
+### 検証と変更後レビュー
+
+- **Critical／Warning**: 指摘なし。
+- **Info**: 差し替え・復元を直接呼ぶ呼び出し元は、配置サイズが変わらなくなった。今後、画像に合わせて配置し直したい呼び出し元が出たら、その呼び出し元が `ImageSizeCalculator` で計算する。
+- **Info**: Model に残る具体型の参照は3つ（URL の読み直し・描画・背景画像）。`ImageElement.swift` は 882 → 856 行。
+- **Test Coverage**:
+  - 変更の前に足したテスト（今のコードで成功を確かめてから変えた）：[ImageContentReplacedEventTests](../../../GLogoTests/Integration/ImageContentReplacedEventTests.swift)（2つの入口で、Redo のあとの配置サイズも確かめ、各操作の直前の値が残ることを見る形にした）と、[ImageSourceChangeEdgeTests](../../../GLogoTests/Integration/ImageSourceChangeEdgeTests.swift) 1件（差し替え前のソースが、データ・パス・ファイル URL・ファイル名・なしの5通り）。変更の前のコードで、イベントの戻しを外す変異と、イベントを作った時点の値へ戻す変異を入れると、どちらのテストも失敗することを確かめた。
+  - 変更と同時に足したテスト4件：[ImageElementSourceTests](../../../GLogoTests/Unit/ImageElementSourceTests.swift) 3件（差し替えは、縦横比の違う画像・デコードできないデータ・空のデータ × 編集値を戻す/残す で配置サイズを変えず、残す指定では変更済みの30項目が残る。識別子を渡さない差し替えは新しい識別子を作る。復元は取得先を呼ばず配置サイズを変えず、優先順位の1つだけを残して古いソース・識別子・高画質化済みの値を残さない（9通り × 高画質化済みの値の2通り））と、`ImageSourceChangeEdgeTests` 1件（差し替えの Undo 自体では元画像を取得せず、次の表示の1回で取得する。データとパスの2通り）。
+  - 期待値を変えたテスト：[ImageSourceIsolationTests](../../../GLogoTests/Unit/ImageSourceIsolationTests.swift) と [ImageElementCacheTests](../../../GLogoTests/Unit/ImageElementCacheTests.swift)（復元のあとの取得の回数を1つ減らす。パスの優先は、失効のあとの最初の取得で確かめる）。[ImageElementFactoryTests](../../../GLogoTests/Unit/ImageElementFactoryTests.swift)（`test_canvasSize_drivesLaterResizing` → `test_canvasSize_drivesInitialSize`。差し替え・復元の部分を外した）。[ImageElementCopyTests](../../../GLogoTests/Unit/ImageElementCopyTests.swift)（「複製のキャンバス」の前提がなくなった `test_copy_replacementUsesDefaultCanvas` を削除し、生成の補助のキャンバスを既定に戻した）。
+  - 変異確認（自分で実行。対象の6スイートで、13件すべてを検出）：
+
+    | 変異 | 種類 | 検出したテスト |
+    | --- | --- | --- |
+    | S1：差し替えで、画像の寸法から配置サイズを決め直す | 抜け | `ImageElementSourceTests` の差し替え2件・`ImageContentReplacedEventTests`（2つの入口）・`ImageSourceChangeEdgeTests` のソースの種類ごとのテスト |
+    | S2：復元で取得先を呼ぶ（結果は捨てる） | 抜け | `ImageElementSourceTests` の復元・Undo のあとの取得のテスト・`ImageSourceIsolationTests`・`ImageElementCacheTests`（取得の回数） |
+    | S3：復元で、取得した画像の寸法から配置サイズを決め直す | 抜け | S2 の4件と、`ImageContentReplacedEventTests`・ソースの種類ごとのテスト（Undo の配置サイズ） |
+    | S4：復元でソースを設定しない | 消し過ぎ | 9件（Model の復元、イベント、ソースの変更の境界5件、取得先の分離、ソースのない複製） |
+    | S5a：復元で識別子を設定しない | 消し過ぎ | Model の復元・`ImageContentReplacedEventTests`・`ImageSourceIsolationTests` |
+    | S5b：復元で高画質化済みの値を設定しない | 消し過ぎ | Model の復元・`ImageSourceIsolationTests` |
+    | S6：差し替えで編集値を戻さない | 消し過ぎ | Model の差し替え・`ImageContentReplacedEventTests` |
+    | S7：差し替えで、渡された識別子を使わず新しく作る | 取り違え | Model の差し替えだけ（イベントのテストは「前と違う」ことしか見ない） |
+    | S8a：ソースの優先順位で、データをパスより先にする | 取り違え | Model の復元・`ImageSourceIsolationTests`・`ImageElementCopyTests`（URL の複製） |
+    | S8b：下位のソース同士で、ファイル名を URL より先にする | 取り違え | Model の復元だけ（パスなしの組み合わせ。Codex の補足） |
+    | S8c：下位のソース同士で、データをファイル名より先にする | 取り違え | Model の復元だけ（パスと URL なしの組み合わせ。Codex の補足） |
+    | S9：差し替えで、指定によらず常に編集値を初期化する | 消し過ぎ | Model の差し替えだけ（編集値を残す指定。Codex の補足） |
+    | S10：イベントが、作った時点の配置サイズへ戻す | 取り違え | `ImageContentReplacedEventTests`・ソースの種類ごとのテスト（各操作の直前の値。Codex の補足） |
+
+    どれも、狙った振る舞いの違い（配置サイズ・取得の回数・ソース・識別子・高画質化済みの値・編集値）でテストが失敗することをログで確かめた。順序の変異は、この変更では代入の並びに意味がないため、取得の時点（復元の中か、次の表示か）で確かめた（S2）。イベントのサイズの保持を戻す変異は、Model がサイズを変えなくなったため観察できない（等価）。
+- **Verification**: GLogoTests は523件中520件成功（失敗1件は既知の性能テスト `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用。足した5件と削除した1件の分だけ件数が増えた）。UI テストは GLogoUITests 全体の30件が成功しました（実行は33回）。変更の前に足したテストは、本番のコードを変える前の作業ツリー（テスト先行のツリーと同じ内容）で、対象の2スイート8件が成功することを確かめた。アプリのビルドとテストのビルドで、今回変えたファイルに警告はありません。Model に残る Infrastructure の型の参照が3か所になったことを `rg` で確かめた。Xcode 27.1、iPhone 17 Pro／iOS 26.1 Simulator、`-parallel-testing-enabled NO`。実機は未実施です。SwiftFormat は未導入のため実行できません。
+
+### 残り
+
+- Model に残る具体型の参照は3つ（URL の読み直し・描画・背景画像）。描画は第24回の候補、URL の読み直しは第25回の候補、背景画像は第25回のあとで判断する（どれも、配置と仕様は各回の計画で判断する）。要素が持つ依存の型（UseCases の Protocol）も残る。
+- 差し替えの `resetAdjustments` が30項目を戻すことの是非（説明は「フィルター調整値」のまま）は、README の 2026-11-05 の残件のまま。
 - 保留（Codex 合意）：第17回の「残り」のとおり（`editRevision` による自動失効、表示の非同期化など）。
