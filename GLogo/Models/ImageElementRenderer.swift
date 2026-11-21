@@ -26,13 +26,6 @@ struct ImageElementRenderer {
         let outerCornerRadius: CGFloat
     }
 
-    /// 描画矩形をそのまま返す（fitMode撤廃後の単純描画）
-    /// - Parameter element: 描画対象
-    /// - Returns: 要素サイズの矩形
-    static func drawRect(for element: ImageElement) -> CGRect {
-        CGRect(origin: .zero, size: element.size)
-    }
-
     /// 画像要素を描画する
     /// - Parameters:
     ///   - element: 描画対象
