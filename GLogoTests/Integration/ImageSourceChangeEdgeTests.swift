@@ -91,6 +91,47 @@ final class ImageSourceChangeEdgeTests: XCTestCase {
         XCTAssertEqual(otherSource.originalCalls, otherCalls, "ほかの要素の元画像は取得し直さない")
     }
 
+
+    /// 差し替え前のソースの種類によらず、差し替えの適用・Undo・Redo は配置サイズを変えない（各操作の直前の値のまま）。
+    /// 差し替えの画像はデコードできる PNG にし、取得先はソースのある4通りとも、配置サイズと縦横比の違う画像を返す
+    /// （配置サイズを画像から計算し直すと値が変わり、検出できる）。
+    func test_replacement_keepsSizeForEachSource() throws {
+        let path = "/edge/old.png"
+        let url = URL(fileURLWithPath: "/edge/old-url.png")
+        let fileName = "edge-old"
+        let replacement = try XCTUnwrap(blue.pngData())
+        let sources: [(String, ImageElement.ImageSource?)] = [
+            ("データ", .data(oldData)), ("パス", .path(path)), ("ファイル URL", .url(url)),
+            ("ファイル名", .fileName(fileName)), ("なし", nil)
+        ]
+        for (label, oldSource) in sources {
+            let resolver = EdgeSource(
+                dataImages: [oldData: red, replacement: blue], pathImages: [path: red],
+                urlImages: [url: red], fileNameImages: [fileName: red]
+            )
+            let (editor, store, image) = try makeEditor(source: oldSource, resolver: resolver, preview: EdgePreview())
+
+            image.size = CGSize(width: 77, height: 33)
+            replace(image, with: replacement, in: editor)
+            XCTAssertEqual(image.imageData, replacement, label)
+            XCTAssertEqual(image.size, CGSize(width: 77, height: 33), "\(label)：適用の直前の配置サイズを保つ")
+
+            image.size = CGSize(width: 55, height: 44)
+            editor.undo()
+            XCTAssertEqual(image.size, CGSize(width: 55, height: 44), "\(label)：Undo の直前の配置サイズを保つ")
+            let restored = store.originalImage(of: image)
+            if oldSource == nil {
+                XCTAssertNil(restored, "\(label)：ソースのない状態に戻る")
+            } else {
+                XCTAssertTrue(restored === red, "\(label)：以前のソースに戻る")
+            }
+
+            image.size = CGSize(width: 66, height: 22)
+            editor.redo()
+            XCTAssertEqual(image.size, CGSize(width: 66, height: 22), "\(label)：Redo の直前の配置サイズを保つ")
+        }
+    }
+
     /// メタデータの識別子がない・履歴がない・巻き戻しに失敗・見つからないときも、Revert は編集値を初期化し、
     /// 表示画像・元画像・プレビュー元画像を失効させる（プロキシと共有の描画サービスのキャッシュは残す）。
     func test_revertWithoutMetadataRestore_stillInvalidates() throws {
@@ -161,7 +202,7 @@ final class ImageSourceChangeEdgeTests: XCTestCase {
 
     /// 画像要素を1つ追加して選んだエディタと、エディタが持つ管理役（同じインスタンス）。
     private func makeEditor(
-        source: ImageElement.ImageSource,
+        source: ImageElement.ImageSource?,
         resolver: EdgeSource,
         preview: EdgePreview,
         metadataStore: (any ImageMetadataStoring)? = nil
@@ -183,22 +224,30 @@ final class ImageSourceChangeEdgeTests: XCTestCase {
     }
 }
 
-/// データとパスごとに返す画像を決めておく取得先。決めていないものには nil（読めない）を返す。
+/// データ・パス・URL・ファイル名ごとに返す画像を決めておく取得先。決めていないものには nil（読めない）を返す。
+/// 使うソースは、本番の取得先と同じ優先順位（パス > URL > ファイル名 > データ）で選ぶ。
 /// テストのスレッドから同期にだけ呼ばれる。
 private final class EdgeSource: ImageSourceResolving, @unchecked Sendable {
     var dataImages: [Data: UIImage]
     var pathImages: [String: UIImage]
+    var urlImages: [URL: UIImage]
+    var fileNameImages: [String: UIImage]
     private(set) var originalCalls = 0
     private(set) var editingCalls = 0
 
-    init(dataImages: [Data: UIImage] = [:], pathImages: [String: UIImage] = [:]) {
+    init(
+        dataImages: [Data: UIImage] = [:], pathImages: [String: UIImage] = [:],
+        urlImages: [URL: UIImage] = [:], fileNameImages: [String: UIImage] = [:]
+    ) {
         self.dataImages = dataImages
         self.pathImages = pathImages
+        self.urlImages = urlImages
+        self.fileNameImages = fileNameImages
     }
 
     func resolveOriginalImage(imageData: Data?, fileName: String?, url: URL?, path: String?) -> UIImage? {
         originalCalls += 1
-        return image(imageData: imageData, path: path)
+        return image(imageData: imageData, fileName: fileName, url: url, path: path)
     }
 
     func resolveEditingImage(identifier: String?, fileName: String?, originalPath: String?,
@@ -208,8 +257,10 @@ private final class EdgeSource: ImageSourceResolving, @unchecked Sendable {
         return originalImageProvider()
     }
 
-    private func image(imageData: Data?, path: String?) -> UIImage? {
+    private func image(imageData: Data?, fileName: String?, url: URL?, path: String?) -> UIImage? {
         if let path { return pathImages[path] }
+        if let url { return urlImages[url] }
+        if let fileName { return fileNameImages[fileName] }
         if let imageData { return dataImages[imageData] }
         return nil
     }
