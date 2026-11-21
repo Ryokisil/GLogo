@@ -1,4 +1,4 @@
-// 権限待ち・加工待ち・AI 完了を制御し、保存要求時の内容が書き出されることを検証する。
+// 権限待ち・加工待ち・AI 完了を制御し、保存要求時の内容が書き出されることと、合成をメインスレッドの外で呼ぶことを検証する。
 
 import Combine
 import Photos
@@ -288,6 +288,53 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
         XCTAssertEqual(broken.originalCalls, 3, "受付の1回と、合成の加工・描き直しでの取得し直しの2回")
     }
 
+    /// 合成の保存は、保存のタスク（メインスレッドの外）で合成を呼び、画像本体と白系のフレームの塗りを描く。
+    /// 合成を呼んだスレッドは、本物の合成を呼ぶ包みの中で記録する（完了は MainActor で呼ばれるため、そこでは分からない）。
+    @MainActor
+    func test_compositeSave_drawsOffMainThread() async throws {
+        let project = LogoProject(canvasSize: CGSize(width: 120, height: 120))
+        let gray = solidImage(UIColor(red: 128 / 255, green: 128 / 255, blue: 128 / 255, alpha: 1), CGSize(width: 120, height: 120))
+        let blue = solidImage(.blue, CGSize(width: 100, height: 100))
+        project.addElement(makeImage(
+            resolver: FixedImageResolver(image: gray), frame: CGRect(x: 0, y: 0, width: 120, height: 120), role: .base,
+            output: gray
+        ))
+        let overlay = makeImage(
+            resolver: FixedImageResolver(image: blue), frame: CGRect(x: 10, y: 10, width: 100, height: 100), role: .overlay,
+            output: blue
+        )
+        overlay.showFrame = true
+        overlay.frameStyle = .softWhite
+        overlay.frameColor = .red
+        overlay.frameWidth = 10
+        project.addElement(overlay)
+        let processing = ThreadRecordingProcessing()
+        let writer = SnapshotWriter()
+        let coordinator = SaveImageCoordinator(processingService: processing, writer: writer)
+        let completed = expectation(description: "保存完了")
+        let completion: @MainActor @Sendable (PhotoLibrarySaveResult) -> Void = { result in
+            if case .failure(let error) = result { XCTFail("\(error)") }
+            completed.fulfill()
+        }
+
+        coordinator.saveComposite(project: project, renderSessions: ImageRenderSessionStore(), completion: completion)
+        writer.authorize()
+        await fulfillment(of: [completed], timeout: 5)
+
+        XCTAssertEqual(processing.compositeCallsOnMainThread, [false], "合成は1回だけ、メインスレッドの外で呼ぶ")
+        let saved = try XCTUnwrap(writer.savedImage)
+        let expectations: [(name: String, point: CGPoint, color: [Int])] = [
+            ("画像本体", CGPoint(x: 60, y: 60), [0, 0, 255, 255]),
+            // 赤を白へ 72% 寄せた色を、不透明度 0.92 で画像の青の上に重ねた色
+            ("白系のフレームの塗り", CGPoint(x: 16, y: 60), [235, 169, 189, 255]),
+        ]
+        for expected in expectations {
+            let actual = try rgba(of: saved, at: expected.point).map(Int.init)
+            XCTAssertTrue(zip(actual, expected.color).allSatisfy { abs($0 - $1) <= 10 },
+                          "\(expected.name)（期待: \(expected.color)、実際: \(actual)）")
+        }
+    }
+
     /// 受付から完了までを待ち、結果を返す。管理役はアプリと同じ実装を明示して渡す。
     @MainActor
     private func save(_ project: LogoProject, composite: Bool, writer: SnapshotWriter) async throws -> PhotoLibrarySaveResult? {
@@ -308,11 +355,13 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
         return box.result
     }
 
-    /// 加工は入力によらず緑を返す描画サービスで、取得先だけを差し替えた画像要素。
-    private func makeImage(resolver: any ImageSourceResolving, frame: CGRect, role: ImageRole) -> ImageElement {
+    /// 加工は入力によらず決めた画像（既定は緑）を返す描画サービスで、取得先だけを差し替えた画像要素。
+    private func makeImage(
+        resolver: any ImageSourceResolving, frame: CGRect, role: ImageRole, output: UIImage = snapshotImage(.green)
+    ) -> ImageElement {
         let image = ImageElement(
             source: .data(Data([1])), size: nil, sourceResolver: resolver,
-            previewService: FixedPreviewService(output: snapshotImage(.green))
+            previewService: FixedPreviewService(output: output)
         )
         image.position = frame.origin
         image.size = frame.size
@@ -500,6 +549,36 @@ private final class SnapshotWriter: PhotoLibraryWriting, @unchecked Sendable {
             self.image = image
             count += 1
         }
+    }
+}
+
+/// 本物の加工と合成を呼び、合成を呼んだときのスレッドを記録する。保存のタスクから呼ばれるため、記録をロックで守る。
+private final class ThreadRecordingProcessing: ImageProcessing, @unchecked Sendable {
+    private let lock = NSLock()
+    private let processing = ImageProcessingService()
+    private var mainThreadFlags: [Bool] = []
+
+    /// 合成を呼ぶたびに、メインスレッドだったかを順に記録した値
+    var compositeCallsOnMainThread: [Bool] { lock.withLock { mainThreadFlags } }
+
+    func applyFilters(to imageElement: ImageElement, images: any SaveImageReading) -> UIImage? {
+        processing.applyFilters(to: imageElement, images: images)
+    }
+
+    func makeCompositeImage(baseElement: ImageElement, project: LogoProject, images: any SaveImageReading) -> UIImage? {
+        let isMainThread = Thread.isMainThread
+        lock.withLock { mainThreadFlags.append(isMainThread) }
+        return processing.makeCompositeImage(baseElement: baseElement, project: project, images: images)
+    }
+}
+
+/// 単色の画像（倍率1）
+private func solidImage(_ color: UIColor, _ size: CGSize) -> UIImage {
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    return UIGraphicsImageRenderer(size: size, format: format).image { context in
+        color.setFill()
+        context.fill(CGRect(origin: .zero, size: size))
     }
 }
 
