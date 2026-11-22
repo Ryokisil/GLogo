@@ -69,6 +69,27 @@ final class ImageElementCopyTests: XCTestCase {
         XCTAssertNil(ImageRenderSessionStore().originalImage(of: copy))
     }
 
+    /// 複製は、複製の時点ではなく、初めて取得する時点のファイルを表示する（古い画像に戻らない）。
+    @MainActor
+    func test_copy_urlSource_showsCurrentFile() throws {
+        let url = try temporaryFile(data: try pngData(size: CGSize(width: 40, height: 20)))
+        let original = makeElement(url: url)
+        // 保存データの復元では URL と Data を両方持つことがある（表示は URL が優先される）。
+        original.imageData = try pngData(size: CGSize(width: 10, height: 10), color: .purple)
+        let copy = try XCTUnwrap(original.copy() as? ImageElement)
+        let copyAfterDeletion = try XCTUnwrap(original.copy() as? ImageElement)
+        let store = ImageRenderSessionStore()
+
+        // 複製のあと、複製の画像を初めて取得する前に、ファイルを別の色・寸法の画像に変える。
+        let currentSize = CGSize(width: 24, height: 12)
+        try pngData(size: currentSize, color: .blue).write(to: url)
+        XCTAssertEqual(store.originalImage(of: copy)?.size, currentSize, "取得の時点のファイルを表示する")
+
+        // ファイルがなくなったら、複製の時点の画像にも、複製元の Data にも戻らない。
+        try FileManager.default.removeItem(at: url)
+        XCTAssertNil(store.originalImage(of: copyAfterDeletion), "ファイルがないときは表示しない")
+    }
+
     func test_copy_pathAndFileName_keepReferenceOnly() throws {
         let fileData = try pngData(size: CGSize(width: 40, height: 20))
         let url = try temporaryFile(data: fileData)
@@ -176,11 +197,11 @@ final class ImageElementCopyTests: XCTestCase {
         XCTAssertTrue(copy.previewService === original.previewService, file: file, line: line)
     }
 
-    private func pngData(size: CGSize) throws -> Data {
+    private func pngData(size: CGSize, color: UIColor = .orange) throws -> Data {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         let image = UIGraphicsImageRenderer(size: size, format: format).image { context in
-            UIColor.orange.setFill()
+            color.setFill()
             context.fill(CGRect(origin: .zero, size: size))
         }
         return try XCTUnwrap(image.pngData())

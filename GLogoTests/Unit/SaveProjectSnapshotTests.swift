@@ -32,6 +32,7 @@ final class SaveProjectSnapshotTests: XCTestCase {
         image.frameColor = .blue
         image.frameStyle = .double
         image.roundedCorners = true
+        image.metadata = ImageMetadata(title: "保存用の複製に持ち越さない")
         let original = try XCTUnwrap(store.originalImage(of: image))
         let editorCache = snapshotImage(.black)
         store.storeRenderedImage(editorCache, of: image)
@@ -66,6 +67,7 @@ final class SaveProjectSnapshotTests: XCTestCase {
         XCTAssertEqual(copy.frameColor, .blue)
         XCTAssertEqual(copy.frameStyle, .double)
         XCTAssertTrue(copy.roundedCorners)
+        XCTAssertNil(copy.metadata, "メタデータは保存の合成で使わないため、保存用の複製に持ち越さない")
         XCTAssertTrue(snapshot.originalImage(of: copy) === original, "画像バッファを再圧縮・複製しない")
         // 描画用の画像は、編集元の表示キャッシュ（黒）でも、編集中の即時プレビューでもなく、新しくフル品質で加工したもの。
         let drawn = snapshot.drawingImage(of: copy)

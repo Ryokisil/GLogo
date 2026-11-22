@@ -52,6 +52,37 @@ final class ImageSourceResolverTests: XCTestCase {
         XCTAssertNil(resolved)
     }
 
+    /// ファイルURLが imageData より優先されることを検証（保存データの復元では両方を持つことがある）
+    func test_resolveOriginalImage_urlWins() throws {
+        let resolver = ImageSourceResolver()
+        let dataImage = makeSolidImage(size: CGSize(width: 8, height: 8), color: .red)
+        let fileImage = makeSolidImage(size: CGSize(width: 16, height: 12), color: .blue)
+        let fileURL = try temporaryFile(data: XCTUnwrap(fileImage.pngData()))
+
+        let resolved = try XCTUnwrap(
+            resolver.resolveOriginalImage(imageData: dataImage.pngData(), fileName: nil, url: fileURL, path: nil)
+        )
+
+        XCTAssertEqual(resolved.size, fileImage.size)
+    }
+
+    /// ファイルURLのファイルがない・デコードできない場合も、imageData へフォールバックしないことを検証
+    func test_resolveOriginalImage_unreadableFileURLReturnsNil() throws {
+        let resolver = ImageSourceResolver()
+        let dataImage = makeSolidImage(size: CGSize(width: 8, height: 8), color: .red)
+        let missingURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("png")
+        let undecodableURL = try temporaryFile(data: Data([0, 1, 2, 3]))
+
+        for (label, url) in [("ない", missingURL), ("デコードできない", undecodableURL)] {
+            XCTAssertNil(
+                resolver.resolveOriginalImage(imageData: dataImage.pngData(), fileName: nil, url: url, path: nil),
+                "ファイルが\(label)"
+            )
+        }
+    }
+
     /// 保存データ由来のファイルパス・ファイルURL・パス文字列のアセット名から元画像を取得できることを検証
     func test_resolveOriginalImage_localFileSources() throws {
         let resolver = ImageSourceResolver()
@@ -149,6 +180,20 @@ private extension ImageSourceResolverTests {
             color.setFill()
             context.fill(CGRect(origin: .zero, size: size))
         }
+    }
+
+    /// 一時ファイルに書き出し、テストの終わりに消す
+    /// - Parameter data: 書き出す内容
+    /// - Returns: 書き出したファイルの URL
+    private func temporaryFile(data: Data) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("png")
+        try data.write(to: url)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: url)
+        }
+        return url
     }
 }
 
