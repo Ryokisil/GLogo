@@ -1,5 +1,5 @@
 // 画像要素の UI 用複製（copy()）が、ソースの種類ごとに引き継ぐ値と作り直す値を固定する。
-// 複製機能は UI 未公開だが、LogoElement.copy() の上書きとして挙動を維持する対象。
+// 複製機能は UI 未公開。ソースは参照だけを写し、URL も読み直さない（第25回で、読み直した Data とメタデータを持たせる形から変えた）。
 
 import UIKit
 import XCTest
@@ -24,49 +24,51 @@ final class ImageElementCopyTests: XCTestCase {
         XCTAssertNil(copy.metadata, "Data ソースの複製はメタデータを持たない")
     }
 
-    func test_copy_urlSource_reloadsDataAndMetadata() throws {
-        let fileData = try pngData(size: CGSize(width: 40, height: 20))
-        let url = try temporaryFile(data: fileData)
-        let original = makeElement(url: url)
-        // URL は Data より優先され、複製時にファイルから読み直す。
-        original.imageData = Data([9, 9, 9])
-        decorate(original)
+    /// ファイルが読める・デコードできない・ないのどれでも、ファイルを読み直さず URL の参照だけを写す。
+    func test_copy_urlSource_keepsReferenceOnly() throws {
+        let readable = try temporaryFile(data: try pngData(size: CGSize(width: 40, height: 20)))
+        let undecodable = try temporaryFile(data: Data([0, 1, 2, 3]))
+        let missing = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        for (label, url) in [("読める", readable), ("デコードできない", undecodable), ("ない", missing)] {
+            let original = makeElement(url: url)
+            // 複製に写さない値を、複製元に実際に持たせる（保存データの復元では URL と Data を両方持つことがある）。
+            let discardedData = try pngData(size: CGSize(width: 10, height: 10), color: .purple)
+            original.imageData = discardedData
+            original.metadata = ImageMetadata(title: "複製に引き継がない")
+            decorate(original)
 
-        let copy = try XCTUnwrap(original.copy() as? ImageElement)
-        assertRecreatedIdentity(copy, from: original)
-        assertCopiedAppearance(copy, from: original)
-        XCTAssertEqual(copy.originalImageURL, url)
-        XCTAssertEqual(copy.imageData, fileData)
-        XCTAssertNotNil(copy.metadata)
-        XCTAssertNil(copy.originalImagePath)
-        XCTAssertNil(copy.imageFileName)
+            let copy = try XCTUnwrap(original.copy() as? ImageElement)
+            assertRecreatedIdentity(copy, from: original)
+            assertCopiedAppearance(copy, from: original)
+            XCTAssertEqual(copy.originalImageURL, url, "ファイルが\(label)")
+            XCTAssertNil(copy.imageData, "ファイルが\(label)：読み直した Data も、複製元の Data も持たない")
+            XCTAssertNil(copy.metadata, "ファイルが\(label)：取り出したメタデータも、複製元のメタデータも持たない")
+            XCTAssertNil(copy.originalImagePath, "ファイルが\(label)")
+            XCTAssertNil(copy.imageFileName, "ファイルが\(label)")
+            // 写さない値を、複製元から消さない。
+            XCTAssertEqual(original.originalImageURL, url, "ファイルが\(label)")
+            XCTAssertEqual(original.imageData, discardedData, "ファイルが\(label)")
+            XCTAssertEqual(original.metadata?.title, "複製に引き継がない", "ファイルが\(label)")
+        }
     }
 
-    func test_copy_unreadableURL_keepsReferenceOnly() throws {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    /// 保存データのキーは変わらないが、URL の複製を書き出した内容には Data とメタデータが入らない（第25回の契約の変更）。
+    func test_copy_urlSource_encodesReferenceOnly() throws {
+        let url = try temporaryFile(data: try pngData(size: CGSize(width: 40, height: 20)))
         let original = makeElement(url: url)
-        decorate(original)
-
+        original.imageData = try pngData(size: CGSize(width: 10, height: 10), color: .purple)
+        original.metadata = ImageMetadata(title: "複製に引き継がない")
         let copy = try XCTUnwrap(original.copy() as? ImageElement)
-        assertRecreatedIdentity(copy, from: original)
-        assertCopiedAppearance(copy, from: original)
-        XCTAssertEqual(copy.originalImageURL, url)
-        XCTAssertNil(copy.imageData)
-        XCTAssertNil(copy.metadata)
-    }
+        let dependencies = ProjectDecodingDependencies.live()
 
-    @MainActor
-    func test_copy_undecodableURL_keepsReadData() throws {
-        let fileData = Data([0, 1, 2, 3])
-        let url = try temporaryFile(data: fileData)
-        let original = makeElement(url: url)
-
-        let copy = try XCTUnwrap(original.copy() as? ImageElement)
-        XCTAssertEqual(copy.originalImageURL, url)
-        XCTAssertEqual(copy.imageData, fileData)
-        // URL経由はUIImageのデコード失敗時も抽出し、現行の抽出器は空の値を返す。
-        XCTAssertNotNil(copy.metadata)
-        XCTAssertNil(ImageRenderSessionStore().originalImage(of: copy))
+        let decoded = try dependencies.makeDecoder().decode(ImageElement.self, from: JSONEncoder().encode(copy))
+        XCTAssertEqual(decoded.originalImageURL, url)
+        XCTAssertNil(decoded.imageData)
+        XCTAssertNil(decoded.metadata)
+        // 対照：同じ書き出しと復元で、複製元は Data とメタデータを保つ（経路が値を落としていない）。
+        let decodedOriginal = try dependencies.makeDecoder().decode(ImageElement.self, from: JSONEncoder().encode(original))
+        XCTAssertEqual(decodedOriginal.imageData, original.imageData)
+        XCTAssertEqual(decodedOriginal.metadata?.title, "複製に引き継がない")
     }
 
     /// 複製は、複製の時点ではなく、初めて取得する時点のファイルを表示する（古い画像に戻らない）。

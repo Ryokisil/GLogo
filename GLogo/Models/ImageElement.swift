@@ -658,7 +658,8 @@ class ImageElement: LogoElement {
         ImageElementRenderer.draw(self, in: context, image: image)
     }
     
-    /// 要素のコピーを作成
+    /// UI 用の複製を作る。ソースは優先順位の1つだけを参照として写し、ファイルの読み込みや画像のデコードは行わない。
+    /// メタデータは写さない。URL のソースは第25回の前まで読み直し、読めた Data と取り出したメタデータを持たせていた。
     override func copy() -> LogoElement {
         // ソースのない複製元は、従来どおり空のアセット名を参照として持たせる。
         let source = resolveImageSource(
@@ -667,15 +668,8 @@ class ImageElement: LogoElement {
             url: originalImageURL,
             path: originalImagePath
         ) ?? .fileName("")
+        // 配置サイズは copyAppearance で複製元の値を写すため、ここでは渡さない。
         let copy = ImageElement(source: source, size: nil, sourceResolver: sourceResolver, previewService: previewService)
-
-        // URL ソースは従来どおり複製時にファイルを読み直し、読めた Data と抽出したメタデータを持たせる。
-        // 配置サイズは copyAppearance で複製元の値に上書きするため、ここでは計算しない。
-        if case .url(let url) = source, let content = ImageInitializationLoader().load(url: url) {
-            copy.imageData = content.imageData
-            copy.metadata = content.metadata
-        }
-
         copyAppearance(to: copy)
         return copy
     }
