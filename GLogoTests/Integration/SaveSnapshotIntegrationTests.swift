@@ -410,6 +410,43 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
         }
     }
 
+    // MARK: - 背景画像（第26回）
+
+    /// 保存の2つの入口（自動の判定で合成・合成の強制）は、受付の時点の背景画像で合成する。
+    /// 受付のあと、権限の許可より前にファイルを更新しても、保存結果は受付の時点の画像になる。
+    /// 合成は背景のあとに画像要素を描くため、画像要素は透明にして、背景の画素で確かめる。
+    @MainActor
+    func test_compositeSave_usesBackgroundAtAcceptance() async throws {
+        for composite in [false, true] {
+            let entry = composite ? "saveComposite" : "save"
+            let file = BackgroundAssetFile()
+            defer { file.remove() }
+            file.write(snapshotImage(.red))
+            // 自動の判定でも合成になるよう、透明な画像要素を2つ置く。
+            let project = try makeBackgroundImageProject(fileName: file.name, imageCount: 2)
+            let writer = SnapshotWriter()
+            let coordinator = SaveImageCoordinator(processingService: ImageProcessingService(), writer: writer)
+            let completed = expectation(description: "\(entry)の完了")
+            let completion: @MainActor @Sendable (PhotoLibrarySaveResult) -> Void = { result in
+                if case .failure(let error) = result { XCTFail("\(entry)：\(error)") }
+                completed.fulfill()
+            }
+            if composite {
+                coordinator.saveComposite(project: project, completion: completion)
+            } else {
+                coordinator.save(project: project, completion: completion)
+            }
+
+            file.write(snapshotImage(.blue))
+            writer.authorize()
+            await fulfillment(of: [completed], timeout: 5)
+
+            let saved = try XCTUnwrap(writer.savedImage, entry)
+            try assertRGBA(of: saved, at: CGPoint(x: 20, y: 20), equals: BackgroundPixel.red,
+                           "\(entry)：受付の時点の背景画像（赤）で合成する")
+        }
+    }
+
     private func makeProject() -> (LogoProject, ImageElement) {
         let project = LogoProject(canvasSize: CGSize(width: 32, height: 24))
         let image = ImageElementFactory().makeElement(imageData: snapshotImage(.red).pngData()!, importOrder: 1)

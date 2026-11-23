@@ -173,9 +173,13 @@ final class SaveProjectSnapshotTests: XCTestCase {
         project.backgroundSettings.imageFileName = name
         let snapshot = SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
         let before = drawBackground(snapshot.project.backgroundSettings)
+        // 等しさだけでは「両方とも描かない」誤りを通すため、描いた色も確かめる（第26回）。
+        try assertRGBA(of: before, at: CGPoint(x: 4, y: 4), equals: BackgroundPixel.red, "受付の時点の画像（赤）で描く")
         XCTAssertTrue(assets.saveImage(snapshotImage(.blue), name: name, type: .background, alsoSaveProxy: false))
         XCTAssertEqual(drawBackground(snapshot.project.backgroundSettings).pngData(), before.pngData())
         XCTAssertNotEqual(drawBackground(project.backgroundSettings).pngData(), before.pngData())
+        try assertRGBA(of: drawBackground(project.backgroundSettings), at: CGPoint(x: 4, y: 4),
+                       equals: BackgroundPixel.blue, "編集側は、更新したファイル（青）で描く")
         // ランタイム資源は永続化しないため、元の設定と JSON の契約は同一。
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
@@ -305,6 +309,86 @@ final class SaveProjectSnapshotTests: XCTestCase {
                 XCTAssertTrue(store.drawingImage(of: image) === preview.instant, "編集中の状態は変わらない")
             }
         }
+    }
+
+    // MARK: - 背景画像の固定（第26回）
+    // 合成の出力で確かめる。合成は背景のあとに画像要素を描くため、画像要素を透明にし、背景の画素がそのまま出るようにする。
+
+    /// 受付のあと、最初の合成より前にファイルを更新しても、受付の時点の画像で合成する（取得漏れ・取得の遅れ・取り直しを見分ける）。
+    @MainActor
+    func test_snapshot_compositesBackgroundAtAcceptance() throws {
+        let file = BackgroundAssetFile()
+        defer { file.remove() }
+        file.write(snapshotImage(.red))
+        let project = try makeBackgroundImageProject(fileName: file.name)
+        let snapshot = SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
+
+        file.write(snapshotImage(.blue))
+
+        try assertRGBA(of: try compositeBackground(of: snapshot), at: CGPoint(x: 20, y: 20),
+                       equals: BackgroundPixel.red, "受付の時点の画像（赤）で合成する")
+    }
+
+    /// 保存1件ごとに、その受付の時点の画像を固定する。A を受付 → 更新 → B を受付 → B、A の順で合成しても取り違えない。
+    @MainActor
+    func test_snapshots_pinOwnBackground() throws {
+        let file = BackgroundAssetFile()
+        defer { file.remove() }
+        file.write(snapshotImage(.red))
+        let project = try makeBackgroundImageProject(fileName: file.name)
+        let first = SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
+        file.write(snapshotImage(.blue))
+        let second = SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
+
+        try assertRGBA(of: try compositeBackground(of: second), at: CGPoint(x: 20, y: 20),
+                       equals: BackgroundPixel.blue, "B は B の受付の時点の画像（青）")
+        try assertRGBA(of: try compositeBackground(of: first), at: CGPoint(x: 20, y: 20),
+                       equals: BackgroundPixel.red, "A は A の受付の時点の画像（赤）。あとの受付の画像に替わらない")
+    }
+
+    /// 受付のときに取得できなければ、背景画像なしで固定する。あとでファイルができても、その保存では取り直さない。
+    @MainActor
+    func test_snapshot_keepsMissingBackground() throws {
+        let file = BackgroundAssetFile()
+        defer { file.remove() }
+        let project = try makeBackgroundImageProject(fileName: file.name)
+        let missing = SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
+
+        file.write(snapshotImage(.red))
+
+        try assertRGBA(of: try compositeBackground(of: missing), at: CGPoint(x: 20, y: 20),
+                       equals: BackgroundPixel.clear, "受付のときになかった背景は描かない")
+        // ファイルは読める状態になっている（あとの受付では描く）。
+        let later = SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
+        try assertRGBA(of: try compositeBackground(of: later), at: CGPoint(x: 20, y: 20),
+                       equals: BackgroundPixel.red, "あとの受付では、できたファイル（赤）で描く")
+    }
+
+    /// 今の描き方（CGContext.draw）を固定する。背景の不透明度がかかり、画像は上下が反転して描かれる。
+    /// 上半分が赤・下半分が青の画像を、不透明度 0.5 で描く。
+    @MainActor
+    func test_composite_keepsBackgroundDrawing() throws {
+        let file = BackgroundAssetFile()
+        defer { file.remove() }
+        file.write(twoToneImage(top: .red, bottom: .blue))
+        let project = try makeBackgroundImageProject(fileName: file.name, opacity: 0.5)
+        let snapshot = SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
+
+        let output = try compositeBackground(of: snapshot)
+
+        try assertRGBA(of: output, at: CGPoint(x: 20, y: 5), equals: BackgroundPixel.halfBlue,
+                       "出力の上側には、画像の下半分（青）が不透明度 0.5 で出る")
+        try assertRGBA(of: output, at: CGPoint(x: 20, y: 35), equals: BackgroundPixel.halfRed,
+                       "出力の下側には、画像の上半分（赤）が不透明度 0.5 で出る")
+    }
+
+    /// 保存の範囲の内容で合成する（ベースは範囲の1つ目の要素）。
+    @MainActor
+    private func compositeBackground(of snapshot: SaveProjectSnapshot) throws -> UIImage {
+        let base = try XCTUnwrap(snapshot.project.elements.first as? ImageElement)
+        return try XCTUnwrap(
+            ImageProcessingService().makeCompositeImage(baseElement: base, project: snapshot.project, images: snapshot)
+        )
     }
 
     private func drawBackground(_ background: BackgroundSettings) -> UIImage {
