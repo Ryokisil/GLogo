@@ -23,6 +23,9 @@ struct EditorDependencies {
     /// メモリ警告時に既定で解放する描画サービス。画像ごとの描画サービスとあわせて、重複なく解放する
     let previewService: any ImagePreviewing
 
+    /// 背景画像の取得。キャンバスが描くたびに使う（保存は、写真ライブラリへの保存が持つ取得先で、受付のときに取得する）
+    let backgroundImages: any BackgroundImageLoading
+
     // MARK: - 使う側ごとに作る（呼ぶたびに新しく作る）
     // エディタの初期化と、画面の ViewModel を作るとき（いずれもメインスレッド）にだけ呼ぶ。
 

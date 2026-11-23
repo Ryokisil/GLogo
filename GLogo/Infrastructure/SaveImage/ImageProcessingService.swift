@@ -79,8 +79,9 @@ struct ImageProcessingService: ImageProcessing {
             // ベース画像範囲（∩キャンバス）でクリップ
             cgContext.clip(to: exportRect)
 
-            // 背景設定描画（editor と同じ座標系。clip によりベース画像範囲内のみ反映）
-            project.backgroundSettings.draw(in: cgContext, rect: canvasRect)
+            // 背景設定描画（editor と同じ座標系。clip によりベース画像範囲内のみ反映）。
+            // 背景画像は、保存の範囲が受付で固定したものを使い、ここでは取得しない。
+            project.backgroundSettings.draw(in: cgContext, rect: canvasRect, image: images.backgroundImage)
 
             for element in visibleElements {
                 if let imageElement = element as? ImageElement {

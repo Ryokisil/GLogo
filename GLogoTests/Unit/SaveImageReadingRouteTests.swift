@@ -242,6 +242,9 @@ private final class SaveImageReadingSpy: SaveImageReading {
         requests.append(Request(.drawing, element))
         return drawing[ObjectIdentifier(element)]
     }
+
+    /// 背景画像は扱わない（このファイルのテストは画像要素の画像の経路だけを見る）。
+    var backgroundImage: UIImage? { nil }
 }
 
 private func solidImage(_ color: UIColor, _ size: CGSize) -> UIImage {

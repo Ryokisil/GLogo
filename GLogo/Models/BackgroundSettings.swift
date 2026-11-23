@@ -5,7 +5,7 @@
 //  このファイルはロゴプロジェクトの背景設定を管理するモデルクラスを定義しています。
 //  単色、グラデーション、画像、透明などの背景タイプと、それぞれのタイプに応じた
 //  プロパティ（色、グラデーション方向、画像ファイル名など）を提供します。
-//  また、背景の描画処理も実装しています。
+//  また、背景の描画処理も実装しています。背景画像は自分では取得せず、呼ぶ側（キャンバス・保存の範囲）から受け取って描きます。
 //
 
 import Foundation
@@ -64,18 +64,11 @@ struct BackgroundSettings: Codable {
     /// 背景画像のファイル名
     var imageFileName: String?
 
-    // 保存用コピーだけが保持する実行時資源。Codable の保存形式には含めない。
-    private var frozenImage: UIImage?
-    private var hasFrozenImage = false
-
-    /// 背景画像も要求時の内容で固定し、保存待ち中の同名アセット更新を持ち越さない。
-    func renderCopy() -> BackgroundSettings {
-        var copy = self
-        if type == .image {
-            copy.frozenImage = hasFrozenImage ? frozenImage : resolveBackgroundImage()
-            copy.hasFrozenImage = true
-        }
-        return copy
+    /// 描くときに取得する背景画像の名前。画像の背景のときだけファイル名を返し、単色・グラデーションでは
+    /// ファイル名が残っていても nil を返す（取得しない）。
+    /// 取得はキャンバス（描くたび）と保存の範囲（受付のとき1回）が行い、画像を `draw(in:rect:image:)` へ渡す。
+    var imageNameToDraw: String? {
+        type == .image ? imageFileName : nil
     }
     
     /// エンコード用のコーディングキー
@@ -153,8 +146,10 @@ struct BackgroundSettings: Codable {
         self.gradientDirection = direction
     }
     
-    /// 背景を描画するメソッド
-    func draw(in context: CGContext, rect: CGRect) {
+    /// 背景を描く。
+    /// - Parameter image: 画像の背景で描く画像（`imageNameToDraw` の名前で取得したもの）。
+    ///   単色・グラデーションでは使わない。nil なら背景画像を描かない
+    func draw(in context: CGContext, rect: CGRect, image: UIImage?) {
         context.saveGState()
         
         // 透明度を設定
@@ -172,7 +167,7 @@ struct BackgroundSettings: Codable {
             
         case .image:
             // 画像背景
-            drawBackgroundImage(in: context, rect: rect)
+            drawBackgroundImage(image, in: context, rect: rect)
             
         }
         
@@ -258,10 +253,9 @@ struct BackgroundSettings: Codable {
     }
     
     /// 背景画像を描画
-    private func drawBackgroundImage(in context: CGContext, rect: CGRect) {
+    private func drawBackgroundImage(_ image: UIImage?, in context: CGContext, rect: CGRect) {
         guard let imageFileName = imageFileName else { return }
-        let image = hasFrozenImage ? frozenImage : resolveBackgroundImage()
-        
+
         // 画像が見つからない場合は終了
         guard let cgImage = image?.cgImage else {
             Self.logger.warning("背景画像の描画をスキップ: 画像が見つからない fileName=\(imageFileName, privacy: .public)")
@@ -272,15 +266,10 @@ struct BackgroundSettings: Codable {
         context.saveGState()
         context.setAlpha(opacity) // 不透明度を設定
         
-        // 画像の描画
+        // 画像の描画。CGContext.draw は描画先の不透明度を反映する（UIImage.draw は反映しない）。
+        // UIKit の描画先（キャンバス・保存の合成）では、画像は上下が反転して描かれる（今の挙動。README の残件）。
         context.draw(cgImage, in: rect)
         
         context.restoreGState()
-    }
-
-    private func resolveBackgroundImage() -> UIImage? {
-        guard let imageFileName else { return nil }
-        return AssetManager.shared.loadImage(named: imageFileName, type: .background)
-            ?? UIImage(named: imageFileName)
     }
 }

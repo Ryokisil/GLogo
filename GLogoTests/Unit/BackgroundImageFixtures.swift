@@ -96,3 +96,30 @@ func assertRGBA(
     let isClose = zip(actual, expected).allSatisfy { abs($0 - $1) <= 8 }
     XCTAssertTrue(isClose, "\(message)（期待: \(expected)、実際: \(actual)）", file: file, line: line)
 }
+
+/// 背景画像の取得を記録する偽物の取得先。取得した名前と、メインスレッドで呼ばれたかを順に記録し、決めた画像を返す。
+/// 保存の受付とキャンバスから呼ばれる。記録はロックで守る。
+final class BackgroundImageLoadingSpy: BackgroundImageLoading, @unchecked Sendable {
+    private let lock = NSLock()
+    private let image: UIImage?
+    private var names: [String] = []
+    private var mainThreadFlags: [Bool] = []
+
+    init(image: UIImage?) {
+        self.image = image
+    }
+
+    /// 取得した名前（呼んだ順）
+    var requestedNames: [String] { lock.withLock { names } }
+
+    /// 呼ぶたびに、メインスレッドだったかを順に記録した値
+    var calledOnMainThread: [Bool] { lock.withLock { mainThreadFlags } }
+
+    func loadBackgroundImage(named name: String) -> UIImage? {
+        lock.withLock {
+            names.append(name)
+            mainThreadFlags.append(Thread.isMainThread)
+        }
+        return image
+    }
+}

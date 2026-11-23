@@ -15,6 +15,7 @@ extension EditorDependencies {
         imageUpscaleUseCase: ImageUpscaleUseCase? = nil,
         metadataStore: (any ImageMetadataStoring)? = nil,
         previewService: (any ImagePreviewing)? = nil,
+        backgroundImages: (any BackgroundImageLoading)? = nil,
         makeBackgroundRemover: (@MainActor () -> any BackgroundRemovalProcessing)? = nil,
         makeImageRenderRefresh: (@MainActor () -> ImageRenderRefreshUseCase)? = nil
     ) -> EditorDependencies {
@@ -24,6 +25,7 @@ extension EditorDependencies {
             imageUpscaleUseCase: imageUpscaleUseCase ?? AppComposition.makeImageUpscaleUseCase(),
             metadataStore: metadataStore ?? AppComposition.metadataStore,
             previewService: previewService ?? AppComposition.previewService,
+            backgroundImages: backgroundImages ?? AppComposition.makeBackgroundImageLoader(),
             makeBackgroundRemover: makeBackgroundRemover ?? AppComposition.makeBackgroundRemover,
             makeImageSourceResolver: AppComposition.makeImageSourceResolver,
             makeManualBackgroundBlurUseCase: AppComposition.makeManualBackgroundBlurUseCase,

@@ -447,6 +447,65 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
         }
     }
 
+    /// 保存の2つの入口は、呼び出しから戻るまでに（権限を待つ前に）、メインスレッドで背景画像を1回だけ取得する。
+    /// 合成まで待って数えるだけでは、取得を権限の許可のあとへ遅らせる誤りを見逃すため、戻った直後にも数える。
+    /// 個別保存（自動の判定）と権限の拒否でも、受付で取得する（今の挙動）。合成は、注入した取得先の画像（マゼンタ）で描く。
+    @MainActor
+    func test_saveEntries_loadBackgroundBeforeAuthorization() async throws {
+        let cases: [(entry: String, composite: Bool, imageCount: Int, denied: Bool)] = [
+            ("save・合成", false, 2, false),
+            ("save・個別", false, 1, false),
+            ("saveComposite", true, 1, false),
+            ("save・権限の拒否", false, 2, true),
+            ("saveComposite・権限の拒否", true, 1, true),
+        ]
+        for testCase in cases {
+            let entry = testCase.entry
+            let loader = BackgroundImageLoadingSpy(image: snapshotImage(.magenta))
+            let project = try makeBackgroundImageProject(fileName: "background_entry", imageCount: testCase.imageCount)
+            let writer = SnapshotWriter()
+            let coordinator = SaveImageCoordinator(
+                processingService: ImageProcessingService(),
+                writer: testCase.denied ? DeniedWriter() : writer,
+                backgroundImages: loader
+            )
+            let box = SaveResultBox()
+            let completed = expectation(description: "\(entry)の完了")
+            let completion: @MainActor @Sendable (PhotoLibrarySaveResult) -> Void = { result in
+                box.result = result
+                completed.fulfill()
+            }
+            if testCase.composite {
+                coordinator.saveComposite(project: project, renderSessions: ImageRenderSessionStore(), completion: completion)
+            } else {
+                coordinator.save(project: project, renderSessions: ImageRenderSessionStore(), completion: completion)
+            }
+
+            XCTAssertEqual(loader.requestedNames, ["background_entry"], "\(entry)：呼び出しから戻るまでに1回取得する")
+            XCTAssertEqual(loader.calledOnMainThread, [true], "\(entry)：メインスレッドで取得する")
+            if !testCase.denied {
+                writer.authorize()
+            }
+            await fulfillment(of: [completed], timeout: 5)
+
+            XCTAssertEqual(loader.requestedNames, ["background_entry"], "\(entry)：保存の処理では取り直さない")
+            if testCase.denied {
+                guard case .failure(.permissionDenied) = box.result else {
+                    return XCTFail("\(entry)：権限の拒否で終わる（\(String(describing: box.result))）")
+                }
+                continue
+            }
+            guard case .success = box.result else {
+                return XCTFail("\(entry)：保存に成功する（\(String(describing: box.result))）")
+            }
+            if testCase.imageCount == 2 || testCase.composite {
+                let saved = try XCTUnwrap(writer.savedImage, entry)
+                try assertRGBA(of: saved, at: CGPoint(x: 20, y: 20), equals: BackgroundPixel.magenta,
+                               "\(entry)：注入した取得先の画像（マゼンタ）で合成する")
+            }
+        }
+    }
+
     private func makeProject() -> (LogoProject, ImageElement) {
         let project = LogoProject(canvasSize: CGSize(width: 32, height: 24))
         let image = ImageElementFactory().makeElement(imageData: snapshotImage(.red).pngData()!, importOrder: 1)
@@ -460,6 +519,17 @@ final class SaveSnapshotIntegrationTests: XCTestCase {
 @MainActor
 private final class SaveResultBox {
     var result: PhotoLibrarySaveResult?
+}
+
+/// 写真ライブラリの権限が拒否されている書き込み先。権限を求めず、書き込みも呼ばれない。
+private struct DeniedWriter: PhotoLibraryWriting {
+    func authorizationStatus(for accessLevel: PHAccessLevel) -> PHAuthorizationStatus { .denied }
+    func requestAuthorization(for accessLevel: PHAccessLevel, handler: @escaping @Sendable (PHAuthorizationStatus) -> Void) {
+        XCTFail("拒否されているときは、権限を求めない")
+    }
+    func performSave(of image: UIImage, format: SaveImageFormat) async throws {
+        XCTFail("拒否されているときは、書き込まない")
+    }
 }
 
 /// 元画像を取得できない取得先。保存のタスクからも呼ばれるため、取得の回数をロックで守る。

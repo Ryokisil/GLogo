@@ -1,6 +1,7 @@
-// 第18回で保存の境界に足した引数（エディタの管理役・保存の範囲）を、既存テストの呼び出しのために補う入口。
+// 第18回で保存の境界に足した引数（エディタの管理役・保存の範囲）と、第26回で足した背景画像の取得先を、
+// 既存テストの呼び出しのために補う入口。
 // 補うのは引数だけで、受付での取得と複製の回数は変えない（スナップショットを余分に作らず、要素に注入した偽物もそのまま通す）。
-// 新しいテストは、管理役・保存の範囲を明示して渡す。
+// 新しいテストは、管理役・保存の範囲・取得先を明示して渡す。
 
 import UIKit
 @testable import GLogo
@@ -25,6 +26,10 @@ final class ElementSessionImages: SaveImageReading {
         // 以前の合成が、加工済みの画像を得られなかった画像要素で描いた画像と同じ選び方
         session(of: element).drawingImage(of: element)
     }
+
+    /// 背景画像は固定しない（第26回より前に、この補助を使うテストが背景画像を描いていなかった形と同じ）。
+    /// 背景画像を描くテストは、保存の範囲（`SaveProjectSnapshot`）を渡す。
+    var backgroundImage: UIImage? { nil }
 
     private func session(of element: ImageElement) -> ImageRenderSession {
         if let entry = sessions[ObjectIdentifier(element)], entry.element === element {
@@ -52,7 +57,31 @@ extension ImageProcessingService {
     }
 }
 
+extension SaveProjectSnapshot {
+    /// 第26回で足した背景画像の取得先に、アプリと同じ実装を補う（受付での取得の回数と時点は変えない）。
+    @MainActor
+    convenience init(project: LogoProject, renderSessions: any ImageRenderSessionReading) {
+        self.init(
+            project: project, renderSessions: renderSessions,
+            backgroundImages: AppComposition.makeBackgroundImageLoader()
+        )
+    }
+}
+
 extension SaveImageCoordinator {
+    /// 第26回で足した背景画像の取得先に、アプリと同じ実装を補う。
+    init(
+        policy: SaveImagePolicy = SaveImagePolicy(),
+        selectionService: any ImageSelecting = ImageSelectionService(),
+        processingService: any ImageProcessing,
+        writer: any PhotoLibraryWriting
+    ) {
+        self.init(
+            policy: policy, selectionService: selectionService, processingService: processingService,
+            writer: writer, backgroundImages: AppComposition.makeBackgroundImageLoader()
+        )
+    }
+
     // アプリと同じ実装の新しい管理役を渡す（元画像は、その管理役が要素の依存で取得する）。スナップショットは本体の入口で1つだけ作る。
     // 呼び出し側のテストは、エディタの管理役のキャッシュや編集中の状態に頼らない（頼るテストは、管理役を明示して渡す）。
 

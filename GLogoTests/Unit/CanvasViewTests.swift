@@ -50,6 +50,47 @@ final class CanvasViewTests: XCTestCase {
                        "描き直すと、更新したファイル（青）で描く")
     }
 
+    /// キャンバスは、エディタに渡した取得先から、描くたびにメインスレッドで背景画像を取得し、その画像（マゼンタ）で描く。
+    @MainActor
+    func test_editorCanvas_loadsBackgroundPerDraw() throws {
+        var windows: [UIWindow] = []
+        defer { windows.forEach { $0.isHidden = true } }
+        let loader = BackgroundImageLoadingSpy(image: snapshotImage(.magenta))
+        let project = LogoProject()
+        project.backgroundSettings.type = .image
+        project.backgroundSettings.imageFileName = "background_canvas"
+        let editor = EditorViewModel(project: project, dependencies: .live(backgroundImages: loader))
+        let canvas = try showCanvas(of: editor, in: &windows)
+        // 画面を表示したときの描画の回数は数えない。
+        let shownCount = loader.requestedNames.count
+
+        let first = render(canvas)
+        _ = render(canvas)
+
+        XCTAssertEqual(Array(loader.requestedNames.dropFirst(shownCount)), ["background_canvas", "background_canvas"],
+                       "描くたびに1回ずつ取得する")
+        XCTAssertTrue(loader.calledOnMainThread.allSatisfy { $0 }, "メインスレッドで取得する")
+        try assertRGBA(of: first, at: CGPoint(x: 10, y: 10), equals: BackgroundPixel.magenta, "取得先が返した画像で描く")
+    }
+
+    /// 画像の背景でなければ、キャンバスは取得しない（ファイル名が残っていても）。
+    @MainActor
+    func test_editorCanvas_skipsLoadingForSolidBackground() throws {
+        var windows: [UIWindow] = []
+        defer { windows.forEach { $0.isHidden = true } }
+        let loader = BackgroundImageLoadingSpy(image: snapshotImage(.magenta))
+        let project = LogoProject()
+        project.backgroundSettings = BackgroundSettings(color: .red)
+        project.backgroundSettings.imageFileName = "background_canvas"
+        let canvas = try showCanvas(of: EditorViewModel(project: project, dependencies: .live(backgroundImages: loader)),
+                                    in: &windows)
+
+        let drawn = render(canvas)
+
+        XCTAssertEqual(loader.requestedNames, [], "単色の背景では取得しない")
+        try assertRGBA(of: drawn, at: CGPoint(x: 10, y: 10), equals: BackgroundPixel.red, "単色（赤）で描く")
+    }
+
     /// 実際のエディタ画面を表示し、その中のキャンバスを取り出す（CanvasViewRepresentable の設定を通す）。
     @MainActor
     private func showCanvas(of editor: EditorViewModel, in windows: inout [UIWindow]) throws -> CanvasView {

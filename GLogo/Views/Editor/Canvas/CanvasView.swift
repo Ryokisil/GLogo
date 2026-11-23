@@ -45,6 +45,10 @@ class CanvasView: UIView {
     /// 画像要素の描く画像の受け取り先（エディタの管理役）。CanvasViewRepresentable が設定する。
     /// 設定されるまでは要素を描かない（Model の描画へ戻すと、設定漏れに気づけないため）。
     var renderSessions: (any ImageRenderSessionReading)?
+
+    /// 背景画像の取得先（エディタの依存）。CanvasViewRepresentable が設定する。
+    /// 描くたびに取得し、ファイルの更新を次の描画に出す（保存は受付で固定した画像を使う）。設定されるまでは背景画像を描かない。
+    var backgroundImages: (any BackgroundImageLoading)?
     
     /// グリッドのサイズ
     private let gridSize: CGFloat = 20.0
@@ -105,8 +109,10 @@ class CanvasView: UIView {
         let canvasRect = CGRect(origin: .zero, size: project.canvasSize)
         context.clip(to: canvasRect)
         
-        // 背景設定の描画
-        project.backgroundSettings.draw(in: context, rect: canvasRect)
+        // 背景設定の描画（背景画像は、描くたびに取得する）
+        let background = project.backgroundSettings
+        let backgroundImage = background.imageNameToDraw.flatMap { backgroundImages?.loadBackgroundImage(named: $0) }
+        background.draw(in: context, rect: canvasRect, image: backgroundImage)
         
         // すべての要素を描画（編集中のテキスト要素は除く）
         // zIndexでソートしてから描画（小さい値から大きい値へ、奥から手前へ）
@@ -351,8 +357,9 @@ struct CanvasViewRepresentable: UIViewRepresentable {
     func updateUIView(_ canvasView: CanvasView, context: Context) {
         // 同じプロジェクトでも毎回設定し直し、再描画を要求する（要素の変更を描画に反映するため）。
         // editingTextElementId は自身では再描画を要求せず、この要求で反映される。
-        // 画像の受け取り先も同じく、プロジェクトの設定し直しで求める再描画より前に設定する。
+        // 画像の受け取り先と背景画像の取得先も同じく、プロジェクトの設定し直しで求める再描画より前に設定する。
         canvasView.renderSessions = viewModel.renderSessions
+        canvasView.backgroundImages = viewModel.backgroundImages
         canvasView.project = viewModel.project
         canvasView.editorMode = viewModel.editorMode
         canvasView.showGrid = showGrid

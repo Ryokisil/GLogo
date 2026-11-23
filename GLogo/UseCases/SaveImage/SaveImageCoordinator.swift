@@ -11,17 +11,21 @@ struct SaveImageCoordinator: PhotoLibrarySaving, Sendable {
     private let selectionService: any ImageSelecting
     private let processingService: any ImageProcessing
     private let writer: any PhotoLibraryWriting
+    private let backgroundImages: any BackgroundImageLoading
 
+    /// - Parameter backgroundImages: 背景画像の取得先。受付で保存の範囲が1回だけ使う
     init(
         policy: SaveImagePolicy = SaveImagePolicy(),
         selectionService: any ImageSelecting = ImageSelectionService(),
         processingService: any ImageProcessing,
-        writer: any PhotoLibraryWriting
+        writer: any PhotoLibraryWriting,
+        backgroundImages: any BackgroundImageLoading
     ) {
         self.policy = policy
         self.selectionService = selectionService
         self.processingService = processingService
         self.writer = writer
+        self.backgroundImages = backgroundImages
     }
 
     /// 保存モードを自動判定して通常/合成どちらかを保存する入口
@@ -33,7 +37,10 @@ struct SaveImageCoordinator: PhotoLibrarySaving, Sendable {
     ) {
         // 権限待ちより前に固定し、モード判定と描画が同じ時点の状態を見るようにする。
         // エディタの管理役は、ここで元画像を受け取るためだけに使い、権限待ちと保存の処理へは渡さない。
-        let snapshot = SaveProjectSnapshot(project: project, renderSessions: renderSessions)
+        // 背景画像もここで取得する（個別保存で使わないときや、権限が拒否されたときも取得する。今の挙動）。
+        let snapshot = SaveProjectSnapshot(
+            project: project, renderSessions: renderSessions, backgroundImages: backgroundImages
+        )
         let mode = policy.resolveMode(elements: snapshot.project.elements)
 
         authorizeIfNeeded { authorizationResult in
@@ -53,7 +60,9 @@ struct SaveImageCoordinator: PhotoLibrarySaving, Sendable {
         renderSessions: any ImageRenderSessionReading,
         completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
     ) {
-        let snapshot = SaveProjectSnapshot(project: project, renderSessions: renderSessions)
+        let snapshot = SaveProjectSnapshot(
+            project: project, renderSessions: renderSessions, backgroundImages: backgroundImages
+        )
 
         authorizeIfNeeded { authorizationResult in
             switch authorizationResult {

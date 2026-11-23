@@ -5,8 +5,7 @@ import Foundation
 
 /// エディタ、その編集パネル、そこから開く2つの編集画面（手動背景除去・背景ぼかしマスク）が使う実装を組み立てる。
 /// 生成の単位は、以前の初期化引数の既定値と同じにする。
-/// Model からの直接の参照（背景画像）は、まだここを通らない
-/// （docs/architecture/README.md の「計画外の対応と残件」で追跡）。
+/// 背景画像の取得（第26回で Model から外した）も、ここで作って保存とキャンバスへ渡す。
 /// プロジェクトの読み込み（`ProjectStorage`）はアプリから呼ばれていないため、`ProjectDecodingDependencies` の
 /// 生成関数はまだ置かない。読み込みの経路を戻すときに、ここで作って渡す。
 enum AppComposition {
@@ -26,6 +25,7 @@ enum AppComposition {
             imageUpscaleUseCase: makeImageUpscaleUseCase(),
             metadataStore: metadataStore,
             previewService: previewService,
+            backgroundImages: makeBackgroundImageLoader(),
             makeBackgroundRemover: makeBackgroundRemover,
             makeImageSourceResolver: makeImageSourceResolver,
             makeManualBackgroundBlurUseCase: makeManualBackgroundBlurUseCase,
@@ -46,7 +46,16 @@ enum AppComposition {
     }
 
     static func makePhotoLibrarySaver() -> any PhotoLibrarySaving {
-        SaveImageCoordinator(processingService: ImageProcessingService(), writer: PhotoLibraryWriter())
+        SaveImageCoordinator(
+            processingService: ImageProcessingService(),
+            writer: PhotoLibraryWriter(),
+            backgroundImages: makeBackgroundImageLoader()
+        )
+    }
+
+    /// 背景画像の取得。状態を持たない（読み込みのキャッシュは AssetManager が持つ）ため、呼ぶたびに作る。
+    static func makeBackgroundImageLoader() -> any BackgroundImageLoading {
+        BackgroundImageLoader()
     }
 
     static func makeImageImporter() -> any ImageImporting {

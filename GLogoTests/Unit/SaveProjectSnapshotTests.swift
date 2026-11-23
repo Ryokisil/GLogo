@@ -172,13 +172,22 @@ final class SaveProjectSnapshotTests: XCTestCase {
         project.backgroundSettings.type = .image
         project.backgroundSettings.imageFileName = name
         let snapshot = SaveProjectSnapshot(project: project, renderSessions: ImageRenderSessionStore())
-        let before = drawBackground(snapshot.project.backgroundSettings)
+        // 保存側は範囲が固定した画像で、編集側はキャンバスと同じく描くたびに取得した画像で描く（第26回で取得と固定を Model の外へ移した）。
+        let loader = AppComposition.makeBackgroundImageLoader()
+        let drawSnapshot = { self.drawBackground(snapshot.project.backgroundSettings, image: snapshot.backgroundImage) }
+        let drawEditor = {
+            self.drawBackground(
+                project.backgroundSettings,
+                image: project.backgroundSettings.imageNameToDraw.flatMap(loader.loadBackgroundImage(named:))
+            )
+        }
+        let before = drawSnapshot()
         // 等しさだけでは「両方とも描かない」誤りを通すため、描いた色も確かめる（第26回）。
         try assertRGBA(of: before, at: CGPoint(x: 4, y: 4), equals: BackgroundPixel.red, "受付の時点の画像（赤）で描く")
         XCTAssertTrue(assets.saveImage(snapshotImage(.blue), name: name, type: .background, alsoSaveProxy: false))
-        XCTAssertEqual(drawBackground(snapshot.project.backgroundSettings).pngData(), before.pngData())
-        XCTAssertNotEqual(drawBackground(project.backgroundSettings).pngData(), before.pngData())
-        try assertRGBA(of: drawBackground(project.backgroundSettings), at: CGPoint(x: 4, y: 4),
+        XCTAssertEqual(drawSnapshot().pngData(), before.pngData())
+        XCTAssertNotEqual(drawEditor().pngData(), before.pngData())
+        try assertRGBA(of: drawEditor(), at: CGPoint(x: 4, y: 4),
                        equals: BackgroundPixel.blue, "編集側は、更新したファイル（青）で描く")
         // ランタイム資源は永続化しないため、元の設定と JSON の契約は同一。
         let encoder = JSONEncoder()
@@ -382,6 +391,50 @@ final class SaveProjectSnapshotTests: XCTestCase {
                        "出力の下側には、画像の上半分（赤）が不透明度 0.5 で出る")
     }
 
+    /// 受付で1回だけ、背景設定のファイル名で取得し、取得先が返した画像を固定する。
+    /// 固定した画像を読む・合成するときは取り直さない（取得できず nil を固定した場合も）。
+    @MainActor
+    func test_snapshot_loadsBackgroundOnceAtAcceptance() throws {
+        for image in [snapshotImage(.magenta), nil] as [UIImage?] {
+            let label = image == nil ? "取得できない" : "取得できる"
+            let loader = BackgroundImageLoadingSpy(image: image)
+            let project = try makeBackgroundImageProject(fileName: "background_a")
+
+            let snapshot = SaveProjectSnapshot(
+                project: project, renderSessions: ImageRenderSessionStore(), backgroundImages: loader
+            )
+
+            XCTAssertEqual(loader.requestedNames, ["background_a"], "\(label)：受付で1回取得する")
+            XCTAssertEqual(loader.calledOnMainThread, [true], label)
+            XCTAssertTrue(snapshot.backgroundImage === image, "\(label)：取得先が返した画像を固定する")
+            _ = snapshot.backgroundImage
+            try assertRGBA(of: try compositeBackground(of: snapshot), at: CGPoint(x: 20, y: 20),
+                           equals: image == nil ? BackgroundPixel.clear : BackgroundPixel.magenta,
+                           "\(label)：固定した画像で合成する")
+            XCTAssertEqual(loader.requestedNames, ["background_a"], "\(label)：読む・合成するときは取り直さない")
+        }
+    }
+
+    /// 画像の背景でなければ取得しない（ファイル名が残っていても）。画像の背景でも、ファイル名がなければ取得しない。
+    @MainActor
+    func test_snapshot_skipsLoadingWithoutImageName() {
+        let cases: [(BackgroundType, String?)] = [(.solid, "background_a"), (.gradient, "background_a"), (.image, nil)]
+        for (type, fileName) in cases {
+            let label = "\(type)・\(fileName ?? "ファイル名なし")"
+            let loader = BackgroundImageLoadingSpy(image: snapshotImage(.magenta))
+            let project = LogoProject()
+            project.backgroundSettings.type = type
+            project.backgroundSettings.imageFileName = fileName
+
+            let snapshot = SaveProjectSnapshot(
+                project: project, renderSessions: ImageRenderSessionStore(), backgroundImages: loader
+            )
+
+            XCTAssertEqual(loader.requestedNames, [], label)
+            XCTAssertNil(snapshot.backgroundImage, label)
+        }
+    }
+
     /// 保存の範囲の内容で合成する（ベースは範囲の1つ目の要素）。
     @MainActor
     private func compositeBackground(of snapshot: SaveProjectSnapshot) throws -> UIImage {
@@ -391,9 +444,9 @@ final class SaveProjectSnapshotTests: XCTestCase {
         )
     }
 
-    private func drawBackground(_ background: BackgroundSettings) -> UIImage {
+    private func drawBackground(_ background: BackgroundSettings, image: UIImage?) -> UIImage {
         UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { context in
-            background.draw(in: context.cgContext, rect: CGRect(x: 0, y: 0, width: 8, height: 8))
+            background.draw(in: context.cgContext, rect: CGRect(x: 0, y: 0, width: 8, height: 8), image: image)
         }
     }
 }

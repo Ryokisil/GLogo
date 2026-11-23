@@ -126,6 +126,9 @@ class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformAp
     /// キャンバス・削除エフェクト・画像一覧・AI・編集画面・フィルターのサムネイルは、ここから画像を受け取る。
     /// 保存は受付で元画像を受け取るときだけ使い、選定・加工・合成は保存の範囲から受け取る。
     var renderSessions: any ImageRenderSessionReading { managedRenderSessions }
+
+    /// View へ渡す背景画像の取得先。キャンバスが描くたびに使う。
+    var backgroundImages: any BackgroundImageLoading { dependencies.backgroundImages }
     private let backgroundRemovalUseCase: any BackgroundRemovalProcessing
     private let imageUpscaleUseCase: ImageUpscaleUseCase
     private var aiToolsObservation: AnyCancellable?

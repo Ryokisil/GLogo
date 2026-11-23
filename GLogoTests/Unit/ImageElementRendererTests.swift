@@ -520,6 +520,9 @@ private final class FixedSaveImages: SaveImageReading {
     func drawingImage(of element: ImageElement) -> UIImage? {
         images[ObjectIdentifier(element)]
     }
+
+    /// 背景画像は扱わない（画像要素の描画だけを見る）。
+    var backgroundImage: UIImage? { nil }
 }
 
 // MARK: - 画素

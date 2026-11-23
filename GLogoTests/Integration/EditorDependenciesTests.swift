@@ -186,6 +186,7 @@ private final class DependencyRecorder {
             imageUpscaleUseCase: ImageUpscaleUseCase(lanczosPipeline: pipeline, realESRGANPipeline: pipeline),
             metadataStore: metadataStore,
             previewService: AppComposition.previewService,
+            backgroundImages: AppComposition.makeBackgroundImageLoader(),
             makeBackgroundRemover: { [unowned self] in
                 createdRemovers += 1
                 return remover

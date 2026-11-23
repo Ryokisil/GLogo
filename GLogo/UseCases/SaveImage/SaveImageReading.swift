@@ -16,4 +16,8 @@ protocol SaveImageReading {
 
     /// 描画用の画像。合成で加工済みの画像を得られなかった画像要素を描くときに使う（表示画像の加工を試し直す）。
     func drawingImage(of element: ImageElement) -> UIImage?
+
+    /// 受付時に固定した背景画像。合成が背景を描くときに使い、読むたびに取得し直さない。
+    /// 画像の背景でないとき・受付のときに取得できなかったときは nil。
+    var backgroundImage: UIImage? { get }
 }

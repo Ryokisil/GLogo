@@ -10,9 +10,15 @@ import UIKit
 /// 複製のセッションは、この範囲が複製の依存で作って持つ（第21回）。エディタの管理役の表には登録しない。
 /// 受付でエディタから元画像を受け取るとき、エディタで未取得なら、エディタ側で取得とキャッシュが起きる（エディタの状態として残る）。
 /// 受付のあとの保存処理は、自分のセッションだけを使い、エディタ側の状態を変えない。
+/// 背景画像も受付で1回だけ取得して、この範囲に固定する（第26回で Model の固定から移した）。
 /// 内部 Model は Sendable ではないため、引き渡した後は他の処理から読み書きしない。
 final class SaveProjectSnapshot: SaveImageReading, @unchecked Sendable {
     let project: LogoProject
+
+    /// 受付で取得して固定した背景画像。保存要求ごとに画像への参照を固定する。UIImage 自体は複製しない
+    /// （取得先のキャッシュから、複数の保存が同じ UIImage を受け取ることはある）。
+    /// nil（画像の背景でない・受付のときに取得できなかった）でも、あとで取り直さない。
+    let backgroundImage: UIImage?
 
     /// 画像要素の複製と、そのセッション。
     private struct ImageCopy {
@@ -27,11 +33,18 @@ final class SaveProjectSnapshot: SaveImageReading, @unchecked Sendable {
     /// - Parameters:
     ///   - source: 編集中のプロジェクト
     ///   - renderSessions: エディタの管理役。画像要素の元画像を受け取るためだけに使い、保持しない
+    ///   - backgroundImages: 背景画像の取得先。受付で1回だけ使い、保持しない
     @MainActor
-    init(project source: LogoProject, renderSessions: any ImageRenderSessionReading) {
+    init(
+        project source: LogoProject,
+        renderSessions: any ImageRenderSessionReading,
+        backgroundImages: any BackgroundImageLoading
+    ) {
         let project = LogoProject(name: source.name, canvasSize: source.canvasSize)
         project.id = source.id
-        project.backgroundSettings = source.backgroundSettings.renderCopy()
+        project.backgroundSettings = source.backgroundSettings
+        // 受付の時点で取得する。受付のあとのファイルの更新を、この保存へ持ち越さない。
+        let backgroundImage = source.backgroundSettings.imageNameToDraw.flatMap(backgroundImages.loadBackgroundImage(named:))
         var imageCopies: [ObjectIdentifier: ImageCopy] = [:]
         project.elements = source.elements.map { element in
             let copy: LogoElement
@@ -55,6 +68,7 @@ final class SaveProjectSnapshot: SaveImageReading, @unchecked Sendable {
             return copy
         }
         self.project = project
+        self.backgroundImage = backgroundImage
         self.imageCopies = imageCopies
     }
 
