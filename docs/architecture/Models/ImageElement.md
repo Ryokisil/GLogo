@@ -1335,6 +1335,127 @@ P5 は、1回目にテストの実行環境が失敗した（テストランナ�
 
 ### 残り
 
-- Model に残る具体型の参照は1つ（背景画像：`BackgroundSettings` → `AssetManager`）。扱うかどうかと配置・仕様は、次の計画で判断する。要素が持つ依存の型（UseCases の Protocol）も残る。
+- Model に残る具体型の参照は1つ（背景画像：`BackgroundSettings` → `AssetManager`）。扱うかどうかと配置・仕様は、次の計画で判断する。要素が持つ依存の型（UseCases の Protocol）も残る。→ 背景画像の取得は第26回で外した（下の節）。
 - `ImageMetadataManager.extractMetadata` の使い道（README の残件。記録のみ）と、`ImageInitializationLoader` の型名（記録のみ）。
+- 保留（Codex 合意）：第17回の「残り」のとおり（`editRevision` による自動失効、表示の非同期化など）。
+
+## 段階3・第26回：背景画像の取得の Model からの移動（2026-11-23）
+
+### 計画と確認した経路
+
+Model に残る具体型の参照（README の残件①）の最後の1つ、背景画像の取得（`BackgroundSettings.resolveBackgroundImage()` → `AssetManager.shared`）を扱いました。構造の整理だけにし、取得の時点と保存結果は変えていません（Codex の方針。変える案は分けて判断する）。
+
+| 確かめたこと | 結果（`rg`・Serena とソースで確認。Codegraph はこのセッションで使えない） |
+| --- | --- |
+| `.image` の背景を作る経路 | アプリにない。背景の設定を書き換える本番のコードは、保存の受付（`renderCopy()`）だけだった。背景の編集パネル（94f9ebc）、ライブラリと `updateBackgroundSettings`・`BackgroundSettingsChangedEvent`（39f36df）は削除済み。エディタは `LogoProject()`（単色の黒）で始まり、プロジェクトの読み込みはアプリから呼ばれない。`.image` が入るのは、保存データのデコードとテストだけ |
+| 背景を描く入口 | キャンバス（`CanvasView.draw`、メイン）と、保存の合成（`ImageProcessingService.makeCompositeImage`、メインの外。合成保存のときだけ）の2つ |
+| 取得の時点 | キャンバスは描くたび（`.image` でファイル名があるときだけ。AssetManager のキャッシュにあれば読み込まない）。保存は受付（`SaveProjectSnapshot.init`、メイン、権限を待つ前）で1回だけ取得して固定し、nil でも取り直さない。単色・グラデーションでは取得しない。個別保存（背景を描かない）と権限の拒否でも、受付で取得する |
+| 画像なし・取得失敗・受付のあとの変更 | ファイル名がなければ描かない（ログなし）。取得できなければ描かない（描くときに警告ログ。保存は nil を固定し、あとでファイルができても描かない）。受付のあとのファイルの更新・削除は保存に持ち越さず、キャンバスの次の描画には出る |
+| 保存データ | 固定した画像は Codable に含めない。キーは変わらない |
+
+比べた案は次のとおりです（ユーザーと Codex の了承で A にした）。
+
+| 案 | 内容 | 判断 |
+| --- | --- | --- |
+| A（採用） | 取得は UseCases の境界（`BackgroundImageLoading`）を通し、固定は保存の範囲（`SaveProjectSnapshot`）が持つ。Model は受け取った画像で描く | 第18回（固定は保存の範囲が持つ）と第24回（Model は受け取った画像で描く）と同じ形 |
+| B | Model に固定を残し、取得の処理を引数で渡す | 変更は小さいが、Model が実行時の資源と2通りの描き方を持ち続ける |
+| C | `.image` の描画をやめる、または種類を消す | 保存結果と Codable の互換が変わるため、今回は扱わない（README の残件） |
+
+計画は Codex のレビューで補いました。
+
+| 補足 | 対応 |
+| --- | --- |
+| 保存1件ごとの固定 | `backgroundImage` はスナップショットの保存プロパティ（`let`）にし、nil でも取り直さない。「A を受付 → 更新 → B を受付 → B、A の順で合成」で、それぞれ受付の時点の画像になることを確かめる（共有の場所に最後の画像を持つ誤り＝下の P10・N15 を検出する） |
+| 背景が見える画素で確かめる | 合成は背景のあとに画像要素を描くため、キャンバス全体を覆う透明な画像要素を置き、背景の画素の色と透明度を、独立した期待値（乗算済みの RGBA）で確かめる。今の `CGContext.draw` の描き方を保ち、Model のテストに不透明度 0・0.5 と、画像を渡したグラデーションを含めた |
+| 両方の入口での取得の回数 | `save`・`saveComposite` のそれぞれで、呼び出しから戻った時点（権限を待っている間）にメインで1回取得していることを確かめる。個別保存と権限の拒否でも1回。合成まで待って数えるだけでは、取得を権限の許可のあとへ遅らせる誤り（N12）を見逃すため |
+| ログを消す変異 | 「描画結果には差がないが、ログはテストで未検証」と分類する（等価とはしない）。重複したフォールバックの削除とは分けて扱う |
+
+### 挙動の範囲
+
+- 変わらないもの：今のアプリの経路（`.image` の背景を作る経路がない）。キャンバスの取得（描くたび・メイン）と、保存の取得（受付で1回・メイン・権限を待つ前。個別保存と権限の拒否でも取得）。画像なし・取得失敗・受付のあとの変更の扱い。描き方（`CGContext.draw`、背景の不透明度、上下の反転）。取得の式（`AssetManager.loadImage(.background) ?? UIImage(named:)`）。保存データのキー。
+- 変わるもの（契約の変更）：Model を直接呼んだときの描画は画像を受け取る（`draw(in:rect:image:)`）。画像を渡さない `.image` の背景は描かない。`renderCopy()` はなくなり、固定済みの設定をもう一度固定したときに固定を引き継ぐ扱い（その経路はない）と、`LogoProject.duplicate`（呼び出し元なし）が固定した画像を写す扱いもなくなった。保存の範囲の境界（`SaveImageReading`）に `backgroundImage` が増え、`SaveImageCoordinator`・`SaveProjectSnapshot`・`EditorDependencies` の初期化に取得先が要る（既存テストの呼び出しは、テストの補助でアプリと同じ実装を補う）。
+- 確かめていないもの：実機での表示と保存。`.image` の背景の UI 上の使い勝手（作る経路がない）。
+
+### 計画外の発見：背景画像が上下反転して描かれる
+
+先行テストで、上半分が赤・下半分が青の画像を背景にすると、出力の上側が青になりました。`CGContext.draw(cgImage, in:)` を、上下が反転した UIKit の描画先（キャンバス・保存の合成）で呼んでいるためです。キャンバスも同じことを一時的なテストで確かめ、向きはキャンバスと保存でそろっています。今の挙動として固定し、README の残件に記録しました（`.image` の背景はアプリで作れない）。`UIImage.draw` に替えると、向きが正立になり、背景の不透明度もかからなくなります（下の P9・N16）。
+
+### 変更の前の既存テストと変異
+
+背景に関わる5スイート45件（`SaveProjectSnapshotTests`・`SavePipelineRegressionTests`・`SaveSnapshotIntegrationTests`・`LogoProjectPolymorphicCodingRegressionTests`・`CanvasViewTests`）で、変更の前のコードに変異を1件ずつ入れて実行しました。既存のテスト（`test_snapshot_pinsBackgroundAsset`）は「受付の前後の描画が等しい」「編集側が受付の時点と違う」だけを比べ、描かれた色を見ていなかったため、P1〜P8 のうち検出したのは P2 と P4 だけでした。先行テストを足したあと（6スイート52件）は、P5 を除いてすべて検出しました。
+
+| 変異（変更の前のコード） | 種類 | 既存テストだけ | 先行テストのあと |
+| --- | --- | --- | --- |
+| P1 受付で取得せず、nil を固定する | 抜け | 生き残り | 検出（受付の時点の色・A/B・合成の入口・描き方） |
+| P2 固定済みにせず、保存で描くたびに取得する | 取り直し | 検出 | 検出（受付の時点の色・A/B・取得失敗のあと・合成の入口） |
+| P3 固定した nil を、描くときに取り直す | 失敗のあとの取り直し | 生き残り | 検出（`test_snapshot_keepsMissingBackground`） |
+| P4 両方の経路で、画像要素のディレクトリから読む | 取り違え | 検出 | 検出（キャンバス・保存の両方） |
+| P5 背景の種類によらず、受付で取得する | 消し過ぎ | 生き残り | 生き残り（描画結果は同じ。取得の回数は変更のあとの L1 で確かめる＝N8） |
+| P6 キャンバスで背景画像を描かない | 抜け | 生き残り | 検出（エディタ画面のキャンバス・既存の補強） |
+| P7 受付で別の名前を読む | 取り違え | 生き残り | 検出 |
+| P8 キャンバスで別の名前を読む | 取り違え | 生き残り | 検出 |
+| P9 `UIImage.draw` で描く | 描き方の取り違え | — | 検出（向きと不透明度） |
+| P10 最後に固定した画像を共有の場所に持つ | 保存1件ごとの固定の取り違え | — | 検出（`test_snapshots_pinOwnBackground`） |
+
+### 変更した範囲
+
+- 先行テスト（今のコードで成功）
+  - [BackgroundImageFixtures](../../../GLogoTests/Unit/BackgroundImageFixtures.swift)（新規）：背景のアセットの書き換え、背景が見えるプロジェクト（透明な画像要素）、上下で色の違う画像、画素の確認。
+  - [SaveProjectSnapshotTests](../../../GLogoTests/Unit/SaveProjectSnapshotTests.swift)：4件（受付の時点の色・保存1件ごとの固定・取得失敗のあと・描き方）。既存の `test_snapshot_pinsBackgroundAsset` は残し、描いた色の確認を足した。
+  - [SaveSnapshotIntegrationTests](../../../GLogoTests/Integration/SaveSnapshotIntegrationTests.swift)：1件（2つの入口で、受付のあと権限の許可の前にファイルを更新しても、受付の時点の画像で合成する）。
+  - [CanvasViewTests](../../../GLogoTests/Unit/CanvasViewTests.swift)：1件（実際のエディタ画面のキャンバスが、描くたびに取得する）。
+  - [BackgroundSettingsTests](../../../GLogoTests/Unit/BackgroundSettingsTests.swift)（新規）：1件（画像の背景の保存データのキーと値）。
+- 本体
+  - 境界 [BackgroundImageLoading](../../../GLogo/UseCases/Storage/BackgroundImageLoading.swift)（新規、UseCases）と実装 [BackgroundImageLoader](../../../GLogo/Infrastructure/Storage/BackgroundImageLoader.swift)（新規、Infrastructure。式は移す前と同じ）。
+  - [BackgroundSettings](../../../GLogo/Models/BackgroundSettings.swift)：取得と固定（`resolveBackgroundImage`・`frozenImage`・`hasFrozenImage`・`renderCopy()`）を外し、`draw(in:rect:image:)` と、取得する名前 `imageNameToDraw`（画像の背景のときだけ）を足した。286 → 275 行。
+  - 保存：[SaveImageReading](../../../GLogo/UseCases/SaveImage/SaveImageReading.swift) に `backgroundImage`、[SaveProjectSnapshot](../../../GLogo/UseCases/SaveImage/SaveProjectSnapshot.swift) が受付で1回取得して固定（保持しない取得先を引数で受け取る）、[SaveImageCoordinator](../../../GLogo/UseCases/SaveImage/SaveImageCoordinator.swift) が取得先を受け取って渡す（既定値なし）、[ImageProcessingService](../../../GLogo/Infrastructure/SaveImage/ImageProcessingService.swift) は固定した画像で背景を描く。
+  - キャンバス：[CanvasView](../../../GLogo/Views/Editor/Canvas/CanvasView.swift) が取得先を持ち（`updateUIView` で `renderSessions` と同じく設定）、描くたびに取得して渡す。[EditorDependencies](../../../GLogo/ViewModels/EditorDependencies.swift) と [EditorViewModel](../../../GLogo/ViewModels/EditorViewModel.swift)（読み取り用の `backgroundImages`）。
+  - [AppComposition](../../../GLogo/App/AppComposition.swift)：取得先を作って保存とエディタに渡す。説明の「Model からの直接の参照（背景画像）は、まだここを通らない」を外した。
+- テストの補助：[SaveScopeDefaults](../../../GLogoTests/Unit/SaveScopeDefaults.swift)（`SaveProjectSnapshot(project:renderSessions:)`・`SaveImageCoordinator(…processingService:writer:)` にアプリと同じ取得先を補う。`ElementSessionImages` は背景画像を nil とする）、[LiveDependencyDefaults](../../../GLogoTests/Unit/LiveDependencyDefaults.swift)（取得先を差し替えられる）、`SaveImageReading` の偽物2つ（nil を返す）、`EditorDependenciesTests` の組み立て。`test_snapshot_pinsBackgroundAsset` は描画の呼び出しだけを新しい形に変えた（確かめる内容は同じ）。
+- 変更のあとに足したテスト（偽物の取得先を使うため、変更の前のコードでは書けない）
+  - L1 取得の回数：保存の範囲（受付で1回・メイン、読む・合成するときは取り直さない。nil を固定した場合も。単色・グラデーション・ファイル名なしは0回）、保存の2つの入口（呼び出しから戻った時点で1回・メイン。個別保存・権限の拒否でも1回）、キャンバス（描くたびに1回・メイン。単色は0回）。
+  - L2・L3 注入した取得先の画像で描く：キャンバスと保存の合成で、取得先が返した画像（マゼンタ）が出る。
+  - L4 [BackgroundImageLoaderTests](../../../GLogoTests/Unit/BackgroundImageLoaderTests.swift)（新規）：背景のディレクトリから読み、同じ名前の画像要素のアセットと取り違えない。なければ nil。
+  - M1 [BackgroundSettingsTests](../../../GLogoTests/Unit/BackgroundSettingsTests.swift)：取得する名前の規則、受け取った画像を反転して描く、不透明度 0.5・0、画像なし・ファイル名なしは描かない、単色とグラデーションは画像を渡しても変わらない。
+- 文書：この節と README（現在地・次の候補・残件4行と既存の2行）。AGENTS.md の「移行中の例外」も更新した（無視ファイルのため手元だけ）。
+
+### 検証と変更後レビュー
+
+- **Critical / Warning**：なし（変更後レビュー・Codex の実装レビューとも）。Codex の実装レビューの Info 2点（README 冒頭の現在地を第26回までにする。`SaveProjectSnapshot.backgroundImage` の説明を「保存要求ごとに画像への参照を固定する。UIImage 自体は複製しない」に限る。取得先のキャッシュから、複数の保存が同じ UIImage を受け取ることはあるため）を反映した。Codex は別のコピーで、関連5スイート41件の成功と、固定した nil を取り直す変異・最後の背景画像を保存間で共有する変異がそれぞれ対応するテストで検出されることを確かめた。
+- **Info**：
+  - キャンバスの取得は、View（`CanvasView`）が取得先を呼ぶ形になった（以前は、View から呼ばれた Model の中で取得していた）。取得する名前の規則は Model（`imageNameToDraw`）の1か所に置き、キャンバスと保存の範囲が同じ規則を使う。
+  - `AppComposition` は、保存とエディタに別々の取得先のインスタンスを渡す。状態を持たない（キャッシュは AssetManager が持つ）ため、挙動は変わらない。
+  - テストの補助 `ElementSessionImages` は背景画像を nil とする。この補助を使って `.image` の背景を合成するテストはない（背景を描くテストは保存の範囲を渡す）。
+  - 保存の範囲の境界に足した `backgroundImage` は、既定の実装を置かず、偽物にも明示して書かせた（実装漏れを nil で隠さないため）。
+- **Test Coverage**：
+  - 変更の前に足したテスト：上の「変更した範囲」の先行テスト。変更の前のコードで4スイート28件、変異確認の6スイート52件が成功した。変更のあとも、新しく足した先行テスト7件は変えずに、10スイート82件が成功した（既存の `test_snapshot_pinsBackgroundAsset` は、描画の呼び出しだけを新しい形に変えた）。
+  - 変異確認（自分で実行。6スイート59件の基準が成功したうえで、1件ずつ入れて実行）：
+
+    | 変異（変更のあとのコード） | 種類 | 検出したテスト |
+    | --- | --- | --- |
+    | N1 受付で nil を固定する | 抜け | 既存の補強・受付の時点の色・A/B・取得失敗のあと・描き方・合成の入口・L1・L3 |
+    | N2 合成のときに取得し直す | 取り直し | 受付の時点の色・A/B・取得失敗のあと・合成の入口・L3 |
+    | N3 受付ではなく、最初に読むときに取得する | 順序 | 受付の時点の色・A/B・取得失敗のあと・合成の入口・L1（保存の範囲と2つの入口の、戻った時点の回数） |
+    | N4 固定した nil を、合成のときに取り直す | 失敗のあとの取り直し | `test_snapshot_keepsMissingBackground` だけ |
+    | N5 合成で背景画像を渡さない | 抜け | 受付の時点の色・A/B・描き方・合成の入口・L3 |
+    | N6 キャンバスに取得先を設定しない | 抜け | エディタ画面のキャンバスの2件（色・回数） |
+    | N7 キャンバスが最初に取得した画像を持ち続ける | 取り直しの抜け | エディタ画面のキャンバスの2件（更新のあとの色・描くたびの回数） |
+    | N8 背景の種類によらず取得する | 消し過ぎ | 名前の規則・保存の範囲とキャンバスの「単色では取得しない」 |
+    | N9 単色・グラデーションでも画像を描く | 消し過ぎ | 単色とグラデーションの2件 |
+    | N10 画像要素のディレクトリから読む | 取り違え | L4 の2件・キャンバス・保存の両方 |
+    | N11 保存が、注入された取得先ではなく自分で作った取得先を使う | 取り違え | 2つの入口の L1・L3 |
+    | N12 合成の強制で、受付を権限の許可のあとへ遅らせる | 順序 | 2つの入口の L1（戻った時点の回数）・受付の時点の色（`saveComposite`）・既存の権限待ちの3件 |
+    | N13 背景画像が見つからないときの警告ログを出さない | ログの抜け | 生き残り：描画結果には差がないが、ログはテストで未検証（ログ専用のテストは足さない。Codex 合意） |
+    | N14 重複したフォールバック（`?? UIImage(named:)`）を消す | 等価 | 生き残り：`AssetManager.loadImage` がすでにバンドルを探すため、結果が変わらない（README の残件） |
+    | N15 最後に固定した画像を共有の場所に持つ | 保存1件ごとの固定の取り違え | `test_snapshots_pinOwnBackground` だけ |
+    | N16 `UIImage.draw` で描く | 描き方の取り違え | Model の反転・不透明度の2件と、合成の描き方 |
+    | N17 キャンバスが別の名前で取得する | 取り違え | エディタ画面のキャンバスの2件（色・名前） |
+
+    N13・N14 を除き、どれも、狙った値（色と透明度、取得の回数・名前・スレッド、保存の結果）の違いでテストが失敗することをログで確かめた（コンパイルエラーではない）。N12 は受付全体を遅らせるため、背景画像の取得のほかに、元画像の受け取りを見る既存のテストも失敗した。
+- **Verification**：GLogoTests は最終の全体実行で557件中554件成功（失敗1件は既知の性能テスト `testPreviewLatencySDR_4K_P95`、スキップ2件は実機専用。先行テスト7件と変更のあとのテスト13件を足した分だけ件数が増えた）。UI テストは GLogoUITests 全体の30件が成功しました（実行は33回）。先行テストは、本番のコードを変える前の作業ツリー（先行テストのツリーと同じ内容）で成功することを確かめた。アプリのビルドは成功し、今回変えた本体の11ファイルをコンパイルして、警告は出ていない（出ているのは以前からある `ProjectStorage.swift:92` の警告だけ）。Models から Infrastructure で宣言された型への参照が0件になったことを確かめた（Infrastructure で宣言された型名で Models のコードを調べた。`BackgroundImageLoader` を足して、型は44 → 45）。Xcode 27.1、iPhone 17 Pro／iOS 26.1 Simulator、`-parallel-testing-enabled NO`。実機は未実施です。SwiftFormat は未導入のため実行できません。
+
+### 残り
+
+- Model から Infrastructure の具体型への参照はなくなった。要素が持つ依存の型（UseCases の Protocol）は残る。
+- 記録のみ（README の残件）：背景画像の上下の反転、重複したフォールバック、個別保存・権限の拒否での取得、`.image` の背景を作る経路がないこと（案 C）。
 - 保留（Codex 合意）：第17回の「残り」のとおり（`editRevision` による自動失効、表示の非同期化など）。
