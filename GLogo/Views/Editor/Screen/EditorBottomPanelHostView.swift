@@ -35,7 +35,7 @@ struct EditorBottomPanelHostView: View {
         ZStack(alignment: .bottom) {
             if selectedBottomTool == .adjust {
                 AdjustBasicPanelView(
-                    viewModel: elementViewModel,
+                    viewModel: elementViewModel.imageAdjustment,
                     onClose: { selectedBottomTool = .select }
                 )
                 .padding(.horizontal, 12)
@@ -45,7 +45,7 @@ struct EditorBottomPanelHostView: View {
 
             if selectedBottomTool == .frame {
                 FramePanelView(
-                    viewModel: elementViewModel,
+                    viewModel: elementViewModel.imageFrame,
                     onClose: { selectedBottomTool = .select }
                 )
                 .padding(.horizontal, 12)
@@ -70,7 +70,7 @@ struct EditorBottomPanelHostView: View {
 
             if selectedBottomTool == .filters {
                 FiltersPanelView(
-                    viewModel: elementViewModel,
+                    viewModel: elementViewModel.filters,
                     onClose: { selectedBottomTool = .select }
                 )
                 .padding(.horizontal, 12)
@@ -80,7 +80,7 @@ struct EditorBottomPanelHostView: View {
 
             if selectedBottomTool == .effects {
                 EffectsPanelView(
-                    viewModel: elementViewModel,
+                    viewModel: elementViewModel.imageAdjustment,
                     onClose: { selectedBottomTool = .select }
                 )
                 .padding(.horizontal, 12)
@@ -90,7 +90,7 @@ struct EditorBottomPanelHostView: View {
 
             if isTextPanelVisible && !viewModel.isEditingText {
                 TextPropertyPanelView(
-                    viewModel: elementViewModel,
+                    viewModel: elementViewModel.textEditing,
                     onClose: {
                         isTextPanelVisible = false
                         viewModel.clearSelection()

@@ -37,12 +37,17 @@ final class BackgroundBlurCoordinateIntegrationTests: XCTestCase {
         CGImageDestinationAddImage(destination, try XCTUnwrap(stripes().cgImage), [kCGImagePropertyOrientation: 6] as CFDictionary)
         XCTAssertTrue(CGImageDestinationFinalize(destination))
         for proxy in [false, true] {
-            let element = ImageElement(imageData: encoded as Data)
-            let original = try XCTUnwrap(element.originalImage)
+            // 編集画面へ渡す管理役と、画像の観察に使う管理役は、同じインスタンスにする。
+            let store = ImageRenderSessionStore()
+            let element = ImageElementFactory().makeElement(imageData: encoded as Data)
+            let original = try XCTUnwrap(store.originalImage(of: element))
             let resolver = BlurEditingResolver(proxy: proxy)
             var outputMask: Data?
-            let viewModel = BackgroundBlurMaskEditViewModel(imageElement: element, initialMaskData: nil,
-                blurRadius: 6, completion: { outputMask = $0 }, imageSourceResolver: resolver)
+            let viewModel = BackgroundBlurMaskEditViewModel(imageElement: element,
+                renderSessions: store, initialMaskData: nil,
+                blurRadius: 6, completion: { outputMask = $0 },
+                manualBackgroundBlurUseCase: AppComposition.makeManualBackgroundBlurUseCase(),
+                backgroundRemovalUseCase: AppComposition.makeBackgroundRemover(), imageSourceResolver: resolver)
             let size = viewModel.originalImage.size
             let point = CGPoint(x: size.width * 0.7, y: size.height * 0.25)
             viewModel.setBrushSize(30)
@@ -52,8 +57,8 @@ final class BackgroundBlurCoordinateIntegrationTests: XCTestCase {
             element.backgroundBlurMaskData = try XCTUnwrap(outputMask)
             element.backgroundBlurRadius = 6
             // 保存対象の属性を Codable で往復し、通常レンダラーにも同じマスクを渡す。
-            let reloaded = try JSONDecoder().decode(ImageElement.self, from: JSONEncoder().encode(element))
-            let rendered = try XCTUnwrap(reloaded.getFilteredImageForce())
+            let reloaded = try JSONDecoder.live().decode(ImageElement.self, from: JSONEncoder().encode(element))
+            let rendered = try XCTUnwrap(store.filteredImage(of: reloaded))
             try assertBlurLocation(rendered, original: original)
             let exported = try XCTUnwrap(UIImage(data: XCTUnwrap(rendered.pngData())))
             try assertBlurLocation(exported, original: original)
@@ -65,8 +70,11 @@ final class BackgroundBlurCoordinateIntegrationTests: XCTestCase {
             let composite = try XCTUnwrap(ImageProcessingService().makeCompositeImage(baseElement: reloaded, project: project))
             try assertBlurLocation(composite, original: original)
             let reopened = BackgroundBlurMaskEditViewModel(imageElement: reloaded,
+                renderSessions: store,
                 initialMaskData: reloaded.backgroundBlurMaskData, blurRadius: 6,
-                completion: { _ in }, imageSourceResolver: resolver)
+                completion: { _ in },
+                manualBackgroundBlurUseCase: AppComposition.makeManualBackgroundBlurUseCase(),
+                backgroundRemovalUseCase: AppComposition.makeBackgroundRemover(), imageSourceResolver: resolver)
             XCTAssertEqual(try XCTUnwrap(reopened.state.maskImage).size, reopened.originalImage.size)
             reopened.setBrushSize(30)
             reopened.toggleMode()

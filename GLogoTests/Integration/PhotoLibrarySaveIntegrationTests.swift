@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import Photos
 @testable import GLogo
 import UIKit
 
@@ -23,24 +24,26 @@ final class PhotoLibrarySaveTests: XCTestCase {
     /// - クラッシュや例外が発生する
     @MainActor
     func testSaveFailsWhenNoImageElements() async {
-        let viewModel = EditorViewModel()
+        // 要素なしの契約をOSの権限状態から切り離し、無人実行でダイアログを待たない。
+        let viewModel = EditorViewModel(photoLibrarySaver: SaveImageCoordinator(processingService: ImageProcessingService(), writer: NoImagePhotoWriter()))
 
         // テキスト要素のみ追加（画像要素は追加しない）
         let textElement = TextElement(text: "テスト")
         viewModel.addElement(textElement)
 
         // 保存処理を実行
-        await withCheckedContinuation { continuation in
-            viewModel.saveToPhotoLibrary { result in
-                guard case .failure(let failure) = result else {
-                    XCTFail("画像要素がない場合は保存が失敗すべき")
-                    continuation.resume()
-                    return
-                }
-                XCTAssertEqual(failure, .noImageElements, "画像要素がない場合は noImageElements で失敗すべき")
-                continuation.resume()
+        let completed = expectation(description: "画像なしの保存が終了")
+        viewModel.saveToPhotoLibrary { result in
+            defer { completed.fulfill() }
+            guard case .failure(let failure) = result else {
+                XCTFail("画像要素がない場合は保存が失敗すべき")
+                return
             }
+            XCTAssertEqual(failure, .noImageElements, "画像要素がない場合は noImageElements で失敗すべき")
         }
+        await fulfillment(of: [completed], timeout: 3)
+        XCTAssertFalse(viewModel.isSavingImage)
+        XCTAssertEqual(viewModel.lastPhotoLibrarySaveFailure, .noImageElements)
     }
 
     /// フィルター適用済み画像の保存確認テスト
@@ -52,7 +55,9 @@ final class PhotoLibrarySaveTests: XCTestCase {
     /// これがダメなケース
     /// - フィルターが適用されずに元画像が保存される
     /// - キャッシュされた古い画像が保存される
+    @MainActor
     func testSaveAppliesFiltersCorrectly() {
+        let store = ImageRenderSessionStore()
         // テスト用画像データを作成
         let originalSize = CGSize(width: 100, height: 100)
         let testImage = createTestImage(size: originalSize)
@@ -62,13 +67,13 @@ final class PhotoLibrarySaveTests: XCTestCase {
         }
 
         // ImageElementを作成しフィルターを適用（現行は fitMode 廃止）
-        let imageElement = ImageElement(imageData: imageData)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData)
         imageElement.saturationAdjustment = 2.0  // 彩度を大幅に上げる
         imageElement.brightnessAdjustment = 0.5  // 明度も上げる
 
         // フィルター適用前後で画像が違うことを確認
-        guard let originalImage = imageElement.originalImage,
-              let filteredImage = imageElement.getFilteredImageForce() else {
+        guard let originalImage = store.originalImage(of: imageElement),
+              let filteredImage = store.filteredImage(of: imageElement) else {
             XCTFail("画像の取得に失敗")
             return
         }
@@ -112,9 +117,9 @@ final class PhotoLibrarySaveTests: XCTestCase {
         }
 
         // 意図的に順序をランダムにして追加（最高解像度が最初ではない）
-        let lowResElement = ImageElement(imageData: lowResData)
-        let midResElement = ImageElement(imageData: midResData)
-        let highResElement = ImageElement(imageData: highResData)
+        let lowResElement = ImageElementFactory().makeElement(imageData: lowResData)
+        let midResElement = ImageElementFactory().makeElement(imageData: midResData)
+        let highResElement = ImageElementFactory().makeElement(imageData: highResData)
 
         viewModel.addElement(lowResElement)
         viewModel.addElement(midResElement)
@@ -148,14 +153,14 @@ final class PhotoLibrarySaveTests: XCTestCase {
         let corruptedData = Data([0x89, 0x50, 0x4E, 0x47, 0x00, 0x00, 0x00, 0x00]) // 不完全なPNGヘッダ
 
         // 破損データでImageElementを作成
-        let imageElement = ImageElement(imageData: corruptedData)
+        let imageElement = ImageElementFactory().makeElement(imageData: corruptedData)
         viewModel.addElement(imageElement)
 
-        // originalImageが正しくnilになることを確認
-        XCTAssertNil(imageElement.originalImage, "破損データの場合、originalImageはnilであるべき")
+        // originalImageが正しくnilになることを確認（エディタの管理役と同じインスタンスで観察する）
+        XCTAssertNil(viewModel.sessionStore.originalImage(of: imageElement), "破損データの場合、originalImageはnilであるべき")
 
         // 強制フィルター適用が失敗することを確認
-        XCTAssertNil(imageElement.getFilteredImageForce(), "破損データはフィルター適用に失敗すべき")
+        XCTAssertNil(viewModel.sessionStore.filteredImage(of: imageElement), "破損データはフィルター適用に失敗すべき")
     }
 
     /// getFilteredImageForceメソッドの動作確認テスト
@@ -168,7 +173,9 @@ final class PhotoLibrarySaveTests: XCTestCase {
     /// - キャッシュが効いてしまい古い画像が返される
     /// - フィルター設定が無視される
     /// - メソッドが例外を投げる
+    @MainActor
     func testGetFilteredImageForceIgnoresCache() {
+        let store = ImageRenderSessionStore()
         let originalSize = CGSize(width: 300, height: 300)
         let testImage = createTestImage(size: originalSize)
         guard let imageData = testImage.pngData() else {
@@ -176,17 +183,17 @@ final class PhotoLibrarySaveTests: XCTestCase {
             return
         }
 
-        let imageElement = ImageElement(imageData: imageData)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData)
 
         // 初期状態でフィルター適用画像を取得（キャッシュされる）
-        let initialFiltered = imageElement.image
+        let initialFiltered = store.displayImage(of: imageElement)
 
         // フィルターを追加
         imageElement.saturationAdjustment = 1.8
         imageElement.brightnessAdjustment = 0.3
 
         // getFilteredImageForceで新しいフィルター設定の画像を取得
-        guard let forcedFilteredImage = imageElement.getFilteredImageForce() else {
+        guard let forcedFilteredImage = store.filteredImage(of: imageElement) else {
             XCTFail("getFilteredImageForceが画像を返さない")
             return
         }
@@ -195,7 +202,7 @@ final class PhotoLibrarySaveTests: XCTestCase {
         XCTAssertNotNil(forcedFilteredImage, "フィルター強制適用画像が生成されるべき")
 
         // ピクセル次元（cgImageベース）でサイズが保持されていることを確認
-        if let originalCG = imageElement.originalImage?.cgImage, let forcedCG = forcedFilteredImage.cgImage {
+        if let originalCG = store.originalImage(of: imageElement)?.cgImage, let forcedCG = forcedFilteredImage.cgImage {
             XCTAssertEqual(forcedCG.width, originalCG.width, "フィルター適用後も幅のピクセル数は保持されるべき")
             XCTAssertEqual(forcedCG.height, originalCG.height, "フィルター適用後も高さのピクセル数は保持されるべき")
         }
@@ -244,5 +251,19 @@ final class PhotoLibrarySaveTests: XCTestCase {
                 cgContext.strokePath()
             }
         }
+    }
+}
+
+/// 画像なしの検証では権限要求も書き込みも発生しないことを保証する。
+private struct NoImagePhotoWriter: PhotoLibraryWriting {
+    func authorizationStatus(for accessLevel: PHAccessLevel) -> PHAuthorizationStatus { .authorized }
+
+    func requestAuthorization(for accessLevel: PHAccessLevel, handler: @escaping @Sendable (PHAuthorizationStatus) -> Void) {
+        XCTFail("許可済みのWriterに権限要求を行わない")
+        handler(.authorized)
+    }
+
+    func performSave(of image: UIImage, format: SaveImageFormat) async throws {
+        XCTFail("画像がない場合は書き込みを行わない")
     }
 }

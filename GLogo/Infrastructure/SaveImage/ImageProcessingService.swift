@@ -1,0 +1,148 @@
+//
+// 概要：フィルター適用・合成処理。
+// ベース画像の範囲を基準に、editor と同じキャンバス座標系で可視要素を再描画する。
+// 保存解像度はベース画像の実ピクセルサイズを使用し、はみ出した要素はクリップする。
+
+import UIKit
+import OSLog
+
+struct ImageProcessingService: ImageProcessing {
+    private static let logger = Logger(subsystem: "com.silvia.GLogo", category: "Save")
+    private static let maxCompositePixelCount: CGFloat = 24_000_000
+    private static let maxCompositeLongSide: CGFloat = 6_144
+
+    private struct CompositeRenderMetrics {
+        let renderScale: CGSize
+        let renderSize: CGSize
+    }
+
+    /// ImageElement に設定されたフィルターを適用した画像を、保存の範囲から受け取って返す
+    func applyFilters(to imageElement: ImageElement, images: any SaveImageReading) -> UIImage? {
+        images.filteredImage(of: imageElement)
+    }
+
+    /// ベース画像の範囲を基準に合成して返す
+    /// - Parameters:
+    ///   - baseElement: 保存基準となるベース画像要素
+    ///   - project: プロジェクト
+    ///   - images: 保存の範囲。画像要素の画像はここから受け取る
+    /// - Returns: 合成画像（ベース画像の実ピクセルサイズで出力）
+    func makeCompositeImage(baseElement: ImageElement, project: LogoProject, images: any SaveImageReading) -> UIImage? {
+        guard let baseImage = images.filteredImage(of: baseElement) else {
+            Self.logger.warning("合成保存に失敗: ベース画像のフィルタ適用に失敗")
+            return nil
+        }
+
+        let basePixelSize = baseImage.orientedPixelSize
+        guard basePixelSize.width > 0, basePixelSize.height > 0,
+              baseElement.size.width > 0, baseElement.size.height > 0 else {
+            Self.logger.warning("合成保存に失敗: ベース画像サイズが無効")
+            return nil
+        }
+
+        // ベース要素の editor 上フレームをキャンバスでクリップ
+        let baseFrame = CGRect(origin: baseElement.position, size: baseElement.size)
+        let canvasRect = CGRect(origin: .zero, size: project.canvasSize)
+        let exportRect = baseFrame.intersection(canvasRect)
+        guard !exportRect.isNull, !exportRect.isEmpty else {
+            Self.logger.warning("合成保存に失敗: ベース画像がキャンバス外")
+            return nil
+        }
+
+        // 保存倍率: ベース画像のピクセル密度を縦横別に反映する
+        let baseScaleX = basePixelSize.width / baseElement.size.width
+        let baseScaleY = basePixelSize.height / baseElement.size.height
+        let renderMetrics = resolveRenderMetrics(
+            xScale: baseScaleX,
+            yScale: baseScaleY,
+            exportRect: exportRect
+        )
+        let renderScale = renderMetrics.renderScale
+        let renderSize = renderMetrics.renderSize
+
+        let visibleElements = project.elements
+            .filter(\.isVisible)
+            .sorted { $0.zIndex < $1.zIndex }
+        let resolvedImages = resolvedImages(for: visibleElements, images: images)
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        format.opaque = false
+
+        let renderer = UIGraphicsImageRenderer(size: renderSize, format: format)
+        return renderer.image { context in
+            let cgContext = context.cgContext
+
+            cgContext.scaleBy(x: renderScale.width, y: renderScale.height)
+            // editor と同じキャンバス座標系のまま描画し、ベース要素原点へ平行移動する
+            cgContext.translateBy(x: -exportRect.minX, y: -exportRect.minY)
+            // ベース画像範囲（∩キャンバス）でクリップ
+            cgContext.clip(to: exportRect)
+
+            // 背景設定描画（editor と同じ座標系。clip によりベース画像範囲内のみ反映）。
+            // 背景画像は、保存の範囲が受付で固定したものを使い、ここでは取得しない。
+            project.backgroundSettings.draw(in: cgContext, rect: canvasRect, image: images.backgroundImage)
+
+            for element in visibleElements {
+                if let imageElement = element as? ImageElement {
+                    // 加工済みの画像を得られなかった画像要素は、描画用の画像（表示画像の加工を試し直したもの）で描く。
+                    let image = resolvedImages[element.id] ?? images.drawingImage(of: imageElement)
+                    ImageElementRenderer.draw(imageElement, in: cgContext, image: image)
+                    continue
+                }
+
+                // テキストと図形は自分の値で描く。採用漏れは描かれなくなるため、TextShapeDrawingTests で確かめる。
+                (element as? any ContextDrawable)?.draw(in: cgContext)
+            }
+        }
+    }
+
+    // MARK: - 補助
+
+    /// 可視画像要素のフル品質画像を一度だけ解決する
+    private func resolvedImages(for elements: [LogoElement], images: any SaveImageReading) -> [UUID: UIImage] {
+        Dictionary(
+            uniqueKeysWithValues: elements.compactMap { element in
+                guard let imageElement = element as? ImageElement,
+                      let highResImage = images.filteredImage(of: imageElement) else {
+                    return nil
+                }
+
+                return (element.id, highResImage)
+            }
+        )
+    }
+
+    /// ピクセル上限を考慮しつつ、実際の出力サイズと描画倍率を解決する
+    private func resolveRenderMetrics(
+        xScale: CGFloat,
+        yScale: CGFloat,
+        exportRect: CGRect
+    ) -> CompositeRenderMetrics {
+        let requestedSize = CGSize(
+            width: exportRect.width * xScale,
+            height: exportRect.height * yScale
+        )
+        let requestedPixelCount = max(requestedSize.width * requestedSize.height, 1)
+        let requestedLongSide = max(requestedSize.width, requestedSize.height, 1)
+
+        let pixelLimitedScale = sqrt(Self.maxCompositePixelCount / requestedPixelCount)
+        let longSideLimitedScale = Self.maxCompositeLongSide / requestedLongSide
+        let downscaleFactor = min(1.0, pixelLimitedScale, longSideLimitedScale)
+
+        let renderSize = CGSize(
+            width: max(1.0, (requestedSize.width * downscaleFactor).rounded()),
+            height: max(1.0, (requestedSize.height * downscaleFactor).rounded())
+        )
+        let renderScale = CGSize(
+            width: renderSize.width / exportRect.width,
+            height: renderSize.height / exportRect.height
+        )
+
+        return CompositeRenderMetrics(
+            renderScale: renderScale,
+            renderSize: renderSize
+        )
+    }
+
+}

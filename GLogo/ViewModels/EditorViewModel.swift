@@ -1,6 +1,5 @@
 //
 //  EditorViewModel.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはエディタ画面の主要なビューモデルを定義しています。
@@ -11,6 +10,7 @@
 //
 
 import Foundation
+import Combine
 import UIKit
 import Photos
 
@@ -22,17 +22,9 @@ enum EditorMode {
     case delete      // 削除
 }
 
-/// 選択した要素の操作タイプ
-enum ElementManipulationType {
-    case none
-    case move
-    case resize
-    case rotate
-}
-
 /// エディタビューモデル - エディタ画面の状態とロジックを管理
 @MainActor
-class EditorViewModel: ObservableObject {
+class EditorViewModel: ObservableObject, ImageEditCommitting, ElementTransformApplying {
     /// メモリ警告監視トークンのライフサイクル管理
     private final class MemoryWarningObserver {
         typealias Handler = @MainActor @Sendable () -> Void
@@ -57,6 +49,33 @@ class EditorViewModel: ObservableObject {
         }
     }
 
+    /// アプリが非アクティブになる通知の受け口。通知を送ったメインスレッドで、その場で同期に処理する。
+    /// 非アクティブになった時点の値でジェスチャーを確定するため、Task などで遅らせない。遅らせると、その間に届く
+    /// 後続のジェスチャーの通知で、裏に回るアニメーションでずれた値が反映されることがある。
+    private final class ResignActiveObserver {
+        typealias Handler = @MainActor @Sendable () -> Void
+        private var token: NSObjectProtocol?
+
+        init(handler: @escaping Handler) {
+            token = NotificationCenter.default.addObserver(
+                forName: UIApplication.willResignActiveNotification,
+                object: nil,
+                queue: nil
+            ) { _ in
+                // UIKit はこの通知をメインスレッドで送る。queue を指定せず、送った側のスレッドで同期に受ける。
+                MainActor.assumeIsolated {
+                    handler()
+                }
+            }
+        }
+
+        deinit {
+            if let token {
+                NotificationCenter.default.removeObserver(token)
+            }
+        }
+    }
+
     // MARK: - プロパティ
     
     /// 現在のプロジェクト
@@ -68,9 +87,6 @@ class EditorViewModel: ObservableObject {
     /// エディタモード
     @Published var editorMode: EditorMode = .select
     
-    /// 操作タイプ
-    @Published private(set) var manipulationType: ElementManipulationType = .none
-    
     /// テキスト編集中かどうか
     @Published private(set) var isEditingText: Bool = false
     
@@ -78,21 +94,51 @@ class EditorViewModel: ObservableObject {
     @Published private(set) var editingTextElement: TextElement?
     
     /// 操作履歴の管理
-    private lazy var history = EditorHistory(project: project)
+    private lazy var history = EditorHistory(project: project, renderSessions: managedRenderSessions)
 
-    /// 保存フローのオーケストレーター
-    private let saveCoordinator = SaveImageCoordinator()
-    private let imageImportCoordinator = ImageImportCoordinator()
-    private let imageUpscaleUseCase = ImageUpscaleUseCase()
+    /// 確定操作のイベント生成を機能別に委譲する。各 UseCase は親を非所有で参照する。
+    private(set) lazy var textEdits = TextEditUseCase(target: self)
+    private(set) lazy var shapeEdits = ShapeEditUseCase(target: self)
+    private(set) lazy var imageEdits = ImageEditUseCase(target: self)
+
+    /// AI の表示状態と要求の寿命を所有する。推論依存は初期化時の注入を引き継ぐ。
+    private(set) lazy var aiTools = AIToolsViewModel(
+        edits: imageEdits,
+        renderSessions: renderSessions,
+        backgroundRemovalUseCase: backgroundRemovalUseCase,
+        imageUpscaleUseCase: imageUpscaleUseCase,
+        selection: $selectedElement.eraseToAnyPublisher(),
+        changes: objectWillChange.eraseToAnyPublisher()
+    )
+    /// キャンバスのジェスチャーの開始値と未確定の変形を持つ。`ElementViewModel.transform` と同じものを共有する。
+    private(set) lazy var transform = ElementTransformViewModel(
+        editor: self, renderSessions: managedRenderSessions, selection: $selectedElement.eraseToAnyPublisher()
+    )
+    private var transformObservation: AnyCancellable?
+    /// ここから開く画面へ渡す外部処理。画面ごとに作るものは、開くたびに呼ぶ関数として持つ。
+    let dependencies: EditorDependencies
+    /// 画像要素の描画のセッションの管理役。寿命はエディタと同じ。
+    /// 読み取りと状態の変更（履歴・編集パネル・描画の更新・メモリ警告）は、この1つのインスタンスを使う。
+    /// ViewModel が子へ渡すためのもので、View は読み取り用の `renderSessions` を使う。
+    let managedRenderSessions: any ImageRenderSessionManaging
+
+    /// View へ渡す読み取り用の管理役（`managedRenderSessions` と同じインスタンス）。
+    /// キャンバス・削除エフェクト・画像一覧・AI・編集画面・フィルターのサムネイルは、ここから画像を受け取る。
+    /// 保存は受付で元画像を受け取るときだけ使い、選定・加工・合成は保存の範囲から受け取る。
+    var renderSessions: any ImageRenderSessionReading { managedRenderSessions }
+
+    /// View へ渡す背景画像の取得先。キャンバスが描くたびに使う。
+    var backgroundImages: any BackgroundImageLoading { dependencies.backgroundImages }
+    private let backgroundRemovalUseCase: any BackgroundRemovalProcessing
+    private let imageUpscaleUseCase: ImageUpscaleUseCase
+    private var aiToolsObservation: AnyCancellable?
+
+    private let imageSaveViewModel: ImageSaveViewModel
+    private var imageSaveObservation: AnyCancellable?
+    private let imageImporter: any ImageImporting
+    private let viewportSizeProvider: @MainActor () -> CGSize
     private let imageRoleUseCase = ImageRoleUseCase()
-    private let manipulationRenderingUseCase = ManipulationRenderingUseCase()
-    private let imageElementMetadataRevertUseCase = ImageElementMetadataRevertUseCase()
-    
-    /// 要素操作の開始位置
-    private var manipulationStartPoint: CGPoint = .zero
-    
-    /// 操作前の要素の状態
-    private var manipulationStartElement: LogoElement?
+    private let imageElementMetadataRevertUseCase: ImageElementMetadataRevertUseCase
     
     /// 次に作成する図形のタイプ
     var nextShapeType: ShapeType = .rectangle
@@ -101,10 +147,10 @@ class EditorViewModel: ObservableObject {
     @Published private(set) var isProjectModified = false
 
     /// 画像保存処理の実行中フラグ（保存中は編集入力をロック）
-    @Published private(set) var isSavingImage = false
+    var isSavingImage: Bool { imageSaveViewModel.isSaving }
 
     /// 直近の写真ライブラリ保存失敗理由
-    @Published private(set) var lastPhotoLibrarySaveFailure: PhotoLibrarySaveFailure?
+    var lastPhotoLibrarySaveFailure: PhotoLibrarySaveFailure? { imageSaveViewModel.lastFailure }
 
     /// 画像一覧レールの表示フラグ
     @Published var isImageListRailVisible = false
@@ -112,21 +158,58 @@ class EditorViewModel: ObservableObject {
     /// メモリ警告監視
     private var memoryWarningObserver: MemoryWarningObserver?
 
+    /// アプリが非アクティブになったときに、操作中のジェスチャーを確定する
+    private var resignActiveObserver: ResignActiveObserver?
+
     // MARK: - イニシャライザ
     
     /// 新しいプロジェクトでエディタを初期化
+    /// - Parameters:
+    ///   - dependencies: 保存・インポート・AI の外部処理。実装は Composition Root が組み立てる
+    ///   - renderSessions: 描画のセッションの管理役（読み取りと状態の変更の両方）。エディタごとに新しく作る。
+    ///     テストでは、問い合わせを記録する偽物を渡せる
     init(
         project: LogoProject = LogoProject(),
-        backgroundRemovalUseCase: any BackgroundRemovalProcessing = BackgroundRemovalUseCase()
+        dependencies: EditorDependencies,
+        renderSessions: any ImageRenderSessionManaging = ImageRenderSessionStore(),
+        viewportSizeProvider: @escaping @MainActor () -> CGSize = { UIScreen.main.bounds.size }
     ) {
         self.project = project
-        self.backgroundRemovalUseCase = backgroundRemovalUseCase
+        self.dependencies = dependencies
+        self.managedRenderSessions = renderSessions
+        // AI ツールと共有する背景除去は、従来どおりエディタの初期化時に1つ作る。
+        self.backgroundRemovalUseCase = dependencies.makeBackgroundRemover()
+        self.imageUpscaleUseCase = dependencies.imageUpscaleUseCase
+        self.imageImporter = dependencies.imageImporter
+        self.imageElementMetadataRevertUseCase = ImageElementMetadataRevertUseCase(store: dependencies.metadataStore)
+        self.viewportSizeProvider = viewportSizeProvider
+        imageSaveViewModel = ImageSaveViewModel(saver: dependencies.photoLibrarySaver)
         
         // 履歴管理の初期化
-        history = EditorHistory(project: project)
+        history = EditorHistory(project: project, renderSessions: managedRenderSessions)
+
+        // 既存の画面は親を購読するため、保存状態を複製せず変更通知だけを転送する。
+        imageSaveObservation = imageSaveViewModel.objectWillChange.sink { [weak self] in
+            self?.objectWillChange.send()
+        }
+
+        // 遷移を扱う EditorView へ子の通知を転送し、表示状態そのものは複製しない。
+        aiToolsObservation = aiTools.objectWillChange.sink { [weak self] in
+            self?.objectWillChange.send()
+        }
+
+        transformObservation = transform.objectWillChange.sink { [weak self] in
+            self?.objectWillChange.send()
+        }
 
         memoryWarningObserver = MemoryWarningObserver { [weak self] in
             self?.handleMemoryWarning()
+        }
+
+        // 操作中にアプリが非アクティブになったら（ホームへのスワイプなど）、その時点の値でジェスチャーを1件として確定し、
+        // 裏に回るアニメーションで座標がずれた続きの通知は、終了まで無視する（保存・選択の切り替えと同じ割り込みの扱い）。
+        resignActiveObserver = ResignActiveObserver { [weak self] in
+            self?.transform.interruptManipulation()
         }
     }
 
@@ -134,11 +217,9 @@ class EditorViewModel: ObservableObject {
 
     /// メモリ警告を受けた際にキャッシュを解放する
     private func handleMemoryWarning() {
-        for element in project.elements {
-            (element as? ImageElement)?.handleMemoryWarning()
-        }
-        ImageElement.previewService.resetCache()
-        ToneCurveFilter.clearCache()
+        ImageCacheReleaseUseCase.releaseCaches(
+            in: project.elements, defaultService: dependencies.previewService, renderSessions: managedRenderSessions
+        )
     }
     
     // MARK: - プロジェクト操作
@@ -174,17 +255,6 @@ class EditorViewModel: ObservableObject {
             history.recordAndApply(event)
             isProjectModified = true
         }
-    }
-    
-    /// 背景設定を更新
-    func updateBackgroundSettings(_ settings: BackgroundSettings) {
-        let event = BackgroundSettingsChangedEvent(
-            oldSettings: project.backgroundSettings,
-            newSettings: settings
-        )
-        
-        history.recordAndApply(event)
-        isProjectModified = true
     }
     
     // MARK: - 要素操作
@@ -225,40 +295,22 @@ class EditorViewModel: ObservableObject {
         addElement(shapeElement)
     }
     
-    /// 画像要素を追加
-//    func addImageElement(fileName: String, position: CGPoint) {
-//        let imageElement = ImageElement(fileName: fileName)
-//        imageElement.position = position
-//        addElement(imageElement)
-//    }
-    
     /// 選択中の要素を削除
     func deleteSelectedElement() {
         guard let selectedElement = selectedElement else { return }
         
         // 要素のインデックスを取得
         guard let index = project.elements.firstIndex(where: { $0.id == selectedElement.id }) else { return }
-        
+
+        // 削除後に確定すると、プロジェクトにない要素の履歴になる。Undo で削除・変形の順に戻せるよう、先に確定する。
+        transform.interruptManipulation()
+
         // 削除イベントを作成して実行
         let event = ElementRemovedEvent(element: selectedElement, index: index)
         history.recordAndApply(event)
         
         self.selectedElement = nil
         isProjectModified = true
-    }
-    
-    /// 特定の位置にある要素を取得（ヒットテスト）
-    func elementAt(_ point: CGPoint) -> LogoElement? {
-        // zIndexの降順で判定（前面優先）
-        let sorted = project.elements
-            .filter { $0.isVisible && !$0.isLocked }
-            .sorted { $0.zIndex > $1.zIndex }
-        return sorted.first { $0.hitTest(point) }
-    }
-    
-    /// 要素を選択
-    func selectElement(at point: CGPoint) {
-        selectedElement = elementAt(point)
     }
     
     // 特定の要素を直接選択
@@ -308,71 +360,6 @@ class EditorViewModel: ObservableObject {
         }
     }
     
-    /// 選択中の要素を最前面に移動
-    func bringSelectedElementToFront() {
-        guard let selectedElement = selectedElement else { return }
-        
-        // 要素のインデックスを取得
-        guard let index = project.elements.firstIndex(where: { $0.id == selectedElement.id }) else { return }
-        
-        // 削除してから最後に追加
-        let removeEvent = ElementRemovedEvent(element: selectedElement, index: index)
-        history.recordAndApply(removeEvent)
-        
-        let addEvent = ElementAddedEvent(element: selectedElement)
-        history.recordAndApply(addEvent)
-        
-        isProjectModified = true
-    }
-    
-    /// 選択中の要素を最背面に移動
-    func sendSelectedElementToBack() {
-        guard let selectedElement = selectedElement else { return }
-        
-        // 要素のインデックスを取得
-        guard let index = project.elements.firstIndex(where: { $0.id == selectedElement.id }) else { return }
-        
-        // 削除してから先頭に追加する代わりに
-        // 削除してインデックス0で再追加する必要があるため、コピーを使用
-        let elementCopy = selectedElement.copy()
-        
-        let removeEvent = ElementRemovedEvent(element: selectedElement, index: index)
-        history.recordAndApply(removeEvent)
-        
-        // 元の要素を一時的に削除
-        project.elements.removeAll { $0.id == selectedElement.id }
-        
-        // 先頭に追加
-        project.elements.insert(elementCopy, at: 0)
-        
-        // 選択要素を更新
-        self.selectedElement = elementCopy
-        
-        isProjectModified = true
-    }
-    
-    /// 選択中の要素の可視性を切り替え
-    func toggleSelectedElementVisibility() {
-        guard let element = selectedElement else { return }
-        
-        // 現在の実装では直接可視性を切り替え
-        element.isVisible = !element.isVisible
-        
-        updateSelectedElement(element)
-        isProjectModified = true
-    }
-    
-    /// 選択中の要素のロック状態を切り替え
-    func toggleSelectedElementLock() {
-        guard let element = selectedElement else { return }
-        
-        // 現在の実装では直接ロック状態を切り替え
-        element.isLocked = !element.isLocked
-        
-        updateSelectedElement(element)
-        isProjectModified = true
-    }
-    
     /// 選択中の要素をコピー
     func duplicateSelectedElement() {
         guard let selectedElement = selectedElement else { return }
@@ -408,7 +395,7 @@ class EditorViewModel: ObservableObject {
     ///   - event: 適用する編集イベント
     ///   - elementId: 対象要素のID
     /// - Returns: なし
-    private func applyEventAndRefreshSelection(_ event: EditorEvent, elementId: UUID) {
+    func applyEventAndRefreshSelection(_ event: EditorEvent, elementId: UUID) {
         history.recordAndApply(event)
 
         if selectedElement?.id == elementId {
@@ -425,11 +412,6 @@ class EditorViewModel: ObservableObject {
         updateSelectedElement(textElement)
     }
     
-    /// 図形要素のプロパティを更新
-    func updateShapeElement(_ shapeElement: ShapeElement) {
-        updateSelectedElement(shapeElement)
-    }
-    
     /// 画像要素のプロパティを更新
     func updateImageElement(_ imageElement: ImageElement) {
         updateSelectedElement(imageElement)
@@ -443,7 +425,8 @@ class EditorViewModel: ObservableObject {
             return
         }
 
-        let event = ImageRevertedToInitialStateEvent(element: imageElement)
+        let event = ImageRevertedToInitialStateEvent(element: imageElement, metadataStore: dependencies.metadataStore)
+        managedRenderSessions.endEditing(imageElement)
         applyEventAndRefreshSelection(event, elementId: imageElement.id)
     }
 
@@ -457,774 +440,34 @@ class EditorViewModel: ObservableObject {
         return imageElementMetadataRevertUseCase.canRevertToInitialState(imageElement)
     }
 
-    /// 手動背景除去の結果を画像要素に反映
-    /// - Parameters:
-    ///   - image: 背景除去後の画像
-    ///   - imageElement: 更新対象の画像要素
-    /// - Returns: なし
-    func applyManualBackgroundRemovalResult(_ image: UIImage, to imageElement: ImageElement) {
-        applyReplacedImage(image, to: imageElement, hasAppliedUpscale: imageElement.hasAppliedUpscale)
+    /// 現在の編集対象の実体と履歴移動の世代を、加工開始・完了時に照合する。
+    func imageEditToken(for element: ImageElement) -> ImageEditToken? {
+        guard project.elements.contains(where: { $0 === element }) else { return nil }
+        return ImageEditToken(element: ObjectIdentifier(element), imageRevision: element.editRevision,
+                              historyRestorationRevision: history.restorationRevision)
     }
 
-    /// 高画質化結果を画像要素に反映
-    /// - Parameters:
-    ///   - image: 高画質化後の画像
-    ///   - imageElement: 更新対象の画像要素
-    /// - Returns: なし
-    func applyUpscaledImageResult(_ image: UIImage, to imageElement: ImageElement) {
-        applyReplacedImage(image, to: imageElement, hasAppliedUpscale: true)
-    }
-
-    /// 差し替え画像を既存履歴へ反映
-    /// - Parameters:
-    ///   - image: 差し替え後の画像
-    ///   - imageElement: 更新対象の画像要素
-    ///   - hasAppliedUpscale: 差し替え後に高画質化済みとして扱うかどうか
-    /// - Returns: なし
-    private func applyReplacedImage(_ image: UIImage, to imageElement: ImageElement, hasAppliedUpscale: Bool) {
-        guard let newImageData = image.pngData() else { return }
-
-        let newOriginalIdentifier = UUID().uuidString
-        let event = ImageContentReplacedEvent(
-            elementId: imageElement.id,
-            oldImageData: imageElement.imageData,
-            oldImageFileName: imageElement.imageFileName,
-            oldOriginalImageURL: imageElement.originalImageURL,
-            oldOriginalImagePath: imageElement.originalImagePath,
-            oldOriginalImageIdentifier: imageElement.originalImageIdentifier,
-            oldHasAppliedUpscale: imageElement.hasAppliedUpscale,
-            oldToneCurveData: imageElement.toneCurveData,
-            oldSaturation: imageElement.saturationAdjustment,
-            oldBrightness: imageElement.brightnessAdjustment,
-            oldContrast: imageElement.contrastAdjustment,
-            oldHighlights: imageElement.highlightsAdjustment,
-            oldShadows: imageElement.shadowsAdjustment,
-            oldBlacks: imageElement.blacksAdjustment,
-            oldWhites: imageElement.whitesAdjustment,
-            oldWarmth: imageElement.warmthAdjustment,
-            oldVibrance: imageElement.vibranceAdjustment,
-            oldHue: imageElement.hueAdjustment,
-            oldSharpness: imageElement.sharpnessAdjustment,
-            oldGaussianBlurRadius: imageElement.gaussianBlurRadius,
-            oldVignette: imageElement.vignetteAdjustment,
-            oldBloom: imageElement.bloomAdjustment,
-            oldGrain: imageElement.grainAdjustment,
-            oldFade: imageElement.fadeAdjustment,
-            oldChromaticAberration: imageElement.chromaticAberrationAdjustment,
-            oldTintIntensity: imageElement.tintIntensity,
-            oldTintColor: imageElement.tintColor,
-            oldAppliedFilterRecipe: imageElement.appliedFilterRecipe,
-            oldAppliedFilterPresetId: imageElement.appliedFilterPresetId,
-            newImageData: newImageData,
-            newOriginalImageIdentifier: newOriginalIdentifier,
-            newHasAppliedUpscale: hasAppliedUpscale
-        )
-
-        history.recordAndApply(event)
-
-        refreshSelectionAfterImageReplacement(elementId: imageElement.id)
-    }
-
-    /// 画像差し替え後に選択状態と変更フラグを更新
-    /// - Parameters:
-    ///   - elementId: 更新対象の要素ID
-    /// - Returns: なし
-    private func refreshSelectionAfterImageReplacement(elementId: UUID) {
-        if let updatedElement = project.elements.first(where: { $0.id == elementId }) {
-            selectedElement = updatedElement
+    /// 画像加工後の選択方針を維持し、変更フラグと表示を同期する。
+    func applyImageEvents(_ events: [EditorEvent], elementId: UUID, selectsResult: Bool) {
+        for event in events {
+            history.recordAndApply(event)
         }
-        isProjectModified = true
-        objectWillChange.send()
-    }
-    
-    // MARK: - テキスト要素の操作
-    
-    /// テキスト内容の更新
-    func updateTextContent(_ textElement: TextElement, newText: String) {
-        let event = TextContentChangedEvent(
-            elementId: textElement.id,
-            oldText: textElement.text,
-            newText: newText
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: textElement.id)
-    }
-    
-    /// テキスト色の更新
-    func updateTextColor(_ textElement: TextElement, newColor: UIColor) {
-        
-        // 現在と同じ色なら何もしない
-        if textElement.textColor.isEqual(newColor) {
-            return
+        // 古い描画の完了を待たず、加工後の画像を確定品質で表示する。
+        if let image = project.element(for: elementId, as: ImageElement.self) {
+            managedRenderSessions.endEditing(image)
         }
-        
-        // TextColorChangedEventを作成
-        let event = TextColorChangedEvent(
-            elementId: textElement.id,
-            oldColor: textElement.textColor,
-            newColor: newColor
-        )
-        
-        // イベントを履歴に記録して適用
-        applyEventAndRefreshSelection(event, elementId: textElement.id)
-        
-    }
-    
-    /// フォントの更新
-    func updateFont(_ textElement: TextElement, fontName: String, fontSize: CGFloat) {
-        if textElement.fontName == fontName && textElement.fontSize == fontSize {
-            return
-        }
-
-        updateFont(
-            textElement,
-            oldFontName: textElement.fontName,
-            newFontName: fontName,
-            oldFontSize: textElement.fontSize,
-            newFontSize: fontSize
-        )
-    }
-
-    /// フォントの更新（旧値を明示指定）
-    /// - Parameters:
-    ///   - textElement: 更新対象のテキスト要素
-    ///   - oldFontName: 変更前フォント名
-    ///   - newFontName: 変更後フォント名
-    ///   - oldFontSize: 変更前フォントサイズ
-    ///   - newFontSize: 変更後フォントサイズ
-    /// - Returns: なし
-    func updateFont(
-        _ textElement: TextElement,
-        oldFontName: String,
-        newFontName: String,
-        oldFontSize: CGFloat,
-        newFontSize: CGFloat
-    ) {
-        if oldFontName == newFontName && oldFontSize == newFontSize {
-            return
-        }
-
-        let event = FontChangedEvent(
-            elementId: textElement.id,
-            oldFontName: oldFontName,
-            newFontName: newFontName,
-            oldFontSize: oldFontSize,
-            newFontSize: newFontSize
-        )
-
-        applyEventAndRefreshSelection(event, elementId: textElement.id)
-    }
-
-    /// 行間の更新
-    /// - Parameters:
-    ///   - textElement: 更新対象のテキスト要素
-    ///   - oldSpacing: 変更前の行間
-    ///   - newSpacing: 変更後の行間
-    /// - Returns: なし
-    func updateTextLineSpacing(_ textElement: TextElement, oldSpacing: CGFloat, newSpacing: CGFloat) {
-        if oldSpacing == newSpacing {
-            return
-        }
-
-        let event = TextLineSpacingChangedEvent(
-            elementId: textElement.id,
-            oldSpacing: oldSpacing,
-            newSpacing: newSpacing
-        )
-
-        applyEventAndRefreshSelection(event, elementId: textElement.id)
-    }
-
-    /// 文字間隔の更新
-    /// - Parameters:
-    ///   - textElement: 更新対象のテキスト要素
-    ///   - oldSpacing: 変更前の文字間隔
-    ///   - newSpacing: 変更後の文字間隔
-    /// - Returns: なし
-    func updateTextLetterSpacing(_ textElement: TextElement, oldSpacing: CGFloat, newSpacing: CGFloat) {
-        if oldSpacing == newSpacing {
-            return
-        }
-
-        let event = TextLetterSpacingChangedEvent(
-            elementId: textElement.id,
-            oldSpacing: oldSpacing,
-            newSpacing: newSpacing
-        )
-
-        applyEventAndRefreshSelection(event, elementId: textElement.id)
-    }
-
-    /// シャドウ効果の更新
-    /// - Parameters:
-    ///   - textElement: 更新対象のテキスト要素
-    ///   - effectIndex: 更新対象の効果インデックス
-    ///   - oldOffset: 変更前のオフセット
-    ///   - newOffset: 変更後のオフセット
-    ///   - oldBlurRadius: 変更前のぼかし半径
-    ///   - newBlurRadius: 変更後のぼかし半径
-    /// - Returns: なし
-    func updateTextShadowEffect(
-        _ textElement: TextElement,
-        effectIndex: Int,
-        oldOffset: CGSize,
-        newOffset: CGSize,
-        oldBlurRadius: CGFloat,
-        newBlurRadius: CGFloat
-    ) {
-        if oldOffset == newOffset && oldBlurRadius == newBlurRadius {
-            return
-        }
-
-        let event = TextShadowEffectChangedEvent(
-            elementId: textElement.id,
-            effectIndex: effectIndex,
-            oldOffset: oldOffset,
-            newOffset: newOffset,
-            oldBlurRadius: oldBlurRadius,
-            newBlurRadius: newBlurRadius
-        )
-
-        applyEventAndRefreshSelection(event, elementId: textElement.id)
-    }
-
-    /// ストローク効果の更新
-    /// - Parameters:
-    ///   - textElement: 更新対象のテキスト要素
-    ///   - effectIndex: 更新対象の効果インデックス
-    ///   - oldWidth: 変更前の太さ
-    ///   - newWidth: 変更後の太さ
-    /// - Returns: なし
-    func updateTextStrokeEffect(
-        _ textElement: TextElement,
-        effectIndex: Int,
-        oldWidth: CGFloat,
-        newWidth: CGFloat
-    ) {
-        if oldWidth == newWidth {
-            return
-        }
-
-        let event = TextStrokeEffectChangedEvent(
-            elementId: textElement.id,
-            effectIndex: effectIndex,
-            oldWidth: oldWidth,
-            newWidth: newWidth
-        )
-
-        applyEventAndRefreshSelection(event, elementId: textElement.id)
-    }
-
-    /// グロー効果の更新
-    /// - Parameters:
-    ///   - textElement: 更新対象のテキスト要素
-    ///   - effectIndex: 更新対象の効果インデックス
-    ///   - oldRadius: 変更前の半径
-    ///   - newRadius: 変更後の半径
-    /// - Returns: なし
-    func updateTextGlowEffect(
-        _ textElement: TextElement,
-        effectIndex: Int,
-        oldRadius: CGFloat,
-        newRadius: CGFloat
-    ) {
-        if oldRadius == newRadius {
-            return
-        }
-
-        let event = TextGlowEffectChangedEvent(
-            elementId: textElement.id,
-            effectIndex: effectIndex,
-            oldRadius: oldRadius,
-            newRadius: newRadius
-        )
-
-        applyEventAndRefreshSelection(event, elementId: textElement.id)
-    }
-
-    /// グラデーション塗り効果の色更新
-    /// - Parameters:
-    ///   - textElement: 更新対象のテキスト要素
-    ///   - effectIndex: 更新対象の効果インデックス
-    ///   - oldStartColor: 変更前の開始色
-    ///   - newStartColor: 変更後の開始色
-    ///   - oldEndColor: 変更前の終了色
-    ///   - newEndColor: 変更後の終了色
-    func updateTextGradientFillColor(
-        _ textElement: TextElement,
-        effectIndex: Int,
-        oldStartColor: UIColor,
-        newStartColor: UIColor,
-        oldEndColor: UIColor,
-        newEndColor: UIColor
-    ) {
-        let event = TextGradientFillColorChangedEvent(
-            elementId: textElement.id,
-            effectIndex: effectIndex,
-            oldStartColor: oldStartColor,
-            newStartColor: newStartColor,
-            oldEndColor: oldEndColor,
-            newEndColor: newEndColor
-        )
-
-        applyEventAndRefreshSelection(event, elementId: textElement.id)
-    }
-
-    /// グラデーション塗り効果の角度更新
-    /// - Parameters:
-    ///   - textElement: 更新対象のテキスト要素
-    ///   - effectIndex: 更新対象の効果インデックス
-    ///   - oldAngle: 変更前の角度
-    ///   - newAngle: 変更後の角度
-    func updateTextGradientFillEffect(
-        _ textElement: TextElement,
-        effectIndex: Int,
-        oldAngle: CGFloat,
-        newAngle: CGFloat
-    ) {
-        if oldAngle == newAngle {
-            return
-        }
-
-        let event = TextGradientFillEffectChangedEvent(
-            elementId: textElement.id,
-            effectIndex: effectIndex,
-            oldAngle: oldAngle,
-            newAngle: newAngle
-        )
-
-        applyEventAndRefreshSelection(event, elementId: textElement.id)
-    }
-
-    /// グラデーション塗り効果の不透明度更新
-    /// - Parameters:
-    ///   - textElement: 更新対象のテキスト要素
-    ///   - effectIndex: 更新対象の効果インデックス
-    ///   - oldOpacity: 変更前の不透明度
-    ///   - newOpacity: 変更後の不透明度
-    func updateTextGradientFillOpacity(
-        _ textElement: TextElement,
-        effectIndex: Int,
-        oldOpacity: CGFloat,
-        newOpacity: CGFloat
-    ) {
-        if oldOpacity == newOpacity {
-            return
-        }
-
-        let event = TextGradientFillOpacityChangedEvent(
-            elementId: textElement.id,
-            effectIndex: effectIndex,
-            oldOpacity: oldOpacity,
-            newOpacity: newOpacity
-        )
-
-        applyEventAndRefreshSelection(event, elementId: textElement.id)
-    }
-
-    // MARK: - 図形の操作
-    
-    /// 図形タイプの更新
-    func updateShapeType(_ shapeElement: ShapeElement, newType: ShapeType) {
-        
-        // 図形タイプ変更イベントの作成
-        let event = ShapeTypeChangedEvent(
-            elementId: shapeElement.id,
-            oldType: shapeElement.shapeType,
-            newType: newType
-        )
-        
-        // イベントを履歴に記録して適用
-        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-    }
-    
-    /// 図形の塗りつぶし色を更新
-    func updateShapeFillColor(_ shapeElement: ShapeElement, newColor: UIColor) {
-        
-        let event = ShapeFillColorChangedEvent(
-            elementId: shapeElement.id,
-            oldColor: shapeElement.fillColor,
-            newColor: newColor
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-    }
-    
-    /// 図形の塗りつぶしモードを更新
-    func updateShapeFillMode(_ shapeElement: ShapeElement, newMode: FillMode) {
-        
-        let event = ShapeFillModeChangedEvent(
-            elementId: shapeElement.id,
-            oldMode: shapeElement.fillMode,
-            newMode: newMode
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-    }
-    
-    /// 図形の枠線色を更新
-    func updateShapeStrokeColor(_ shapeElement: ShapeElement, newColor: UIColor) {
-        
-        let event = ShapeStrokeColorChangedEvent(
-            elementId: shapeElement.id,
-            oldColor: shapeElement.strokeColor,
-            newColor: newColor
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-    }
-    
-    /// 図形の枠線太さを更新
-    func updateShapeStrokeWidth(_ shapeElement: ShapeElement, newWidth: CGFloat) {
-        
-        let event = ShapeStrokeWidthChangedEvent(
-            elementId: shapeElement.id,
-            oldWidth: shapeElement.strokeWidth,
-            newWidth: newWidth
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-    }
-    
-    /// 図形の枠線モードを更新
-    func updateShapeStrokeMode(_ shapeElement: ShapeElement, newMode: StrokeMode) {
-        
-        let event = ShapeStrokeModeChangedEvent(
-            elementId: shapeElement.id,
-            oldMode: shapeElement.strokeMode,
-            newMode: newMode
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-    }
-    
-    /// 図形の角丸半径を更新
-    func updateShapeCornerRadius(_ shapeElement: ShapeElement, newRadius: CGFloat) {
-        
-        let event = ShapeCornerRadiusChangedEvent(
-            elementId: shapeElement.id,
-            oldRadius: shapeElement.cornerRadius,
-            newRadius: newRadius
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-    }
-    
-    /// 図形の辺の数を更新
-    func updateShapeSides(_ shapeElement: ShapeElement, newSides: Int) {
-        
-        let event = ShapeSidesChangedEvent(
-            elementId: shapeElement.id,
-            oldSides: shapeElement.sides,
-            newSides: newSides
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-    }
-    
-    /// 図形のグラデーション色を更新
-    func updateShapeGradientColors(_ shapeElement: ShapeElement, oldStartColor: UIColor, newStartColor: UIColor, oldEndColor: UIColor, newEndColor: UIColor) {
-        
-        let event = ShapeGradientColorsChangedEvent(
-            elementId: shapeElement.id,
-            oldStartColor: oldStartColor,
-            newStartColor: newStartColor,
-            oldEndColor: oldEndColor,
-            newEndColor: newEndColor
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-    }
-    
-    func updateShapeGradientAngle(_ shapeElement: ShapeElement, newAngle: CGFloat) {
-        
-        let event = ShapeGradientAngleChangedEvent(
-            elementId: shapeElement.id,
-            oldAngle: shapeElement.gradientAngle,
-            newAngle: newAngle
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: shapeElement.id)
-    }
-    
-    // MARK: - 画像要素の操作
-    
-    /// 画像のティントカラーを更新
-    func updateImageTintColor(_ imageElement: ImageElement, oldColor: UIColor?, newColor: UIColor?, oldIntensity: CGFloat, newIntensity: CGFloat) {
-        
-        let event = ImageTintColorChangedEvent(
-            elementId: imageElement.id,
-            oldColor: oldColor,
-            newColor: newColor,
-            oldIntensity: oldIntensity,
-            newIntensity: newIntensity
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-    }
-    
-    /// 画像のフレーム表示を更新
-    func updateImageShowFrame(_ imageElement: ImageElement, oldValue: Bool, newValue: Bool) {
-        
-        let event = ImageShowFrameChangedEvent(
-            elementId: imageElement.id,
-            oldValue: oldValue,
-            newValue: newValue
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-    }
-    
-    /// 画像のフレーム色を更新
-    func updateImageFrameColor(_ imageElement: ImageElement, oldColor: UIColor, newColor: UIColor) {
-        
-        let event = ImageFrameColorChangedEvent(
-            elementId: imageElement.id,
-            oldColor: oldColor,
-            newColor: newColor
-        )
-        
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-    }
-
-    /// 画像のフレーム見た目をまとめて更新
-    func updateImageFrameAppearance(
-        _ imageElement: ImageElement,
-        oldShowFrame: Bool,
-        newShowFrame: Bool,
-        oldStyle: ImageFrameStyle,
-        newStyle: ImageFrameStyle,
-        oldColor: UIColor,
-        newColor: UIColor
-    ) {
-
-        let event = ImageFrameAppearanceChangedEvent(
-            elementId: imageElement.id,
-            oldShowFrame: oldShowFrame,
-            newShowFrame: newShowFrame,
-            oldFrameStyle: oldStyle,
-            newFrameStyle: newStyle,
-            oldFrameColor: oldColor,
-            newFrameColor: newColor
-        )
-
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-    }
-
-    /// 画像のフレームスタイルを更新
-    func updateImageFrameStyle(_ imageElement: ImageElement, oldStyle: ImageFrameStyle, newStyle: ImageFrameStyle) {
-
-        let event = ImageFrameStyleChangedEvent(
-            elementId: imageElement.id,
-            oldStyle: oldStyle,
-            newStyle: newStyle
-        )
-
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-    }
-    
-    /// 画像の角丸設定を更新
-    func updateImageRoundedCorners(_ imageElement: ImageElement, wasRounded: Bool, isRounded: Bool, oldRadius: CGFloat, newRadius: CGFloat) {
-
-        let event = ImageRoundedCornersChangedEvent(
-            elementId: imageElement.id,
-            wasRounded: wasRounded,
-            isRounded: isRounded,
-            oldRadius: oldRadius,
-            newRadius: newRadius
-        )
-
-        applyEventAndRefreshSelection(event, elementId: imageElement.id)
-    }
-
-    /// 背景ぼかし系の反映後に選択要素と更新通知を同期
-    /// - Parameters:
-    ///   - elementId: 同期対象の要素ID
-    /// - Returns: なし
-    private func refreshSelectionAndNotifyAfterBackgroundBlur(elementId: UUID) {
-        if selectedElement?.id == elementId {
+        if selectsResult || selectedElement?.id == elementId {
             if let updatedElement = project.elements.first(where: { $0.id == elementId }) {
                 selectedElement = updatedElement
             }
         }
-
         isProjectModified = true
         objectWillChange.send()
     }
 
-    // MARK: - 背景ぼかし
-
-    /// AI背景ぼかし用のユースケース
-    private let backgroundRemovalUseCase: any BackgroundRemovalProcessing
-    
-    /// 背景ぼかし適用ルールのユースケース
-    private let backgroundBlurUseCase = BackgroundBlurUseCase()
-
-    /// 背景ぼかしマスク編集画面への遷移フラグ
-    @Published var isNavigatingToBackgroundBlurMaskEdit: Bool = false
-
-    /// 背景ぼかしマスク編集対象の画像要素
-    @Published var backgroundBlurMaskEditTarget: ImageElement?
-
-    /// AI処理中フラグ
-    @Published private(set) var isProcessingAI: Bool = false
-
-    /// 高画質化処理中フラグ
-    @Published private(set) var isProcessingUpscale: Bool = false
-
-    /// 高画質化エラーメッセージ
-    @Published private(set) var lastUpscaleErrorMessage: String?
-
-    /// AI 背景除去処理で発生した最新のエラーメッセージ（成功時は nil にリセット）
-    @Published private(set) var lastBackgroundRemovalErrorMessage: String?
-
-    /// AI 背景ぼかし処理で発生した最新のエラーメッセージ（成功時は nil にリセット）
-    @Published private(set) var lastBackgroundBlurErrorMessage: String?
-
-    /// Real-ESRGAN モデルが利用可能かどうか
-    var isRealESRGANAvailable: Bool {
-        imageUpscaleUseCase.isRealESRGANAvailable
-    }
-
-    /// AI背景除去をリクエスト（ワンタップで背景を透過に置換）
-    /// - Parameter imageElement: 対象の画像要素
-    func requestAIBackgroundRemoval(for imageElement: ImageElement) {
-        guard !isProcessingAI else { return }
-        lastBackgroundRemovalErrorMessage = nil
-        isProcessingAI = true
-
-        Task {
-            defer { isProcessingAI = false }
-
-            guard let originalImage = imageElement.originalImage else {
-                // 元画像が未解決のままだとボタン押下が無反応に見えるため、UI 用メッセージを設定
-                lastBackgroundRemovalErrorMessage = String(localized: "aiTools.sourceImageUnavailable")
-                return
-            }
-
-            do {
-                let resultImage = try await backgroundRemovalUseCase.removeBackground(from: originalImage)
-                applyManualBackgroundRemovalResult(resultImage, to: imageElement)
-            } catch {
-                // 失敗を UI に伝える。LocalizedError があれば優先採用、無ければシステム文字列
-                lastBackgroundRemovalErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            }
-        }
-    }
-
-    /// 高画質化をリクエスト
-    /// - Parameters:
-    ///   - imageElement: 対象の画像要素
-    ///   - method: 高画質化方式
-    ///   - scaleFactor: 出力倍率
-    ///   - appliesSharpening: シャープ化を併用するかどうか
-    /// - Returns: なし
-    func requestImageUpscale(
-        for imageElement: ImageElement,
-        method: ImageUpscaleMethod = .realESRGAN,
-        scaleFactor: ImageUpscaleScaleFactor = .x2,
-        appliesSharpening: Bool = true
-    ) {
-        guard !isProcessingUpscale else { return }
-        guard let originalImage = imageElement.originalImage else { return }
-        guard !imageElement.hasAppliedUpscale else { return }
-        lastUpscaleErrorMessage = nil
-        isProcessingUpscale = true
-
-        let request = ImageUpscaleRequest(
-            sourceImage: originalImage,
-            method: method,
-            scaleFactor: scaleFactor,
-            appliesSharpening: appliesSharpening
-        )
-        let imageUpscaleUseCase = self.imageUpscaleUseCase
-
-        Task {
-            defer { isProcessingUpscale = false }
-
-            do {
-                let result = try await imageUpscaleUseCase.upscale(request)
-                applyUpscaledImageResult(result.image, to: imageElement)
-            } catch {
-                lastUpscaleErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            }
-        }
-    }
-
-    /// 高画質化エラーメッセージをクリア
-    func clearUpscaleError() {
-        lastUpscaleErrorMessage = nil
-    }
-
-    /// AI 背景除去エラーメッセージをクリア
-    func clearBackgroundRemovalError() {
-        lastBackgroundRemovalErrorMessage = nil
-    }
-
-    /// AI 背景ぼかしエラーメッセージをクリア
-    func clearBackgroundBlurError() {
-        lastBackgroundBlurErrorMessage = nil
-    }
-
-    /// AI背景ぼかしをリクエスト
-    /// - Parameter imageElement: 対象の画像要素
-    func requestAIBackgroundBlur(for imageElement: ImageElement) {
-        guard !isProcessingAI else { return }
-        lastBackgroundBlurErrorMessage = nil
-        isProcessingAI = true
-
-        Task {
-            defer { isProcessingAI = false }
-
-            guard let originalImage = imageElement.originalImage else {
-                // 元画像が未解決のままだとボタン押下が無反応に見えるため、UI 用メッセージを設定
-                lastBackgroundBlurErrorMessage = String(localized: "aiTools.sourceImageUnavailable")
-                return
-            }
-
-            do {
-                let maskImage = try await backgroundRemovalUseCase.generateMask(from: originalImage)
-                guard let plan = backgroundBlurUseCase.makeAIMaskUpdatePlan(
-                    maskImage: maskImage,
-                    for: imageElement
-                ) else {
-                    // マスク生成は成功したが、適用プラン構築に失敗した内部状態は無反応にせず通知
-                    lastBackgroundBlurErrorMessage = String(localized: "aiTools.aiMaskGeneration.failed")
-                    return
-                }
-                applyBackgroundBlurPlan(plan, elementId: imageElement.id)
-            } catch {
-                // 失敗を UI に伝える。LocalizedError があれば優先採用、無ければシステム文字列
-                lastBackgroundBlurErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            }
-        }
-    }
-
-    /// 背景ぼかしマスク編集をリクエスト
-    /// - Parameter imageElement: 対象の画像要素
-    func requestBackgroundBlurMaskEdit(for imageElement: ImageElement) {
-        backgroundBlurMaskEditTarget = imageElement
-        isNavigatingToBackgroundBlurMaskEdit = true
-    }
-
-    /// 背景ぼかしマスク編集の結果を適用
-    /// - Parameters:
-    ///   - maskData: 編集後のマスクデータ（nilの場合は変更なし）
-    ///   - imageElement: 対象の画像要素
-    func applyBackgroundBlurMaskResult(_ maskData: Data?, to imageElement: ImageElement) {
-        guard let plan = backgroundBlurUseCase.makeMaskUpdatePlan(
-            maskData: maskData,
-            for: imageElement
-        ) else { return }
-
-        applyBackgroundBlurPlan(plan, elementId: imageElement.id)
-    }
-
-    /// 背景ぼかしマスクを削除
-    /// - Parameter imageElement: 対象の画像要素
-    func removeBackgroundBlurMask(from imageElement: ImageElement) {
-        guard let plan = backgroundBlurUseCase.makeRemoveMaskPlan(for: imageElement) else { return }
-        applyBackgroundBlurPlan(plan, elementId: imageElement.id)
+    /// キャンバスのテキスト入力を機能別 UseCase へ渡す。
+    func updateTextContent(_ textElement: TextElement, newText: String) {
+        textEdits.updateTextContent(textElement, newText: newText)
     }
 
     /// 画像の役割を変更（ベース/オーバーレイの切り替え）
@@ -1234,155 +477,22 @@ class EditorViewModel: ObservableObject {
         isProjectModified = true
     }
     
-    // MARK: - 要素の操作(移動)
-    
-    /// 操作開始
-    func startManipulation(_ type: ElementManipulationType, at point: CGPoint) {
-        guard !isSavingImage else { return }
-
-        manipulationType = type
-        manipulationStartPoint = point
-        
-        // 操作前の要素の状態を保存（ディープコピーを作成）
-        if let selectedElement = selectedElement {
-            manipulationStartElement = selectedElement.copy()
-        } else {
-            manipulationStartElement = nil
-        }
-    }
-
-    /// ジェスチャー操作開始時に画像要素の描画経路を準備する
-    /// - Parameters:
-    ///   - project: 対象プロジェクト
-    ///   - highResolutionThreshold: 高解像度判定しきい値
-    /// - Returns: 品質低下描画を有効にすべき場合は true
-    func prepareImageRenderingForManipulation(
-        in project: LogoProject?,
-        highResolutionThreshold: CGFloat
-    ) -> Bool {
-        manipulationRenderingUseCase.prepare(
-            in: project,
-            highResolutionThreshold: highResolutionThreshold
-        )
-    }
-
-    /// ジェスチャー操作終了時に画像要素の描画状態を戻す
-    /// - Parameters:
-    ///   - project: 対象プロジェクト
-    /// - Returns: なし
-    func finishImageRenderingAfterManipulation(in project: LogoProject?) {
-        manipulationRenderingUseCase.finish(in: project)
-    }
-
-    /// 背景ぼかし更新計画を履歴に適用して UI 状態を同期する
-    /// - Parameters:
-    ///   - plan: 適用する背景ぼかし更新計画
-    ///   - elementId: 同期対象の要素ID
-    /// - Returns: なし
-    private func applyBackgroundBlurPlan(_ plan: BackgroundBlurUpdatePlan, elementId: UUID) {
-        history.recordAndApply(plan.maskEvent)
-
-        if let radiusEvent = plan.radiusEvent {
-            history.recordAndApply(radiusEvent)
-        }
-
-        refreshSelectionAndNotifyAfterBackgroundBlur(elementId: elementId)
-    }
-    
-    /// 操作中
-    func continueManipulation(at point: CGPoint) {
-        guard !isSavingImage else { return }
-        guard let element = selectedElement, manipulationType != .none else { return }
-        
-        let deltaX = point.x - manipulationStartPoint.x
-        let deltaY = point.y - manipulationStartPoint.y
-        
-        switch manipulationType {
-        case .move:
-            // 要素の移動
-            let movedElement = element
-            let startX = manipulationStartElement?.position.x ?? 0
-            let startY = manipulationStartElement?.position.y ?? 0
-            
-            movedElement.position = CGPoint(
-                x: startX + deltaX,
-                y: startY + deltaY
-            )
-            updateSelectedElement(movedElement) // 操作中は履歴に記録しない
-            
-        case .resize:
-            // 要素のサイズ変更
-            let resizedElement = element
-            resizedElement.size = CGSize(
-                width: max(10, (manipulationStartElement?.size.width ?? 0) + deltaX),
-                height: max(10, (manipulationStartElement?.size.height ?? 0) + deltaY)
-            )
-            updateSelectedElement(resizedElement) // 操作中は履歴に記録しない
-            
-        case .rotate:
-            // 要素の回転
-            // 中心点を計算
-            let center = CGPoint(
-                x: element.position.x + element.size.width / 2,
-                y: element.position.y + element.size.height / 2
-            )
-            
-            // 開始点と現在点の角度を計算
-            let startAngle = atan2(manipulationStartPoint.y - center.y, manipulationStartPoint.x - center.x)
-            let currentAngle = atan2(point.y - center.y, point.x - center.x)
-            
-            // 回転角度の差分を計算
-            let deltaAngle = currentAngle - startAngle
-            
-            let rotatedElement = element
-            rotatedElement.rotation = (manipulationStartElement?.rotation ?? 0) + deltaAngle
-            updateSelectedElement(rotatedElement) // 操作中は履歴に記録しない
-        case .none:
-            break
-        }
-    }
-    
-    /// 操作終了 - イベントを記録
-    func endManipulation() {
-        if isSavingImage {
-            manipulationType = .none
-            manipulationStartElement = nil
-            return
-        }
-
-        if let startElement = manipulationStartElement, let element = selectedElement {
-            // 実際に変更があった場合のみイベントを記録
-            let positionChanged = startElement.position != element.position
-            let sizeChanged = startElement.size != element.size
-            let rotationChanged = startElement.rotation != element.rotation
-            
-            if positionChanged || sizeChanged || rotationChanged {
-                // 複合変換イベントを作成
-                let event = ElementTransformedEvent(
-                    elementId: element.id,
-                    oldPosition: positionChanged ? startElement.position : nil,
-                    newPosition: positionChanged ? element.position : nil,
-                    oldSize: sizeChanged ? startElement.size : nil,
-                    newSize: sizeChanged ? element.size : nil,
-                    oldRotation: rotationChanged ? startElement.rotation : nil,
-                    newRotation: rotationChanged ? element.rotation : nil
-                )
-                
-                history.recordAndApply(event)
-                isProjectModified = true
-            }
-        }
-        
-        manipulationType = .none
-        manipulationStartElement = nil
-    }
-    
     // MARK: - 編集履歴操作
     
+    /// 選択中の画像要素の編集中を、管理役で終える（Undo・Redo のあと）。
+    private func endEditingSelectedImage() {
+        if let image = selectedElement as? ImageElement {
+            managedRenderSessions.endEditing(image)
+        }
+    }
+
     /// アンドゥ操作
     func undo() {
-        if history.canUndo {
+        // ボタンの無効化に加えて、キーボードショートカットや直接の呼び出しでも止めるため、`canUndo` で判定する。
+        if canUndo {
             history.undo()
+            // 履歴移動で描画要求が失効しても、選択中のプレビュー状態を残さない。
+            endEditingSelectedImage()
 
             // 選択要素の状態を適切に更新
             if let selectedElement = selectedElement {
@@ -1403,8 +513,9 @@ class EditorViewModel: ObservableObject {
 
     /// リドゥ操作
     func redo() {
-        if history.canRedo {
+        if canRedo {
             history.redo()
+            endEditingSelectedImage()
 
             // リドゥ後、選択要素の状態を適切に更新
             if let selectedElement = selectedElement {
@@ -1421,15 +532,15 @@ class EditorViewModel: ObservableObject {
             objectWillChange.send()
         }
     }
-    
-    /// アンドゥが可能かどうか
+
+    /// アンドゥが可能かどうか。ジェスチャーの変形が未確定のあいだは、履歴を動かすと開始値と食い違うため不可とする。
     var canUndo: Bool {
-        return history.canUndo
+        return history.canUndo && !transform.hasPendingGestureTransform
     }
-    
-    /// リドゥが可能かどうか
+
+    /// リドゥが可能かどうか。未確定の変形があるあいだは不可とする（`canUndo` と同じ理由）。
     var canRedo: Bool {
-        return history.canRedo
+        return history.canRedo && !transform.hasPendingGestureTransform
     }
     
     // MARK: - イベント適用
@@ -1456,64 +567,35 @@ class EditorViewModel: ObservableObject {
     
     /// 写真アプリに画像を保存（通常の1枚保存）
     /// プロジェクトの編集内容をフィルター適用済み画像として写真ライブラリに保存する
-    func saveToPhotoLibrary(
-        completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
-    ) {
-        performPhotoLibrarySave(
-            operation: { [project] done in
-                saveCoordinator.save(project: project, completion: done)
-            },
+    func saveToPhotoLibrary(completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void) {
+        imageSaveViewModel.save(
+            project: project,
+            renderSessions: renderSessions,
+            prepare: prepareForImageSave,
             completion: completion
         )
     }
     
     /// - 役割：ユーザーが「保存」ボタンを押した時の最初の受け口（エントリーポイント）
     /// - 処理：写真ライブラリの権限確認と合成保存フローの呼び出し
-    func saveCompositeToPhotoLibrary(
-        completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
-    ) {
-        performPhotoLibrarySave(
-            operation: { [project] done in
-                saveCoordinator.saveComposite(project: project, completion: done)
-            },
+    func saveCompositeToPhotoLibrary(completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void) {
+        imageSaveViewModel.saveComposite(
+            project: project,
+            renderSessions: renderSessions,
+            prepare: prepareForImageSave,
             completion: completion
         )
     }
 
-    /// 保存共通処理（再入防止・編集入力ロック・完了時解除）
-    /// - Parameters:
-    ///   - operation: 実行する保存処理
-    ///   - completion: 保存完了コールバック
-    /// - Returns: なし
-    private func performPhotoLibrarySave(
-        operation: (@escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void) -> Void,
-        completion: @escaping @MainActor @Sendable (PhotoLibrarySaveResult) -> Void
-    ) {
-        guard !isSavingImage else { return }
-
-        prepareForImageSave()
-        isSavingImage = true
-        lastPhotoLibrarySaveFailure = nil
-
-        operation { [weak self] result in
-            guard let self else { return }
-            self.isSavingImage = false
-            if case .failure(let failure) = result {
-                self.lastPhotoLibrarySaveFailure = failure
-            }
-            completion(result)
-        }
-    }
-
-    /// 保存開始前に操作状態を整える
+    /// 保存開始前に操作状態を整える。保存入力を取得する前に、未確定のジェスチャーの差分を履歴1件として確定する。
+    /// 保存される内容は画面の値のままで変わらない。
     /// - Parameters: なし
     /// - Returns: なし
     private func prepareForImageSave() {
-        manipulationType = .none
-        manipulationStartElement = nil
+        transform.interruptManipulation()
 
-        for element in project.elements {
-            (element as? ImageElement)?.endEditing()
+        for case let image as ImageElement in project.elements {
+            managedRenderSessions.endEditing(image)
         }
     }
     
@@ -1526,7 +608,7 @@ class EditorViewModel: ObservableObject {
     
     /// 画像要素をデータから追加
     func addImageElement(imageData: Data, position: CGPoint, phAsset: PHAsset? = nil, assetIdentifier: String? = nil) {
-        guard let (result, _) = importImageElement(
+        guard let result = importImageElement(
             source: .imageData(imageData),
             canvasSize: nil,
             assetIdentifier: assetIdentifier
@@ -1539,7 +621,7 @@ class EditorViewModel: ObservableObject {
     
     /// 画像のクロップ後にImageElementを追加
     func addCroppedImageElement(image: UIImage, assetIdentifier: String? = nil) {
-        guard let (result, _) = importImageElement(
+        guard let result = importImageElement(
             source: .uiImage(image),
             canvasSize: project.canvasSize,
             assetIdentifier: assetIdentifier
@@ -1554,19 +636,14 @@ class EditorViewModel: ObservableObject {
         source: ImageImportSource,
         canvasSize: CGSize?,
         assetIdentifier: String?
-    ) -> (ImageImportResult, CGSize)? {
-        let viewportSize = getViewportSize()
-        guard let result = imageImportCoordinator.importImage(
+    ) -> ImageImportResult? {
+        imageImporter.importImage(
             source: source,
             project: project,
-            viewportSize: viewportSize,
+            viewportSize: viewportSizeProvider(),
             assetIdentifier: assetIdentifier,
             canvasSize: canvasSize
-        ) else {
-            return nil
-        }
-
-        return (result, viewportSize)
+        )
     }
 
     private func applyImportedImage(_ element: ImageElement) {
@@ -1578,13 +655,6 @@ class EditorViewModel: ObservableObject {
     }
     
     // MARK: - インポートの表示制御
-    
-    /// デバイスの画面サイズを取得
-    private func getViewportSize() -> CGSize {
-        // デバイスの画面サイズを取得
-        // 実際の実装は状況に応じて調整が必要
-        return UIScreen.main.bounds.size
-    }
     
     /// 特定の要素にビューを中央揃え
     private func centerViewOnElement(_ element: LogoElement) {
@@ -1613,13 +683,17 @@ class EditorViewModel: ObservableObject {
         case selectedImage
         /// 高画質化済み画像要素を追加・選択した状態
         case enhancedImage
+        /// 画像要素を画面内に置いて選択した状態（キャンバス上のジェスチャーの UI テスト用）
+        case onScreenImage
     }
 
     /// fixture 適用済みフラグ（重複投入防止）
     private var hasAppliedUITestFixture = false
 
     /// launch argument で指定された fixture を適用する（一度だけ）
-    func applyUITestFixtureIfNeeded() {
+    /// - Parameters:
+    ///   - makeElementFactory: fixture の画像要素を作る Factory。適用するときだけ呼ぶ
+    func applyUITestFixtureIfNeeded(makeElementFactory: () -> ImageElementFactory) {
         guard !hasAppliedUITestFixture else { return }
         let args = ProcessInfo.processInfo.arguments
         guard let index = args.firstIndex(of: "-uiTestFixture"),
@@ -1630,14 +704,24 @@ class EditorViewModel: ObservableObject {
         hasAppliedUITestFixture = true
         switch fixture {
         case .selectedImage:
-            applySelectedImageFixture(enhanced: false)
+            applySelectedImageFixture(enhanced: false, elementFactory: makeElementFactory())
         case .enhancedImage:
-            applySelectedImageFixture(enhanced: true)
+            applySelectedImageFixture(enhanced: true, elementFactory: makeElementFactory())
+        case .onScreenImage:
+            applySelectedImageFixture(
+                enhanced: false,
+                elementFactory: makeElementFactory(),
+                // ほかの fixture はキャンバス中央（画面外）に置く。UI テストのピンチは、選択枠の矩形（キャンバス全体）の
+                // 中心で行われるため、画面内に置き、iPhone のキャンバスの中心を十分に含む大きさにする。
+                frame: CGRect(x: 40, y: 100, width: 320, height: 440)
+            )
         }
     }
 
     /// ダミー画像要素を追加・選択する fixture
-    private func applySelectedImageFixture(enhanced: Bool) {
+    /// - Parameters:
+    ///   - frame: 指定した場合は、キャンバス座標の位置とサイズで置く。省略時はキャンバス中央
+    private func applySelectedImageFixture(enhanced: Bool, elementFactory: ImageElementFactory, frame: CGRect? = nil) {
         // 1x1 赤ピクセルの最小 PNG を生成（アセット不要）
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64))
         let image = renderer.image { ctx in
@@ -1646,11 +730,15 @@ class EditorViewModel: ObservableObject {
         }
         guard let data = image.pngData() else { return }
 
-        let imageElement = ImageElement(imageData: data, canvasSize: project.canvasSize)
+        let imageElement = elementFactory.makeElement(imageData: data, canvasSize: project.canvasSize)
         imageElement.position = CGPoint(
             x: project.canvasSize.width / 2,
             y: project.canvasSize.height / 2
         )
+        if let frame {
+            imageElement.position = frame.origin
+            imageElement.size = frame.size
+        }
         if enhanced {
             imageElement.hasAppliedUpscale = true
         }

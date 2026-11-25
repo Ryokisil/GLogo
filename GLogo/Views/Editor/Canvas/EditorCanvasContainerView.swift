@@ -78,11 +78,8 @@ struct EditorCanvasContainerView: View {
                let selected = viewModel.selectedElement {
                 ElementSelectionView(
                     element: selected,
-                    onManipulationStarted: nil,
-                    onManipulationChanged: nil,
-                    onManipulationEnded: nil,
                     onMagnifyChanged: { scale in
-                        elementViewModel.applyGestureTransform(
+                        elementViewModel.transform.applyGestureTransform(
                             kind: .magnify,
                             translation: nil,
                             scale: scale,
@@ -91,7 +88,7 @@ struct EditorCanvasContainerView: View {
                         )
                     },
                     onMagnifyEnded: {
-                        elementViewModel.applyGestureTransform(
+                        elementViewModel.transform.applyGestureTransform(
                             kind: .magnify,
                             translation: nil,
                             scale: nil,
@@ -100,7 +97,7 @@ struct EditorCanvasContainerView: View {
                         )
                     },
                     onRotateGestureChanged: { angle in
-                        elementViewModel.applyGestureTransform(
+                        elementViewModel.transform.applyGestureTransform(
                             kind: .rotate,
                             translation: nil,
                             scale: nil,
@@ -109,7 +106,7 @@ struct EditorCanvasContainerView: View {
                         )
                     },
                     onRotateGestureEnded: {
-                        elementViewModel.applyGestureTransform(
+                        elementViewModel.transform.applyGestureTransform(
                             kind: .rotate,
                             translation: nil,
                             scale: nil,
@@ -118,19 +115,20 @@ struct EditorCanvasContainerView: View {
                         )
                     },
                     onResetRotation: {
-                        elementViewModel.resetRotation()
+                        elementViewModel.transform.resetRotation()
                     },
-                    onMoveChanged: { translation in
-                        elementViewModel.applyGestureTransform(
+                    onMoveChanged: { translation, start in
+                        elementViewModel.transform.applyGestureTransform(
                             kind: .move,
                             translation: translation,
                             scale: nil,
                             rotation: nil,
+                            moveStart: start,
                             ended: false
                         )
                     },
                     onMoveEnded: {
-                        elementViewModel.applyGestureTransform(
+                        elementViewModel.transform.applyGestureTransform(
                             kind: .move,
                             translation: nil,
                             scale: nil,
@@ -154,6 +152,10 @@ struct EditorCanvasContainerView: View {
                         }
                     }
                 )
+                // 選択枠が消えると、操作中のジェスチャーは終了通知なしで消える。表示していた要素の ID で終了を伝える。
+                .onDisappear { [selectedID = selected.id] in
+                    elementViewModel.transform.endGesturesForRemovedOverlay(showing: selectedID)
+                }
             }
 
             if viewModel.isEditingText,

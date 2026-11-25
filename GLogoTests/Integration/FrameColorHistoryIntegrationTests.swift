@@ -33,7 +33,7 @@ final class FrameColorHistoryIntegrationTests: XCTestCase {
         let imageData = try XCTUnwrap(image.pngData())
 
         let project = LogoProject(name: "FrameColorHistory", canvasSize: CGSize(width: 1080, height: 1080))
-        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         project.addElement(imageElement)
 
         let editorViewModel = EditorViewModel(project: project)
@@ -54,14 +54,14 @@ final class FrameColorHistoryIntegrationTests: XCTestCase {
         let initialHistoryCount = editorViewModel.getHistoryDescriptions().count
         let originalHex = imageElement.frameColor.rgbaHexString
 
-        elementViewModel.beginFrameColorEditing()
-        elementViewModel.previewFrameColor(imageElement.frameColor.withAlphaComponent(0.42))
-        elementViewModel.previewFrameColor(imageElement.frameColor.withAlphaComponent(0.28))
+        elementViewModel.imageFrame.beginFrameColorEditing()
+        elementViewModel.imageFrame.previewFrameColor(imageElement.frameColor.withAlphaComponent(0.42))
+        elementViewModel.imageFrame.previewFrameColor(imageElement.frameColor.withAlphaComponent(0.28))
 
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount)
         XCTAssertEqual(imageElement.frameColor.cgColor.alpha, 0.28, accuracy: 0.0001)
 
-        elementViewModel.commitFrameColorEditing()
+        elementViewModel.imageFrame.commitFrameColorEditing()
 
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount + 1)
         XCTAssertEqual(imageElement.frameColor.cgColor.alpha, 0.28, accuracy: 0.0001)
@@ -80,9 +80,9 @@ final class FrameColorHistoryIntegrationTests: XCTestCase {
         let initialHistoryCount = editorViewModel.getHistoryDescriptions().count
         let originalHex = imageElement.frameColor.rgbaHexString
 
-        elementViewModel.beginFrameColorEditing()
-        elementViewModel.previewFrameColor(imageElement.frameColor)
-        elementViewModel.commitFrameColorEditing()
+        elementViewModel.imageFrame.beginFrameColorEditing()
+        elementViewModel.imageFrame.previewFrameColor(imageElement.frameColor)
+        elementViewModel.imageFrame.commitFrameColorEditing()
 
         XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, initialHistoryCount)
         XCTAssertEqual(imageElement.frameColor.rgbaHexString, originalHex)

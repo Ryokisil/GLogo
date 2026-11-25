@@ -46,11 +46,13 @@ struct EditorTopBarView: View {
                 .disabled(!viewModel.canUndo)
                 .keyboardShortcut("z", modifiers: .command)
                 .help("editor.help.undo")
+                .accessibilityIdentifier("editor.topBar.undoButton")
 
                 Button(action: { viewModel.redo() }) {
                     Image(systemName: "arrow.uturn.forward")
                 }
                 .disabled(!viewModel.canRedo)
+                .accessibilityIdentifier("editor.topBar.redoButton")
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .help("editor.help.redo")
             }

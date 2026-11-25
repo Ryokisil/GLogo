@@ -17,7 +17,7 @@ private enum SDRFilterSection: Hashable {
 }
 
 struct FiltersPanelSDRView: View {
-    @ObservedObject var viewModel: ElementViewModel
+    @ObservedObject var viewModel: FilterPanelViewModel
 
     /// セクション選択（デフォルト = All）
     @State private var selectedSection: SDRFilterSection = .all

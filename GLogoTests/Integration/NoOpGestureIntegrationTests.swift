@@ -21,7 +21,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
     func testNoOpMoveGesture_DoesNotMarkProjectModified() throws {
         let project = LogoProject(name: "noop-gesture", canvasSize: CGSize(width: 1080, height: 1920))
         let imageData = try XCTUnwrap(makeSolidImage(color: .systemTeal, size: CGSize(width: 64, height: 64)).pngData())
-        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         project.addElement(imageElement)
 
         let editorViewModel = EditorViewModel(project: project)
@@ -34,14 +34,14 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         XCTAssertFalse(editorViewModel.isProjectModified, "初期状態では未変更であるべき")
 
         // タップ誤検知相当（translationがゼロ）
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .move,
             translation: .zero,
             scale: nil,
             rotation: nil,
             ended: false
         )
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .move,
             translation: nil,
             scale: nil,
@@ -52,33 +52,6 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         XCTAssertFalse(
             editorViewModel.isProjectModified,
             "ゼロ移動ジェスチャーで変更フラグが立つべきではない"
-        )
-    }
-
-    /// ドラッグ中プレビュー経路が編集差分に依存しないことを検証
-    /// - Parameters: なし
-    /// - Returns: なし
-    func testManipulationPreviewSwitching_DoesNotDependOnEditState() throws {
-        let imageData = try XCTUnwrap(makeSolidImage(color: .systemBlue, size: CGSize(width: 32, height: 32)).pngData())
-        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
-
-        XCTAssertTrue(
-            imageElement.shouldUseInstantPreviewForManipulation,
-            "デフォルト状態は即時プレビュー経路を利用するべき"
-        )
-
-        imageElement.saturationAdjustment = 1.2
-        XCTAssertTrue(
-            imageElement.shouldUseInstantPreviewForManipulation,
-            "手動調整差分があっても manipulation 中は即時プレビュー経路を維持するべき"
-        )
-
-        imageElement.appliedFilterRecipe = FilterCatalog.noir.recipe
-        imageElement.appliedFilterPresetId = FilterCatalog.noir.id
-
-        XCTAssertTrue(
-            imageElement.shouldUseInstantPreviewForManipulation,
-            "フィルタープリセット差分があっても manipulation 中は即時プレビュー経路を維持するべき"
         )
     }
 
@@ -104,7 +77,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
     func testRotationGesture_DoesNotReanchorAfterInterleavedEndedEvent() throws {
         let project = LogoProject(name: "rotation-ended-interleave", canvasSize: CGSize(width: 1080, height: 1920))
         let imageData = try XCTUnwrap(makeSolidImage(color: .systemOrange, size: CGSize(width: 64, height: 64)).pngData())
-        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         project.addElement(imageElement)
 
         let editorViewModel = EditorViewModel(project: project)
@@ -113,7 +86,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         editorViewModel.selectElement(imageElement)
         waitForSelectionPropagation()
 
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .rotate,
             translation: nil,
             scale: nil,
@@ -123,7 +96,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
 
         XCTAssertEqual(imageElement.rotation, 0.25, accuracy: 0.0001, "最初の回転差分はそのまま反映されるべき")
 
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .magnify,
             translation: nil,
             scale: 1.05,
@@ -132,7 +105,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         )
 
         // ピンチ終了など、回転以外のジェスチャー終了イベントが先に飛ぶケースを模擬する。
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .magnify,
             translation: nil,
             scale: nil,
@@ -141,7 +114,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         )
 
         // RotationGesture が累積角度を返し続ける前提では、次の onChanged でも 0.5rad のまま反映されるべき。
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .rotate,
             translation: nil,
             scale: nil,
@@ -157,7 +130,8 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         )
     }
 
-    /// 選択要素を切り替えた際に、前要素の回転ジェスチャー基準が次要素へ漏れないことを検証
+    /// 選択要素を切り替えた際に、前要素の回転ジェスチャー基準が次要素へ漏れないことを検証。
+    /// 切り替え前の回転は前要素の履歴1件として確定し、続きの通知は終了まで次要素へ適用しない（第11回で変更）。
     /// - Parameters: なし
     /// - Returns: なし
     @MainActor
@@ -165,8 +139,8 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         let project = LogoProject(name: "rotation-selection-switch", canvasSize: CGSize(width: 1080, height: 1920))
         let firstImageData = try XCTUnwrap(makeSolidImage(color: .systemPink, size: CGSize(width: 64, height: 64)).pngData())
         let secondImageData = try XCTUnwrap(makeSolidImage(color: .systemIndigo, size: CGSize(width: 64, height: 64)).pngData())
-        let firstElement = ImageElement(imageData: firstImageData, importOrder: 0)
-        let secondElement = ImageElement(imageData: secondImageData, importOrder: 1)
+        let firstElement = ImageElementFactory().makeElement(imageData: firstImageData, importOrder: 0)
+        let secondElement = ImageElementFactory().makeElement(imageData: secondImageData, importOrder: 1)
         secondElement.rotation = 1.0
         project.addElement(firstElement)
         project.addElement(secondElement)
@@ -177,7 +151,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         editorViewModel.selectElement(firstElement)
         waitForSelectionPropagation()
 
-        elementViewModel.applyGestureTransform(
+        elementViewModel.transform.applyGestureTransform(
             kind: .rotate,
             translation: nil,
             scale: nil,
@@ -190,7 +164,26 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         editorViewModel.selectElement(secondElement)
         waitForSelectionPropagation()
 
-        elementViewModel.applyGestureTransform(
+        XCTAssertEqual(editorViewModel.getHistoryDescriptions().count, 1, "切り替え前の回転は前要素の履歴1件になるべき")
+
+        // 切り替え前から続く回転の通知（終了通知の前）は、次要素へ適用しない
+        elementViewModel.transform.applyGestureTransform(
+            kind: .rotate,
+            translation: nil,
+            scale: nil,
+            rotation: 0.2,
+            ended: false
+        )
+        XCTAssertEqual(secondElement.rotation, 1.0, accuracy: 0.0001, "古い操作の続きは次要素へ適用されるべきではない")
+
+        elementViewModel.transform.applyGestureTransform(
+            kind: .rotate,
+            translation: nil,
+            scale: nil,
+            rotation: nil,
+            ended: true
+        )
+        elementViewModel.transform.applyGestureTransform(
             kind: .rotate,
             translation: nil,
             scale: nil,
@@ -204,6 +197,17 @@ final class NoOpGestureIntegrationTests: XCTestCase {
             accuracy: 0.0001,
             "選択切り替え後は次要素の回転値を基準にジェスチャーを開始するべき"
         )
+
+        elementViewModel.transform.applyGestureTransform(
+            kind: .rotate,
+            translation: nil,
+            scale: nil,
+            rotation: nil,
+            ended: true
+        )
+        editorViewModel.undo()
+        editorViewModel.undo()
+        XCTAssertEqual(firstElement.rotation, 0, accuracy: 0.0001, "前要素の回転は、確定した1件で戻るべき")
     }
 
     /// ダブルタップで回転だけが0度に戻り、Undo/Redo で往復できることを検証
@@ -213,7 +217,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
     func testResetRotation_UsesHistoryAndKeepsLayout() throws {
         let project = LogoProject(name: "reset-rotation", canvasSize: CGSize(width: 1080, height: 1920))
         let imageData = try XCTUnwrap(makeSolidImage(color: .systemGreen, size: CGSize(width: 64, height: 64)).pngData())
-        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         imageElement.position = CGPoint(x: 240, y: 360)
         imageElement.size = CGSize(width: 180, height: 120)
         imageElement.rotation = 0.75
@@ -226,7 +230,7 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         editorViewModel.selectElement(imageElement)
         waitForSelectionPropagation()
 
-        elementViewModel.resetRotation()
+        elementViewModel.transform.resetRotation()
 
         XCTAssertEqual(imageElement.rotation, 0, accuracy: 0.0001, "rotation だけが 0 度に戻るべき")
         XCTAssertEqual(imageElement.position, CGPoint(x: 240, y: 360), "position は維持されるべき")
@@ -248,8 +252,8 @@ final class NoOpGestureIntegrationTests: XCTestCase {
     func testResetRotation_IgnoresZeroAndLockedElement() throws {
         let project = LogoProject(name: "reset-rotation-noop", canvasSize: CGSize(width: 1080, height: 1920))
         let imageData = try XCTUnwrap(makeSolidImage(color: .systemRed, size: CGSize(width: 64, height: 64)).pngData())
-        let unlockedElement = ImageElement(imageData: imageData, importOrder: 0)
-        let lockedElement = ImageElement(imageData: imageData, importOrder: 1)
+        let unlockedElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
+        let lockedElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 1)
         lockedElement.rotation = 0.4
         lockedElement.isLocked = true
         project.addElement(unlockedElement)
@@ -261,14 +265,14 @@ final class NoOpGestureIntegrationTests: XCTestCase {
         editorViewModel.selectElement(unlockedElement)
         waitForSelectionPropagation()
 
-        elementViewModel.resetRotation()
+        elementViewModel.transform.resetRotation()
         XCTAssertEqual(unlockedElement.rotation, 0, accuracy: 0.0001, "rotation が 0 なら何も起きないべき")
         XCTAssertFalse(editorViewModel.canUndo, "履歴は追加されないべき")
 
         editorViewModel.selectElement(lockedElement)
         waitForSelectionPropagation()
 
-        elementViewModel.resetRotation()
+        elementViewModel.transform.resetRotation()
 
         XCTAssertEqual(lockedElement.rotation, 0.4, accuracy: 0.0001, "ロック要素は変更されるべきではない")
         XCTAssertFalse(editorViewModel.canUndo, "ロック要素でも履歴は追加されないべき")

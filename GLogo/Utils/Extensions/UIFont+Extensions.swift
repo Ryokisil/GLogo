@@ -1,6 +1,5 @@
 //
 //  UIFont+Extensions.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはUIFontクラスの拡張を提供します。

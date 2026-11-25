@@ -77,7 +77,7 @@ private enum EffectsCategory: String, CaseIterable, Identifiable {
 }
 
 struct EffectsPanelView: View {
-    @ObservedObject var viewModel: ElementViewModel
+    @ObservedObject var viewModel: ImageAdjustmentViewModel
     let onClose: () -> Void
 
     @State private var selectedControl: EffectsControl = .vignette

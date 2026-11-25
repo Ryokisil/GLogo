@@ -83,6 +83,33 @@ final class EditorPanelUITests: XCTestCase {
         XCTAssertEqual(result, .completed, "スタイル選択後にRemoveボタンが有効になるべき")
     }
 
+    /// フレームの数値変更と削除後の操作抑止が同じパネルへ反映される。
+    @MainActor
+    func test_frameWidth_slider_updatesValue() throws {
+        launchApp(fixture: "selectedImage")
+        let frameButton = app.buttons["editor.bottomTool.frame"]
+        XCTAssertTrue(frameButton.waitForExistence(timeout: 5))
+        frameButton.tap()
+        let simpleStyle = app.buttons["editor.frameStyle.simple"]
+        XCTAssertTrue(simpleStyle.waitForExistence(timeout: 3))
+        simpleStyle.tap()
+
+        let value = app.staticTexts["editor.framePanel.widthValue"]
+        XCTAssertTrue(value.waitForExistence(timeout: 3))
+        let initialValue = value.label
+        let slider = app.sliders["editor.framePanel.widthSlider"]
+        XCTAssertTrue(slider.waitForExistence(timeout: 3))
+        XCTAssertTrue(slider.isEnabled)
+        slider.adjust(toNormalizedSliderPosition: 0.7)
+        let changed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label != %@", initialValue), object: value
+        )
+        XCTAssertEqual(XCTWaiter().wait(for: [changed], timeout: 3), .completed)
+
+        app.buttons["editor.framePanel.removeButton"].tap()
+        XCTAssertFalse(slider.isEnabled)
+    }
+
     // MARK: - AI Tools パネルテスト
 
     /// AI Tools パネルの Enhance タブが画像選択時に表示される
@@ -130,6 +157,58 @@ final class EditorPanelUITests: XCTestCase {
         XCTAssertFalse(enhanceButton.isEnabled, "高画質化済みではEnhanceボタンが無効化されるべき")
     }
 
+    /// AI Tools から手動背景除去の画面を開き、キャンセルで戻ったあと開き直せる
+    @MainActor
+    func testEditor_ManualRemovalScreen_OpensAndCancels() throws {
+        launchApp(fixture: "selectedImage")
+        assertScreenOpensAndCancels(
+            tab: "backgroundRemoval",
+            openButtonID: "editor.aiTools.manualEditButton",
+            cancelButtonID: "editor.manualRemoval.cancelButton"
+        )
+    }
+
+    /// AI Tools から背景ぼかしマスクの画面を開き、キャンセルで戻ったあと開き直せる
+    @MainActor
+    func testEditor_BlurMaskScreen_OpensAndCancels() throws {
+        launchApp(fixture: "selectedImage")
+        assertScreenOpensAndCancels(
+            tab: "backgroundBlur",
+            openButtonID: "editor.aiTools.editMaskButton",
+            cancelButtonID: "editor.blurMaskEdit.cancelButton"
+        )
+    }
+
+    /// 編集画面を2回開いて閉じる。画面ごとの依存は開くたびに作られるため、開き直しも確認する。
+    @MainActor
+    private func assertScreenOpensAndCancels(tab: String, openButtonID: String, cancelButtonID: String) {
+        for attempt in 1...2 {
+            let openButton = app.buttons[openButtonID]
+            if !openButton.exists {
+                openAIToolsTab(tab)
+            }
+            XCTAssertTrue(openButton.waitForExistence(timeout: 3), "\(attempt)回目: 開くボタンが表示されるべき")
+            openButton.tap()
+
+            let cancelButton = app.buttons[cancelButtonID]
+            XCTAssertTrue(cancelButton.waitForExistence(timeout: 5), "\(attempt)回目: 編集画面が開くべき")
+            cancelButton.tap()
+            XCTAssertTrue(cancelButton.waitForNonExistence(timeout: 5), "\(attempt)回目: キャンセルで編集画面を閉じるべき")
+        }
+    }
+
+    /// AI Tools パネルを開き、指定したタブへ切り替える
+    @MainActor
+    private func openAIToolsTab(_ tab: String) {
+        let aiToolButton = app.buttons["editor.bottomTool.magicStudio"]
+        XCTAssertTrue(aiToolButton.waitForExistence(timeout: 5))
+        aiToolButton.tap()
+
+        let tabButton = app.buttons["editor.aiToolsTab.\(tab)"]
+        XCTAssertTrue(tabButton.waitForExistence(timeout: 3), "\(tab) タブが表示されるべき")
+        tabButton.tap()
+    }
+
     // MARK: - Text パネルテスト
 
     /// Text ツールタップ後に主要タブが表示される
@@ -153,6 +232,32 @@ final class EditorPanelUITests: XCTestCase {
 
         let colorTab = app.buttons["editor.textTab.color"]
         XCTAssertTrue(colorTab.exists, "Colorタブが表示されるべき")
+    }
+
+    /// 分離したテキスト ViewModel の変更が、同じパネルの値表示へ反映される。
+    @MainActor
+    func test_textSize_slider_updatesValue() throws {
+        launchApp()
+        let textTool = app.buttons["editor.bottomTool.select"]
+        XCTAssertTrue(textTool.waitForExistence(timeout: 5))
+        textTool.tap()
+
+        let sizeTab = app.buttons["editor.textTab.size"]
+        XCTAssertTrue(sizeTab.waitForExistence(timeout: 3))
+        sizeTab.tap()
+
+        let value = app.staticTexts["editor.textPanel.fontSizeValue"]
+        XCTAssertTrue(value.waitForExistence(timeout: 3))
+        let initialValue = value.label
+        let slider = app.sliders["editor.textPanel.fontSizeSlider"]
+        XCTAssertTrue(slider.waitForExistence(timeout: 3))
+        slider.adjust(toNormalizedSliderPosition: 0.6)
+
+        let changed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label != %@", initialValue),
+            object: value
+        )
+        XCTAssertEqual(XCTWaiter().wait(for: [changed], timeout: 3), .completed)
     }
 
     // MARK: - Adjust パネルテスト
@@ -350,18 +455,21 @@ final class EditorPanelUITests: XCTestCase {
         XCTAssertTrue(resetButton.exists, "リセットボタンが表示されるべき")
         XCTAssertFalse(resetButton.isEnabled, "初期状態ではリセットボタンが無効であるべき")
 
-        // original 以外のプリセットをタップ（original は初期状態と同じため reset が有効にならない）
-        let presetCards = app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH 'editor.filterPreset.' AND identifier != 'editor.filterPreset.original'")
-        )
-        let presetCard = presetCards.firstMatch
+        // 接頭辞検索では original.favorite も一致するため、適用ボタンを一意に指定する。
+        let presetCard = app.buttons["editor.filterPreset.natural"]
         XCTAssertTrue(presetCard.waitForExistence(timeout: 5), "プリセットカードが表示されるべき")
-        presetCard.tap()
+        // 右上の40ptのお気に入り領域がカード中央にも重なるため、カード本体の左下を押す。
+        presetCard.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.75)).tap()
 
         // reset が有効になる
         let resetEnabled = NSPredicate(format: "isEnabled == true")
         let expectation = XCTNSPredicateExpectation(predicate: resetEnabled, object: resetButton)
         let result = XCTWaiter().wait(for: [expectation], timeout: 3)
         XCTAssertEqual(result, .completed, "プリセット選択後にリセットボタンが有効になるべき")
+        resetButton.tap()
+        let resetDisabled = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "isEnabled == false"), object: resetButton
+        )
+        XCTAssertEqual(XCTWaiter().wait(for: [resetDisabled], timeout: 3), .completed)
     }
 }

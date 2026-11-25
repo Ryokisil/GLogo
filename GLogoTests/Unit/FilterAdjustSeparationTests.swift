@@ -12,88 +12,107 @@ import UIKit
 
 /// Filter と Adjust の分離仕様を検証するテスト
 final class FilterAdjustSeparationTests: XCTestCase {
-    /// ImagePreviewServiceの委譲先検証用スパイ
-    private final class PreviewServiceSpy: ImagePreviewing {
-        var generatePreviewImageCallCount = 0
-        var instantPreviewCallCount = 0
-        var applyFiltersCallCount = 0
-        var applyFiltersAsyncCallCount = 0
-        var resetCacheCallCount = 0
-        var lastMode: ImageRenderMode?
+    /// 非同期描画からも呼ばれるため、観測値と応答キューはロック下で扱う。
+    private final class PreviewServiceSpy: ImagePreviewing, @unchecked Sendable {
+        private struct State {
+            var generatePreviewImageCallCount: Int = 0
+            var instantPreviewCallCount: Int = 0
+            var applyFiltersCallCount: Int = 0
+            var applyFiltersAsyncCallCount: Int = 0
+            var resetCacheCallCount: Int = 0
+            var lastMode: ImageRenderMode? = nil
+            var nextImage: UIImage? = nil
+            var queuedAsyncImages: [UIImage] = []
+            var asyncDelayNanoseconds: UInt64 = 0
+        }
+        private let lock = NSLock()
+        private var state = State()
 
-        var nextImage: UIImage?
-        var queuedAsyncImages: [UIImage] = []
-        var asyncDelayNanoseconds: UInt64 = 0
-
-        func generatePreviewImage(
-            editingImage: UIImage?,
-            originalImage: UIImage?,
-            mode: ImageRenderMode
-        ) -> UIImage? {
-            _ = editingImage
-            _ = originalImage
-            generatePreviewImageCallCount += 1
-            lastMode = mode
-            return nextImage
+        var generatePreviewImageCallCount: Int {
+            get { lock.withLock { state.generatePreviewImageCallCount } }
+        }
+        var instantPreviewCallCount: Int {
+            get { lock.withLock { state.instantPreviewCallCount } }
+        }
+        var applyFiltersCallCount: Int {
+            get { lock.withLock { state.applyFiltersCallCount } }
+        }
+        var applyFiltersAsyncCallCount: Int {
+            get { lock.withLock { state.applyFiltersAsyncCallCount } }
+        }
+        var resetCacheCallCount: Int {
+            get { lock.withLock { state.resetCacheCallCount } }
+        }
+        var lastMode: ImageRenderMode? {
+            get { lock.withLock { state.lastMode } }
+        }
+        var nextImage: UIImage? {
+            get { lock.withLock { state.nextImage } }
+            set { lock.withLock { state.nextImage = newValue } }
+        }
+        var queuedAsyncImages: [UIImage] {
+            get { lock.withLock { state.queuedAsyncImages } }
+            set { lock.withLock { state.queuedAsyncImages = newValue } }
+        }
+        var asyncDelayNanoseconds: UInt64 {
+            get { lock.withLock { state.asyncDelayNanoseconds } }
+            set { lock.withLock { state.asyncDelayNanoseconds = newValue } }
         }
 
-        func instantPreview(
-            baseImage: UIImage?,
-            params: ImageFilterParams,
-            quality: ToneCurveFilter.Quality,
-            mode: ImageRenderMode
-        ) -> UIImage? {
-            _ = baseImage
-            _ = params
-            _ = quality
-            instantPreviewCallCount += 1
-            lastMode = mode
-            return nextImage
-        }
-
-        func applyFilters(
-            to image: UIImage,
-            params: ImageFilterParams,
-            quality: ToneCurveFilter.Quality,
-            mode: ImageRenderMode
-        ) -> UIImage? {
-            _ = image
-            _ = params
-            _ = quality
-            applyFiltersCallCount += 1
-            lastMode = mode
-            return nextImage
-        }
-
-        func applyFiltersAsync(
-            to image: UIImage,
-            params: ImageFilterParams,
-            quality: ToneCurveFilter.Quality,
-            mode: ImageRenderMode
-        ) async -> UIImage? {
-            _ = image
-            _ = params
-            _ = quality
-            applyFiltersAsyncCallCount += 1
-            lastMode = mode
-            if asyncDelayNanoseconds > 0 {
-                try? await Task.sleep(nanoseconds: asyncDelayNanoseconds)
+        func generatePreviewImage(editingImage: UIImage?, originalImage: UIImage?, mode: ImageRenderMode) -> UIImage? {
+            lock.withLock {
+                state.generatePreviewImageCallCount += 1
+                state.lastMode = mode
+                return state.nextImage
             }
-            if !queuedAsyncImages.isEmpty {
-                return queuedAsyncImages.removeFirst()
+        }
+
+        func instantPreview(baseImage: UIImage?, params: ImageFilterParams,
+                            quality: ToneCurveFilter.Quality, mode: ImageRenderMode) -> UIImage? {
+            lock.withLock {
+                state.instantPreviewCallCount += 1
+                state.lastMode = mode
+                return state.nextImage
             }
-            return nextImage
+        }
+
+        func applyFilters(to image: UIImage, params: ImageFilterParams,
+                          quality: ToneCurveFilter.Quality, mode: ImageRenderMode) -> UIImage? {
+            lock.withLock {
+                state.applyFiltersCallCount += 1
+                state.lastMode = mode
+                return state.nextImage
+            }
+        }
+
+        func applyFiltersAsync(to image: UIImage, params: ImageFilterParams,
+                               quality: ToneCurveFilter.Quality, mode: ImageRenderMode) async -> UIImage? {
+            let delay = lock.withLock {
+                state.applyFiltersAsyncCallCount += 1
+                state.lastMode = mode
+                return state.asyncDelayNanoseconds
+            }
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: delay)
+            }
+            // 従来どおり、完了順に応答キューを取り出す。
+            return lock.withLock {
+                if !state.queuedAsyncImages.isEmpty {
+                    return state.queuedAsyncImages.removeFirst()
+                }
+                return state.nextImage
+            }
         }
 
         func resetCache() {
-            resetCacheCallCount += 1
+            lock.withLock { state.resetCacheCallCount += 1 }
         }
     }
 
     /// テスト用プロジェクトと画像要素を作成する
     /// - Parameters: なし
     /// - Returns: LogoProject と ImageElement のタプル
-    private func makeProjectWithImageElement() -> (LogoProject, ImageElement) {
+    private func makeProjectWithImageElement(previewService: any ImagePreviewing = ImagePreviewService.shared) -> (LogoProject, ImageElement) {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8))
         let image = renderer.image { context in
             UIColor.systemRed.setFill()
@@ -101,7 +120,7 @@ final class FilterAdjustSeparationTests: XCTestCase {
         }
 
         let project = LogoProject(name: "FilterAdjust分離テスト", canvasSize: CGSize(width: 300, height: 300))
-        let element = ImageElement(imageData: image.pngData() ?? Data(), importOrder: 0)
+        let element = ImageElementFactory(previewService: previewService).makeElement(imageData: image.pngData() ?? Data(), importOrder: 0)
         project.addElement(element)
         return (project, element)
     }
@@ -178,13 +197,13 @@ final class FilterAdjustSeparationTests: XCTestCase {
         editorViewModel.selectElement(element)
         flushMainRunLoop()
 
-        elementViewModel.beginImageAdjustmentEditing(.contrast)
-        elementViewModel.updateImageAdjustment(.contrast, value: 1.30)
-        elementViewModel.commitImageAdjustmentEditing(.contrast)
+        elementViewModel.imageAdjustment.beginImageAdjustmentEditing(.contrast)
+        elementViewModel.imageAdjustment.updateImageAdjustment(.contrast, value: 1.30)
+        elementViewModel.imageAdjustment.commitImageAdjustmentEditing(.contrast)
         let manualContrast = element.contrastAdjustment
         let historyCountBefore = editorViewModel.getHistoryDescriptions().count
 
-        elementViewModel.applyFilterPreset(FilterCatalog.vintageWarm)
+        elementViewModel.filters.applyFilterPreset(FilterCatalog.vintageWarm)
 
         XCTAssertEqual(element.contrastAdjustment, manualContrast, accuracy: 0.0001)
         XCTAssertEqual(element.appliedFilterPresetId, FilterCatalog.vintageWarm.id)
@@ -202,13 +221,13 @@ final class FilterAdjustSeparationTests: XCTestCase {
         editorViewModel.selectElement(element)
         flushMainRunLoop()
 
-        elementViewModel.beginImageAdjustmentEditing(.brightness)
-        elementViewModel.updateImageAdjustment(.brightness, value: 0.20)
-        elementViewModel.commitImageAdjustmentEditing(.brightness)
+        elementViewModel.imageAdjustment.beginImageAdjustmentEditing(.brightness)
+        elementViewModel.imageAdjustment.updateImageAdjustment(.brightness, value: 0.20)
+        elementViewModel.imageAdjustment.commitImageAdjustmentEditing(.brightness)
         let manualBrightness = element.brightnessAdjustment
 
-        elementViewModel.applyFilterPreset(FilterCatalog.vintageWarm)
-        elementViewModel.resetFilterPresets()
+        elementViewModel.filters.applyFilterPreset(FilterCatalog.vintageWarm)
+        elementViewModel.filters.resetFilterPresets()
 
         XCTAssertEqual(element.brightnessAdjustment, manualBrightness, accuracy: 0.0001)
         XCTAssertNil(element.appliedFilterRecipe)
@@ -225,12 +244,12 @@ final class FilterAdjustSeparationTests: XCTestCase {
         editorViewModel.selectElement(element)
         flushMainRunLoop()
 
-        elementViewModel.beginImageAdjustmentEditing(.hue)
-        elementViewModel.updateImageAdjustment(.hue, value: 24.0)
-        elementViewModel.commitImageAdjustmentEditing(.hue)
+        elementViewModel.imageAdjustment.beginImageAdjustmentEditing(.hue)
+        elementViewModel.imageAdjustment.updateImageAdjustment(.hue, value: 24.0)
+        elementViewModel.imageAdjustment.commitImageAdjustmentEditing(.hue)
         let manualHue = element.hueAdjustment
 
-        elementViewModel.applyFilterPreset(FilterCatalog.crisp)
+        elementViewModel.filters.applyFilterPreset(FilterCatalog.crisp)
         XCTAssertEqual(element.appliedFilterPresetId, FilterCatalog.crisp.id)
 
         editorViewModel.undo()
@@ -272,10 +291,10 @@ final class FilterAdjustSeparationTests: XCTestCase {
         editorViewModel.selectElement(element)
         flushMainRunLoop()
 
-        elementViewModel.applyFilterPreset(FilterCatalog.noir)
+        elementViewModel.filters.applyFilterPreset(FilterCatalog.noir)
         let historyCountAfterFirstApply = editorViewModel.getHistoryDescriptions().count
 
-        elementViewModel.applyFilterPreset(FilterCatalog.noir)
+        elementViewModel.filters.applyFilterPreset(FilterCatalog.noir)
         let historyCountAfterSecondApply = editorViewModel.getHistoryDescriptions().count
 
         XCTAssertEqual(historyCountAfterSecondApply, historyCountAfterFirstApply)
@@ -284,28 +303,25 @@ final class FilterAdjustSeparationTests: XCTestCase {
     /// プリセット適用時は即時プレビューを先に表示し、後段で async 高品質反映することを確認
     @MainActor
     func testApplyFilterPreset_UsesInstantPreviewBeforeAsyncFullQualityRefresh() {
-        let originalService = ImageElement.previewService
         let spy = PreviewServiceSpy()
         spy.nextImage = makeSolidImage(color: .systemBlue)
-        ImageElement.previewService = spy
-        defer { ImageElement.previewService = originalService }
 
-        let (project, element) = makeProjectWithImageElement()
+        let (project, element) = makeProjectWithImageElement(previewService: spy)
         let editorViewModel = EditorViewModel(project: project)
         let elementViewModel = ElementViewModel(editorViewModel: editorViewModel)
 
         editorViewModel.selectElement(element)
         flushMainRunLoop()
 
-        elementViewModel.applyFilterPreset(FilterCatalog.noir)
-        _ = element.image
+        elementViewModel.filters.applyFilterPreset(FilterCatalog.noir)
+        _ = editorViewModel.sessionStore.displayImage(of: element)
 
         XCTAssertEqual(spy.generatePreviewImageCallCount, 1)
         XCTAssertEqual(spy.instantPreviewCallCount, 1)
         XCTAssertEqual(spy.applyFiltersCallCount, 0)
         XCTAssertTrue(waitUntil(timeout: 1.0) { spy.applyFiltersAsyncCallCount == 1 })
 
-        _ = element.image
+        _ = editorViewModel.sessionStore.displayImage(of: element)
 
         XCTAssertEqual(spy.applyFiltersAsyncCallCount, 1)
         XCTAssertEqual(spy.applyFiltersCallCount, 0)
@@ -314,7 +330,6 @@ final class FilterAdjustSeparationTests: XCTestCase {
     /// 古い async 完了が新しいプリセット選択中プレビューを中断しないことを確認
     @MainActor
     func testApplyFilterPreset_DoesNotApplyStaleAsyncRefreshOverNewerSelection() {
-        let originalService = ImageElement.previewService
         let spy = PreviewServiceSpy()
         let previewImage = makeSolidImage(color: .systemBlue)
         let firstFullImage = makeSolidImage(color: .systemRed)
@@ -322,26 +337,24 @@ final class FilterAdjustSeparationTests: XCTestCase {
         spy.nextImage = previewImage
         spy.queuedAsyncImages = [firstFullImage, secondFullImage]
         spy.asyncDelayNanoseconds = 250_000_000
-        ImageElement.previewService = spy
-        defer { ImageElement.previewService = originalService }
 
-        let (project, element) = makeProjectWithImageElement()
+        let (project, element) = makeProjectWithImageElement(previewService: spy)
         let editorViewModel = EditorViewModel(project: project)
         let elementViewModel = ElementViewModel(editorViewModel: editorViewModel)
 
         editorViewModel.selectElement(element)
         flushMainRunLoop()
 
-        elementViewModel.applyFilterPreset(FilterCatalog.noir)
-        XCTAssertEqual(element.image?.pngData(), previewImage.pngData())
+        elementViewModel.filters.applyFilterPreset(FilterCatalog.noir)
+        XCTAssertEqual(editorViewModel.sessionStore.displayImage(of: element)?.pngData(), previewImage.pngData())
         XCTAssertTrue(waitUntil(timeout: 0.3) { spy.applyFiltersAsyncCallCount == 1 })
 
-        elementViewModel.applyFilterPreset(FilterCatalog.crisp)
-        XCTAssertEqual(element.image?.pngData(), previewImage.pngData())
+        elementViewModel.filters.applyFilterPreset(FilterCatalog.crisp)
+        XCTAssertEqual(editorViewModel.sessionStore.displayImage(of: element)?.pngData(), previewImage.pngData())
 
         RunLoop.main.run(until: Date().addingTimeInterval(0.20))
         XCTAssertEqual(
-            element.image?.pngData(),
+            editorViewModel.sessionStore.displayImage(of: element)?.pngData(),
             previewImage.pngData(),
             "古い async 完了で新しいプリセット選択中のプレビューが終了しないこと"
         )
@@ -349,7 +362,7 @@ final class FilterAdjustSeparationTests: XCTestCase {
         XCTAssertTrue(waitUntil(timeout: 1.0) { spy.applyFiltersAsyncCallCount == 2 })
         RunLoop.main.run(until: Date().addingTimeInterval(0.30))
 
-        XCTAssertEqual(element.image?.pngData(), secondFullImage.pngData())
+        XCTAssertEqual(editorViewModel.sessionStore.displayImage(of: element)?.pngData(), secondFullImage.pngData())
     }
 
     /// プリセットIDからレンダリング経路が正しく判定されることを確認

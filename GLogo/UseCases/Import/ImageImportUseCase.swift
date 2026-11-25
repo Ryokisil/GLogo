@@ -11,7 +11,7 @@ struct ImageImportUseCase {
     private let placementCalculator: ImageImportPlacementCalculator
 
     init(
-        elementBuilder: ImageImportElementBuilder = ImageImportElementBuilder(),
+        elementBuilder: ImageImportElementBuilder,
         placementCalculator: ImageImportPlacementCalculator = ImageImportPlacementCalculator()
     ) {
         self.elementBuilder = elementBuilder

@@ -1,6 +1,5 @@
 //
 //  UIColor+Extensions.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはUIColorクラスの拡張を提供します。
@@ -42,11 +41,6 @@ extension UIColor {
         let blue = CGFloat(rgb & 0x0000FF) / 255.0
         
         self.init(red: red, green: green, blue: blue, alpha: alpha)
-    }
-    
-    /// HSB（色相、彩度、明度）値から色を作成
-    convenience init(hue: CGFloat, saturation: CGFloat, brightness: CGFloat, alpha: CGFloat = 1.0) {
-        self.init(hue: hue / 360.0, saturation: saturation, brightness: brightness, alpha: alpha)
     }
     
     // MARK: - プロパティ

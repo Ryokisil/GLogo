@@ -46,7 +46,7 @@ private enum TextPropertyTab: String, CaseIterable, Identifiable {
 // MARK: - TextPropertyPanelView
 
 struct TextPropertyPanelView: View {
-    @ObservedObject var viewModel: ElementViewModel
+    @ObservedObject var viewModel: TextEditingViewModel
     let onClose: () -> Void
     let onOpenTextEditor: () -> Void
     private let maxPanelHeight: CGFloat = 240
@@ -430,8 +430,10 @@ struct TextPropertyPanelView: View {
                         }
                     }
                 )
+                .accessibilityIdentifier("editor.textPanel.fontSizeSlider")
 
                 Text(verbatim: "\(Int(viewModel.textElement?.fontSize ?? 36))pt")
+                    .accessibilityIdentifier("editor.textPanel.fontSizeValue")
                     .font(.subheadline.monospacedDigit())
                     .frame(width: 52, alignment: .trailing)
                     .padding(.vertical, 8)

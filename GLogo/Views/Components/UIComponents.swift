@@ -1,6 +1,5 @@
 //
 //  UIComponents.swift
-//  GameLogoMaker
 //
 //  概要:
 //  再利用可能なUIコンポーネント

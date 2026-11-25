@@ -1,6 +1,5 @@
 //
 //  CropHandle.swift
-//  GameLogoMaker
 //
 //  概要:
 //  個別のクロップハンドルを表示するビュー

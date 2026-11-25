@@ -1,6 +1,5 @@
-//
+
 //  CanvasView.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルは画像編集用のキャンバスを実装するUIKitビューです。
@@ -17,48 +16,23 @@ import SwiftUI
 class CanvasView: UIView {
     // MARK: - プロパティ
     
-    /// プロジェクト参照
+    /// プロジェクト参照。同じインスタンスを設定し直したときも再描画を要求する。
+    /// 要素の変更は、updateUIView のたびの設定し直しで描画に反映されるため、同一判定で省かないこと。
     var project: LogoProject? {
         didSet {
             setNeedsDisplay()
         }
     }
     
-    /// 選択中の要素
-    var selectedElement: LogoElement? {
-        didSet {
-            setNeedsDisplay()
-        }
-    }
-    
     /// エディタモード
-    var editorMode: EditorMode = .select {
-        didSet {
-            updateCursor()
-        }
-    }
+    var editorMode: EditorMode = .select
     
     /// タッチ開始時のポイント
     private var touchStartPoint: CGPoint = .zero
-    
-    /// 操作中に品質を下げるかのフラグ（4K+画像対応）
-    var isReducingQualityDuringManipulation = false
-    
-    /// 4K超え解像度の閾値（8.3メガピクセル）
-    let highResolutionThreshold: CGFloat = 8300000
-    
+
     /// 要素を選択したときのコールバック
     var onElementSelected: (@MainActor (LogoElement?) -> Void)?
-    
-    /// 要素の操作を開始するときのコールバック
-    var onManipulationStarted: (@MainActor (ElementManipulationType, CGPoint) -> Void)?
-    
-    /// 要素の操作中のコールバック
-    var onManipulationChanged: (@MainActor (CGPoint) -> Void)?
-    
-    /// 要素の操作を終了するときのコールバック
-    var onManipulationEnded: (@MainActor () -> Void)?
-    
+
     /// 新しい要素を作成するときのコールバック
     var onCreateElement: (@MainActor (CGPoint) -> Void)?
     
@@ -67,24 +41,14 @@ class CanvasView: UIView {
 
     /// 編集中のテキスト要素のID
     var editingTextElementId: UUID?
-    
-    /// 表示用の変換行列（ズーム/パン撤廃に伴い恒等）
-    private var viewTransform: CGAffineTransform = .identity
-    
-    /// 操作ハンドルの半径
-    private let handleRadius: CGFloat = 10.0
-    
-    /// 選択ハンドルの色
-    private let handleColor: UIColor = .systemBlue
-    
-    /// 選択ボーダーの色
-    private let selectionBorderColor: UIColor = .systemBlue
-    
-    /// 選択ボーダーの幅
-    private let selectionBorderWidth: CGFloat = 2.0
-    
-    /// 選択ボーダーの破線パターン
-    private let selectionBorderPattern: [CGFloat] = [6, 3]
+
+    /// 画像要素の描く画像の受け取り先（エディタの管理役）。CanvasViewRepresentable が設定する。
+    /// 設定されるまでは要素を描かない（Model の描画へ戻すと、設定漏れに気づけないため）。
+    var renderSessions: (any ImageRenderSessionReading)?
+
+    /// 背景画像の取得先（エディタの依存）。CanvasViewRepresentable が設定する。
+    /// 描くたびに取得し、ファイルの更新を次の描画に出す（保存は受付で固定した画像を使う）。設定されるまでは背景画像を描かない。
+    var backgroundImages: (any BackgroundImageLoading)?
     
     /// グリッドのサイズ
     private let gridSize: CGFloat = 20.0
@@ -125,12 +89,7 @@ class CanvasView: UIView {
 
     override func draw(_ rect: CGRect) {
         guard let context = UIGraphicsGetCurrentContext() else { return }
-        
-        // 4K+画像の操作中品質低下の設定
-        if isReducingQualityDuringManipulation {
-            context.interpolationQuality = .low
-        }
-        
+
         // 背景の描画
         drawBackground(in: context)
         
@@ -139,8 +98,8 @@ class CanvasView: UIView {
             drawGrid(in: context)
         }
         
-        // プロジェクトが設定されていない場合は終了
-        guard let project = project else { return }
+        // プロジェクトと画像の受け取り先が設定されていない場合は終了
+        guard let project = project, let renderSessions = renderSessions else { return }
         
         // キャンバスの境界を描画
         drawCanvasBoundary(in: context, size: project.canvasSize)
@@ -150,8 +109,10 @@ class CanvasView: UIView {
         let canvasRect = CGRect(origin: .zero, size: project.canvasSize)
         context.clip(to: canvasRect)
         
-        // 背景設定の描画
-        project.backgroundSettings.draw(in: context, rect: canvasRect)
+        // 背景設定の描画（背景画像は、描くたびに取得する）
+        let background = project.backgroundSettings
+        let backgroundImage = background.imageNameToDraw.flatMap { backgroundImages?.loadBackgroundImage(named: $0) }
+        background.draw(in: context, rect: canvasRect, image: backgroundImage)
         
         // すべての要素を描画（編集中のテキスト要素は除く）
         // zIndexでソートしてから描画（小さい値から大きい値へ、奥から手前へ）
@@ -164,7 +125,7 @@ class CanvasView: UIView {
             if let editingId = editingTextElementId, element.id == editingId {
                 continue
             }
-            element.draw(in: context)
+            element.drawOnCanvas(in: context, renderSessions: renderSessions)
         }
         
         context.restoreGState()
@@ -226,110 +187,6 @@ class CanvasView: UIView {
         context.restoreGState()
     }
     
-    /// 選択ハンドルの描画
-    private func drawSelectionHandles(for element: LogoElement, in context: CGContext) {
-        context.saveGState()
-        
-        // 選択枠の描画
-        let frame = element.frame
-        context.setStrokeColor(selectionBorderColor.cgColor)
-        context.setLineWidth(selectionBorderWidth)
-        context.setLineDash(phase: 0, lengths: selectionBorderPattern)
-        context.stroke(frame)
-        
-        // 要素がロックされている場合は、ロックアイコンを描画して終了
-        if element.isLocked {
-            drawLockIcon(for: element, in: context)
-            context.restoreGState()
-            return
-        }
-        
-        // 操作ハンドルの描画
-        context.setLineDash(phase: 0, lengths: [])
-        
-        // 移動ハンドル（中央）
-        drawHandle(at: CGPoint(x: frame.midX, y: frame.midY), in: context)
-        
-        // リサイズハンドル（四隅と辺の中点）
-        drawHandle(at: CGPoint(x: frame.minX, y: frame.minY), in: context) // 左上
-        drawHandle(at: CGPoint(x: frame.maxX, y: frame.minY), in: context) // 右上
-        drawHandle(at: CGPoint(x: frame.minX, y: frame.maxY), in: context) // 左下
-        drawHandle(at: CGPoint(x: frame.maxX, y: frame.maxY), in: context) // 右下
-        
-        drawHandle(at: CGPoint(x: frame.midX, y: frame.minY), in: context) // 上中央
-        drawHandle(at: CGPoint(x: frame.midX, y: frame.maxY), in: context) // 下中央
-        drawHandle(at: CGPoint(x: frame.minX, y: frame.midY), in: context) // 左中央
-        drawHandle(at: CGPoint(x: frame.maxX, y: frame.midY), in: context) // 右中央
-        
-        // 回転ハンドル（上部中央から少し上）
-        let rotationHandlePosition = CGPoint(x: frame.midX, y: frame.minY - 30)
-        drawHandle(at: rotationHandlePosition, in: context)
-        
-        // 回転ハンドルへの線
-        context.setStrokeColor(selectionBorderColor.cgColor)
-        context.setLineWidth(1.0)
-        context.move(to: CGPoint(x: frame.midX, y: frame.minY))
-        context.addLine(to: rotationHandlePosition)
-        context.strokePath()
-        
-        context.restoreGState()
-    }
-    
-    /// ハンドルの描画
-    private func drawHandle(at point: CGPoint, in context: CGContext) {
-        // ハンドルの塗りつぶし
-        context.setFillColor(handleColor.cgColor)
-        let handleRect = CGRect(
-            x: point.x - handleRadius,
-            y: point.y - handleRadius,
-            width: handleRadius * 2,
-            height: handleRadius * 2
-        )
-        context.fillEllipse(in: handleRect)
-        
-        // ハンドルの枠線
-        context.setStrokeColor(UIColor.white.cgColor)
-        context.setLineWidth(1.0)
-        context.strokeEllipse(in: handleRect)
-    }
-    
-    /// ロックアイコンの描画
-    private func drawLockIcon(for element: LogoElement, in context: CGContext) {
-        // 鍵アイコンを描画（簡易的な実装）
-        let frame = element.frame
-        let iconSize: CGFloat = 20
-        let iconRect = CGRect(
-            x: frame.maxX - iconSize - 5,
-            y: frame.minY + 5,
-            width: iconSize,
-            height: iconSize
-        )
-        
-        // 鍵のボディ
-        context.setFillColor(UIColor.systemRed.withAlphaComponent(0.7).cgColor)
-        let bodyRect = CGRect(
-            x: iconRect.minX + 3,
-            y: iconRect.minY + 8,
-            width: iconRect.width - 6,
-            height: iconRect.height - 8
-        )
-        context.fill(bodyRect)
-        
-        // 鍵の弧
-        context.setStrokeColor(UIColor.systemRed.withAlphaComponent(0.7).cgColor)
-        context.setLineWidth(2.0)
-        let arcRadius = (iconRect.width - 6) / 2
-        let arcCenter = CGPoint(x: iconRect.midX, y: iconRect.minY + 8)
-        context.addArc(
-            center: arcCenter,
-            radius: arcRadius,
-            startAngle: .pi,
-            endAngle: 0,
-            clockwise: false
-        )
-        context.strokePath()
-    }
-    
     // MARK: - タッチイベント処理
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -339,9 +196,6 @@ class CanvasView: UIView {
         let location = touch.location(in: self)
         touchStartPoint = location
         
-        // 座標変換
-        let transformedLocation = location.applying(viewTransform.inverted())
-        
         // エディタモードに応じた処理（操作ジェスチャーは別レイヤーに委譲）
         switch editorMode {
         case .select:
@@ -349,7 +203,7 @@ class CanvasView: UIView {
         case .shapeCreate, .imageImport:
             break
         case .delete:
-            handleDeleteTouchBegan(at: transformedLocation)
+            handleDeleteTouchBegan(at: location)
         }
     }
     
@@ -358,7 +212,6 @@ class CanvasView: UIView {
 
         guard let touch = touches.first else { return }
         let location = touch.location(in: self)
-        let transformedLocation = location.applying(viewTransform.inverted())
 
         let distance = hypot(touchStartPoint.x - location.x, touchStartPoint.y - location.y)
 
@@ -370,7 +223,7 @@ class CanvasView: UIView {
         case .select:
             break
         case .shapeCreate, .imageImport:
-            onCreateElement?(transformedLocation)
+            onCreateElement?(location)
         case .delete:
             break
         }
@@ -410,14 +263,6 @@ class CanvasView: UIView {
         return sortedElements.first { $0.hitTest(testPoint) }
     }
 
-    // MARK: - 座標変換
-    
-    /// ビュー変換のリセット（ズーム/パン撤廃につき恒等）
-    func resetViewTransform() {
-        viewTransform = .identity
-        setNeedsDisplay()
-    }
-    
     // MARK: - ユーティリティ
     
     /// ポイントをグリッドにスナップ
@@ -425,33 +270,6 @@ class CanvasView: UIView {
         let x = round(point.x / gridSize) * gridSize
         let y = round(point.y / gridSize) * gridSize
         return CGPoint(x: x, y: y)
-    }
-    
-    /// カーソルの更新
-    private func updateCursor() {
-        // カーソルスタイルを設定（macOS Catalina以降でiPadで利用可能）
-#if targetEnvironment(macCatalyst)
-        switch editorMode {
-        case .select:
-            NSCursor.arrow.set()
-        case .shapeCreate:
-            NSCursor.crosshair.set()
-        case .imageImport:
-            NSCursor.dragCopy.set()
-        case .delete:
-            NSCursor.disappearingItem.set()
-        }
-#endif
-    }
-    
-    /// 表示座標からキャンバス座標への変換
-    func convertPointToCanvas(_ point: CGPoint) -> CGPoint {
-        return point.applying(viewTransform.inverted())
-    }
-    
-    /// キャンバス座標から表示座標への変換
-    func convertPointFromCanvas(_ point: CGPoint) -> CGPoint {
-        return point.applying(viewTransform)
     }
 }
 
@@ -492,38 +310,6 @@ struct CanvasViewRepresentable: UIViewRepresentable {
                 }
             }
             
-            // 操作開始時のコールバック
-            canvasView.onManipulationStarted = { [weak canvasView, weak self] type, point in
-                // 4K+画像の操作中品質低下判定と設定
-                if let canvasView = canvasView {
-                    canvasView.isReducingQualityDuringManipulation = self?.parent.viewModel
-                        .prepareImageRenderingForManipulation(
-                            in: canvasView.project,
-                            highResolutionThreshold: canvasView.highResolutionThreshold
-                        ) ?? false
-                    canvasView.setNeedsDisplay()
-                }
-                
-                self?.parent.viewModel.startManipulation(type, at: point)
-            }
-            
-            // 操作中のコールバック
-            canvasView.onManipulationChanged = { [viewModel = parent.viewModel] point in
-                viewModel.continueManipulation(at: point)
-            }
-            
-            // 操作終了時のコールバック
-            canvasView.onManipulationEnded = { [weak canvasView, weak self] in
-                // 4K+画像の操作中品質低下を解除
-                if let canvasView = canvasView {
-                    canvasView.isReducingQualityDuringManipulation = false
-                    self?.parent.viewModel.finishImageRenderingAfterManipulation(in: canvasView.project)
-                    canvasView.setNeedsDisplay()
-                }
-                
-                self?.parent.viewModel.endManipulation()
-            }
-        
             // 要素作成時のコールバック
             canvasView.onCreateElement = { [viewModel = parent.viewModel] point in
                 switch viewModel.editorMode {
@@ -546,7 +332,7 @@ struct CanvasViewRepresentable: UIViewRepresentable {
                 let viewModel = self.parent.viewModel
                 // 削除前にスナップショットを取得してフェードアウト発火
                 if let element = viewModel.selectedElement {
-                    self.parent.deleteEffect.snapshot = element.renderSnapshot()
+                    self.parent.deleteEffect.snapshot = element.renderSnapshot(renderSessions: viewModel.renderSessions)
                     self.parent.deleteEffect.frame = element.frame
                     self.parent.deleteEffect.isActive = true
                 }
@@ -569,9 +355,12 @@ struct CanvasViewRepresentable: UIViewRepresentable {
     
     /// UIViewの更新
     func updateUIView(_ canvasView: CanvasView, context: Context) {
-        // プロジェクトと選択要素を更新
+        // 同じプロジェクトでも毎回設定し直し、再描画を要求する（要素の変更を描画に反映するため）。
+        // editingTextElementId は自身では再描画を要求せず、この要求で反映される。
+        // 画像の受け取り先と背景画像の取得先も同じく、プロジェクトの設定し直しで求める再描画より前に設定する。
+        canvasView.renderSessions = viewModel.renderSessions
+        canvasView.backgroundImages = viewModel.backgroundImages
         canvasView.project = viewModel.project
-        canvasView.selectedElement = viewModel.selectedElement
         canvasView.editorMode = viewModel.editorMode
         canvasView.showGrid = showGrid
         canvasView.snapToGrid = snapToGrid
@@ -588,6 +377,6 @@ struct CanvasViewRepresentable: UIViewRepresentable {
 /// プレビュー
 struct CanvasView_Previews: PreviewProvider {
     static var previews: some View {
-        EditorView(viewModel: EditorViewModel())
+        EditorView(viewModel: AppComposition.makeEditorViewModel())
     }
 }

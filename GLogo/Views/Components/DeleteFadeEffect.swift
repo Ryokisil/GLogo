@@ -58,9 +58,12 @@ struct DeleteFadeEffect: View {
 // MARK: - スナップショット生成
 
 extension LogoElement {
-    /// 要素を UIImage にスナップショットする
+    /// 要素を UIImage にスナップショットする。キャンバスと同じ描き方（`drawOnCanvas`）で描く。
+    /// 削除すると操作の確定や選択の解除（編集の終了）が起き、画面と違う画像になるため、呼び出し側は削除の直前に作る。
+    /// - Parameter renderSessions: 画像要素の描く画像の受け取り先（エディタの管理役）
     /// - Returns: 描画結果の画像（描画不可時は nil）
-    func renderSnapshot() -> UIImage? {
+    @MainActor
+    func renderSnapshot(renderSessions: any ImageRenderSessionReading) -> UIImage? {
         let size = self.size
         guard size.width > 0, size.height > 0 else { return nil }
 
@@ -73,7 +76,7 @@ extension LogoElement {
             let cgContext = ctx.cgContext
             // 要素の position 分を逆オフセットして原点基準で描画
             cgContext.translateBy(x: -self.position.x, y: -self.position.y)
-            self.draw(in: cgContext)
+            self.drawOnCanvas(in: cgContext, renderSessions: renderSessions)
         }
     }
 }

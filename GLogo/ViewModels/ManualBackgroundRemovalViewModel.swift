@@ -48,6 +48,7 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
     /// 背景除去モード用イニシャライザ
     /// - Parameters:
     ///   - imageElement: 編集対象の画像要素
+    ///   - renderSessions: 元画像と表示画像の受け取り先。初期化の中で一度だけ受け取る
     ///   - completion: 編集完了時の処理（背景除去後の画像を返す）
     ///   - useCase: 画像処理ユースケース
     ///   - backgroundRemovalUseCase: AI背景除去ユースケース
@@ -55,16 +56,19 @@ class ManualBackgroundRemovalViewModel: ObservableObject, @MainActor MaskEditing
     /// - Returns: なし
     init(
         imageElement: ImageElement,
+        renderSessions: any ImageRenderSessionReading,
         completion: @escaping (UIImage) -> Void,
         useCase: ManualBackgroundRemovalUseCase = ManualBackgroundRemovalUseCase(),
-        backgroundRemovalUseCase: any BackgroundRemovalProcessing = BackgroundRemovalUseCase(),
-        imageSourceResolver: ImageSourceResolving = ImageSourceResolver()
+        backgroundRemovalUseCase: any BackgroundRemovalProcessing,
+        imageSourceResolver: ImageSourceResolving
     ) {
         self.completion = completion
         self.useCase = useCase
         self.backgroundRemovalUseCase = backgroundRemovalUseCase
-        // フル解像度画像を基準として保持し、編集時は必要に応じて軽量画像を使用する
-        let resolvedFullResolutionImage = imageElement.originalImage ?? imageElement.image
+        // フル解像度画像を基準として保持し、編集時は必要に応じて軽量画像を使用する。
+        // 表示画像は、元画像が取れないときにだけ求める（求めると加工とキャッシュが走るため、この順序を保つ）。
+        let resolvedFullResolutionImage = renderSessions.originalImage(of: imageElement)
+            ?? renderSessions.displayImage(of: imageElement)
         let isSourceImageAvailable = (resolvedFullResolutionImage != nil)
         self.fullResolutionImage = resolvedFullResolutionImage ?? Self.makeFallbackImage()
 

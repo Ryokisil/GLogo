@@ -52,6 +52,58 @@ final class ImageSourceResolverTests: XCTestCase {
         XCTAssertNil(resolved)
     }
 
+    /// ファイルURLが imageData より優先されることを検証（保存データの復元では両方を持つことがある）
+    func test_resolveOriginalImage_urlWins() throws {
+        let resolver = ImageSourceResolver()
+        let dataImage = makeSolidImage(size: CGSize(width: 8, height: 8), color: .red)
+        let fileImage = makeSolidImage(size: CGSize(width: 16, height: 12), color: .blue)
+        let fileURL = try temporaryFile(data: XCTUnwrap(fileImage.pngData()))
+
+        let resolved = try XCTUnwrap(
+            resolver.resolveOriginalImage(imageData: dataImage.pngData(), fileName: nil, url: fileURL, path: nil)
+        )
+
+        XCTAssertEqual(resolved.size, fileImage.size)
+    }
+
+    /// ファイルURLのファイルがない・デコードできない場合も、imageData へフォールバックしないことを検証
+    func test_resolveOriginalImage_unreadableFileURLReturnsNil() throws {
+        let resolver = ImageSourceResolver()
+        let dataImage = makeSolidImage(size: CGSize(width: 8, height: 8), color: .red)
+        let missingURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("png")
+        let undecodableURL = try temporaryFile(data: Data([0, 1, 2, 3]))
+
+        for (label, url) in [("ない", missingURL), ("デコードできない", undecodableURL)] {
+            XCTAssertNil(
+                resolver.resolveOriginalImage(imageData: dataImage.pngData(), fileName: nil, url: url, path: nil),
+                "ファイルが\(label)"
+            )
+        }
+    }
+
+    /// 保存データ由来のファイルパス・ファイルURL・パス文字列のアセット名から元画像を取得できることを検証
+    func test_resolveOriginalImage_localFileSources() throws {
+        let resolver = ImageSourceResolver()
+        let image = makeSolidImage(size: CGSize(width: 16, height: 12), color: .blue)
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("png")
+        try XCTUnwrap(image.pngData()).write(to: fileURL)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+
+        let fromPath = resolver.resolveOriginalImage(imageData: nil, fileName: nil, url: nil, path: fileURL.path)
+        let fromURL = resolver.resolveOriginalImage(imageData: nil, fileName: nil, url: fileURL, path: nil)
+        let fromName = resolver.resolveOriginalImage(imageData: nil, fileName: fileURL.path, url: nil, path: nil)
+
+        XCTAssertNotNil(fromPath)
+        XCTAssertNotNil(fromURL)
+        XCTAssertNotNil(fromName)
+    }
+
     /// 編集用画像解決がリポジトリへ委譲されることを検証
     func test_resolveEditingImage_usesRepository() throws {
         let proxyImage = makeSolidImage(size: CGSize(width: 12, height: 12), color: .green)
@@ -97,17 +149,16 @@ final class ImageSourceResolverTests: XCTestCase {
         XCTAssertEqual(resolved.size, originalImage.size)
     }
 
-    /// ImageElement が設定済み resolver 経由で元画像を取得し、結果をキャッシュすることを検証
+    /// ImageElement が設定済み resolver 経由で元画像を取得し、結果をキャッシュすることを検証（管理役を通して取得する）
+    @MainActor
     func test_originalImage_usesResolverCache() throws {
-        let originalResolver = ImageElement.imageSourceResolver
+        let store = ImageRenderSessionStore()
         let expectedImage = makeSolidImage(size: CGSize(width: 18, height: 18), color: .orange)
         let resolver = CountingImageSourceResolver(originalImage: expectedImage)
-        ImageElement.imageSourceResolver = resolver
-        defer { ImageElement.imageSourceResolver = originalResolver }
 
-        let element = ImageElement(imageData: Data(), importOrder: 0)
-        let first = try XCTUnwrap(element.originalImage)
-        let second = try XCTUnwrap(element.originalImage)
+        let element = ImageElementFactory(sourceResolver: resolver).makeElement(imageData: Data(), importOrder: 0)
+        let first = try XCTUnwrap(store.originalImage(of: element))
+        let second = try XCTUnwrap(store.originalImage(of: element))
 
         XCTAssertEqual(first.size, expectedImage.size)
         XCTAssertEqual(second.size, expectedImage.size)
@@ -130,10 +181,25 @@ private extension ImageSourceResolverTests {
             context.fill(CGRect(origin: .zero, size: size))
         }
     }
+
+    /// 一時ファイルに書き出し、テストの終わりに消す
+    /// - Parameter data: 書き出す内容
+    /// - Returns: 書き出したファイルの URL
+    private func temporaryFile(data: Data) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("png")
+        try data.write(to: url)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: url)
+        }
+        return url
+    }
 }
 
 /// 呼び出し内容を記録するテスト用 ImageAssetRepository
-private final class RecordingImageAssetRepository: ImageAssetRepositoryProtocol {
+/// テストのスレッドから同期にだけ呼ばれる前提で、記録をロックなしで持つ（並行に使うテストには使わない）。
+private final class RecordingImageAssetRepository: EditingImageLoading, @unchecked Sendable {
     let result: UIImage?
     private(set) var didLoadEditingImage = false
     private(set) var receivedIdentifier: String?
@@ -161,7 +227,8 @@ private final class RecordingImageAssetRepository: ImageAssetRepositoryProtocol 
 }
 
 /// 元画像解決の呼び出し回数を記録するテスト用 Resolver
-private final class CountingImageSourceResolver: ImageSourceResolving {
+/// テストのスレッドから同期にだけ呼ばれる前提で、回数をロックなしで持つ（並行に使うテストには使わない）。
+private final class CountingImageSourceResolver: ImageSourceResolving, @unchecked Sendable {
     let originalImage: UIImage
     private(set) var originalResolveCallCount = 0
 

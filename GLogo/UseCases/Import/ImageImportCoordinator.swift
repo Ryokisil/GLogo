@@ -5,10 +5,10 @@ import UIKit
 // ImageElementの生成と初期配置までを完了させる。
 // UI操作（追加・選択・通知）はViewModelに残す。
 
-struct ImageImportCoordinator {
+struct ImageImportCoordinator: ImageImporting {
     private let useCase: ImageImportUseCase
 
-    init(useCase: ImageImportUseCase = ImageImportUseCase()) {
+    init(useCase: ImageImportUseCase) {
         self.useCase = useCase
     }
 

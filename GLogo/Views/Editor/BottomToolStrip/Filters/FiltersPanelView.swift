@@ -24,7 +24,7 @@ private enum FilterPanelMode: String, CaseIterable, Identifiable {
 }
 
 struct FiltersPanelView: View {
-    @ObservedObject var viewModel: ElementViewModel
+    @ObservedObject var viewModel: FilterPanelViewModel
     let onClose: () -> Void
 
     @State private var selectedMode: FilterPanelMode = .standard

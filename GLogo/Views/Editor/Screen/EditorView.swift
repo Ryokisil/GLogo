@@ -1,5 +1,4 @@
 //  EditorView.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはアプリケーションの主要なエディタ画面を実装するSwiftUIビューです。
@@ -99,7 +98,13 @@ struct EditorView: View {
     init(viewModel: EditorViewModel) {
         self.viewModel = viewModel
         // 注入された EditorViewModel を使って要素編集用 StateObject を構築する。
-        _elementViewModel = StateObject(wrappedValue: ElementViewModel(editorViewModel: viewModel))
+        // 描画の更新は StateObject の生成時にだけ2つ作る（調整・フィルターの共有分と、フレーム用）。
+        _elementViewModel = StateObject(wrappedValue: ElementViewModel(
+            editorViewModel: viewModel,
+            imageRefresh: viewModel.dependencies.makeImageRenderRefresh(),
+            frameImageRefresh: viewModel.dependencies.makeImageRenderRefresh(),
+            metadataStore: viewModel.dependencies.metadataStore
+        ))
     }
     
     // MARK: - ボディ
@@ -238,20 +243,32 @@ struct EditorView: View {
             // 手動背景除去画面への遷移
             .navigationDestination(isPresented: $isNavigatingToManualRemoval) {
                 if let imageElement = viewModel.selectedImageElement {
-                    ManualBackgroundRemovalView(imageElement: imageElement) { editedImage in
-                        viewModel.applyManualBackgroundRemovalResult(editedImage, to: imageElement)
+                    ManualBackgroundRemovalView(
+                        imageElement: imageElement,
+                        renderSessions: viewModel.renderSessions,
+                        makeBackgroundRemover: viewModel.dependencies.makeBackgroundRemover,
+                        makeImageSourceResolver: viewModel.dependencies.makeImageSourceResolver
+                    ) { editedImage in
+                        viewModel.aiTools.applyManualBackgroundRemovalResult(editedImage, to: imageElement)
                     }
                 }
             }
             // 背景ぼかしマスク編集画面への遷移
-            .navigationDestination(isPresented: $viewModel.isNavigatingToBackgroundBlurMaskEdit) {
-                if let imageElement = viewModel.backgroundBlurMaskEditTarget {
+            .navigationDestination(isPresented: Binding(
+                get: { viewModel.aiTools.isNavigatingToBackgroundBlurMaskEdit },
+                set: { viewModel.aiTools.isNavigatingToBackgroundBlurMaskEdit = $0 }
+            )) {
+                if let imageElement = viewModel.aiTools.backgroundBlurMaskEditTarget {
                     BackgroundBlurMaskEditView(
                         imageElement: imageElement,
+                        renderSessions: viewModel.renderSessions,
                         initialMaskData: imageElement.backgroundBlurMaskData,
-                        blurRadius: imageElement.backgroundBlurRadius
+                        blurRadius: imageElement.backgroundBlurRadius,
+                        makeManualBackgroundBlurUseCase: viewModel.dependencies.makeManualBackgroundBlurUseCase,
+                        makeBackgroundRemover: viewModel.dependencies.makeBackgroundRemover,
+                        makeImageSourceResolver: viewModel.dependencies.makeImageSourceResolver
                     ) { maskData in
-                        viewModel.applyBackgroundBlurMaskResult(maskData, to: imageElement)
+                        viewModel.aiTools.applyBackgroundBlurMaskResult(maskData, to: imageElement)
                     }
                 }
             }
@@ -467,6 +484,6 @@ private extension View {
 /// プレビュー
 struct EditorView_Previews: PreviewProvider {
     static var previews: some View {
-        EditorView(viewModel: EditorViewModel())
+        EditorView(viewModel: AppComposition.makeEditorViewModel())
     }
 }

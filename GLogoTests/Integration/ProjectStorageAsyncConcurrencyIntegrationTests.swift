@@ -22,7 +22,7 @@ final class ProjectStorageAsyncConcurrencyIntegrationTests: XCTestCase {
 
         do {
             try await storage.saveProject(project)
-            let loaded = try await storage.loadProject(withId: project.id)
+            let loaded = try await storage.loadProject(withId: project.id, dependencies: .live())
 
             XCTAssertEqual(loaded.id, project.id)
             XCTAssertEqual(loaded.name, project.name)
@@ -70,7 +70,7 @@ final class ProjectStorageAsyncConcurrencyIntegrationTests: XCTestCase {
             let loadedPairs = try await withThrowingTaskGroup(of: (UUID, (String, CGFloat, CGFloat)).self) { group in
                 for id in ids {
                     group.addTask {
-                        let project = try await storage.loadProject(withId: id)
+                        let project = try await storage.loadProject(withId: id, dependencies: .live())
                         return (id, (project.name, project.canvasSize.width, project.canvasSize.height))
                     }
                 }

@@ -1,6 +1,5 @@
 //
 //  ProjectSettingsView.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはプロジェクトの設定を編集するためのビューを実装しています。
@@ -217,6 +216,6 @@ struct ProjectSettingsView: View {
 /// プレビュー
 struct ProjectSettingsView_Previews: PreviewProvider {
     static var previews: some View {
-        ProjectSettingsView(viewModel: EditorViewModel())
+        ProjectSettingsView(viewModel: AppComposition.makeEditorViewModel())
     }
 }

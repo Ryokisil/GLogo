@@ -1,83 +1,20 @@
-
-//  ImageElement.swift
-//  概要:
-//  このファイルは画像要素を表すモデルクラスを定義しています。
-//  LogoElementを継承し、画像データの管理と表示に関するプロパティを提供します。
-//  フィッティングモード（Fill、Aspect Fit、Aspect Fill、Centerなど）や
-//  彩度、明度、コントラスト調整、カラーフィルタ、フレーム表示などの
-//  画像処理機能もサポートしています。
+// 画像要素のデータ（画像ソースの参照・編集値・保存形式・複製）を表すモデル。
+// 描画・画像取得・キャッシュ保持は段階的に Model 外へ移行中（docs/architecture/Models/ImageElement.md）。
 
 import Foundation
 import UIKit
 import CoreImage
 
-/// 画像の役割定義
-enum ImageRole: String, Codable, CaseIterable {
-    case base = "base"           // ベース画像（保存時の基準画像）
-    case overlay = "overlay"     // オーバーレイ画像（ベース画像の上に重ねる画像）
-    
-    /// 表示用の名称
-    var displayName: String {
-        switch self {
-        case .base:
-            return "ベース画像"
-        case .overlay:
-            return "オーバーレイ画像"
-        }
-    }
-}
-
-/// 画像フレームのプリセット種別
-enum ImageFrameStyle: String, Codable, CaseIterable {
-    case simple
-    case double
-    case cornerAccent
-    case polaroid
-    case film
-    case neon
-    case badge
-    case stamp
-    case softWhite
-    case glassWhite
-    case editorialWhite
-
-    /// 永続化データからフレーム種別を復元する
-    /// - Parameters:
-    ///   - decoder: デコーダー
-    /// - Returns: なし
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let rawValue = try container.decode(String.self)
-
-        if rawValue == "softOverlay" {
-            self = .simple
-            return
-        }
-
-        guard let style = ImageFrameStyle(rawValue: rawValue) else {
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Unknown ImageFrameStyle rawValue: \(rawValue)"
-            )
-        }
-
-        self = style
-    }
-
-    /// フレーム種別を永続化向けにエンコードする
-    /// - Parameters:
-    ///   - encoder: エンコーダー
-    /// - Returns: なし
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
-    }
-}
-
 /// 画像要素クラス
 class ImageElement: LogoElement {
-    /// RGBA成分を保持する簡易カラー表現
-    private struct RGBAColor: Codable, Equatable {
+    /// 加工の入力・結果に関わる属性の書き込み世代。キャッシュ・選択・配置は含めない。
+    /// 同値の再代入も失効境界とし、Data 比較や画像ハッシュ計算を毎回行わない。
+    /// 実行時の競合判定用で、Codable・Undo・コピーで以前の番号を復元しない。
+    private(set) var editRevision: UInt = 0
+
+    /// RGBA成分を保持する簡易カラー表現。初期スナップショットに色を保存するときの形式。
+    /// 色との変換はファイル末尾の extension に置き、メンバーワイズ初期化を残すため fileprivate にする。
+    fileprivate struct RGBAColor: Codable, Equatable {
         let red: CGFloat
         let green: CGFloat
         let blue: CGFloat
@@ -85,7 +22,9 @@ class ImageElement: LogoElement {
     }
 
     /// リバート判定/復元に使用する調整値スナップショット
-    private struct RevertAdjustmentSnapshot: Codable, Equatable {
+    /// 保存データの `initialAdjustmentSnapshot` として書き出す。プロパティ名が保存キーになるため変更しない。
+    /// 編集値との変換はファイル末尾の extension に置く（`default` がメンバーワイズ初期化を使うため）。
+    fileprivate struct RevertAdjustmentSnapshot: Codable, Equatable {
         let saturationAdjustment: CGFloat
         let brightnessAdjustment: CGFloat
         let contrastAdjustment: CGFloat
@@ -151,79 +90,36 @@ class ImageElement: LogoElement {
         )
     }
 
-    /// `ImageElement` 共有依存の読み書きを直列化するストア
-    private final class DependencyStore: @unchecked Sendable {
-        private let lock = NSLock()
-        private var currentImageSourceResolver: ImageSourceResolving
-        private var currentPreviewService: ImagePreviewing
+    /// 元画像・プロキシ取得の実行時依存。要素ごとに固定し、永続化しない。
+    /// 描画のセッション（取得・描画・キャッシュ）は要素が持たず、エディタの管理役（`ImageRenderSessionStore`）と
+    /// 保存の範囲（`SaveProjectSnapshot`）が、この依存で作って持つ（第21回）。複製は依存だけを引き継ぐ。
+    let sourceResolver: any ImageSourceResolving
 
-        init(
-            imageSourceResolver: ImageSourceResolving,
-            previewService: ImagePreviewing
-        ) {
-            self.currentImageSourceResolver = imageSourceResolver
-            self.currentPreviewService = previewService
-        }
-
-        var imageSourceResolver: ImageSourceResolving {
-            lock.lock()
-            defer { lock.unlock() }
-            return currentImageSourceResolver
-        }
-
-        var previewService: ImagePreviewing {
-            lock.lock()
-            defer { lock.unlock() }
-            return currentPreviewService
-        }
-
-        func updateImageSourceResolver(_ resolver: ImageSourceResolving) {
-            lock.lock()
-            currentImageSourceResolver = resolver
-            lock.unlock()
-        }
-
-        func updatePreviewService(_ service: ImagePreviewing) {
-            lock.lock()
-            currentPreviewService = service
-            lock.unlock()
-        }
-    }
-
-    /// 共有依存ストア（差し替え時のみ書き込み、通常は読み取り）
-    private static let dependencyStore = DependencyStore(
-        imageSourceResolver: ImageSourceResolver(),
-        previewService: ImagePreviewService()
-    )
-
-    /// 画像ソース解決 UseCase（テスト時に差し替え可能）
-    static var imageSourceResolver: ImageSourceResolving {
-        get { dependencyStore.imageSourceResolver }
-        set { dependencyStore.updateImageSourceResolver(newValue) }
-    }
+    /// 描画とサムネイルで共有する生成時の依存。保存データには含めない。
+    let previewService: any ImagePreviewing
 
     /// 画像ファイル名
-    var imageFileName: String?
+    var imageFileName: String? { didSet { editRevision &+= 1 } }
     
     /// 画像データ（直接保存する場合）
-    var imageData: Data?
+    var imageData: Data? { didSet { editRevision &+= 1 } }
     
     /// 元画像のURL
-    var originalImageURL: URL?
+    var originalImageURL: URL? { didSet { editRevision &+= 1 } }
     
     /// 元画像のパス
-    var originalImagePath: String?
+    var originalImagePath: String? { didSet { editRevision &+= 1 } }
     
     /// 元画像の識別子（UUIDなど）
-    var originalImageIdentifier: String?
+    var originalImageIdentifier: String? { didSet { editRevision &+= 1 } }
 
     /// 高画質化を適用済みかどうか
-    var hasAppliedUpscale: Bool = false
+    var hasAppliedUpscale: Bool = false { didSet { editRevision &+= 1 } }
 
     // MARK: - 画像ソース管理
 
-    /// 画像ソース種別
-    private enum ImageSource {
+    /// 画像ソース種別。設定時は他のソース参照をクリアする。
+    enum ImageSource {
         case data(Data)
         case fileName(String)
         case url(URL)
@@ -294,131 +190,101 @@ class ImageElement: LogoElement {
         return imageRole == .base
     }
     
-    /// キャンバスサイズを保持（表示サイズ計算用）
-    private var canvasSize: CGSize = CGSize(width: 3840, height: 2160)
-    
     /// 編集履歴
     private var editHistory: [ImageEditOperation] = []
     
     /// 画像メタデータ
     var metadata: ImageMetadata?
     
-    /// キャッシュされた画像
-    var cachedImage: UIImage?
-
-    /// キャッシュされた元画像
-    private var cachedOriginalImage: UIImage?
-
-    /// 編集用の低解像度プロキシ画像（高解像度時のみ生成・注入）
-    private var proxyImage: UIImage?
-    
-    /// プロキシ生成時の長辺目安（約2MP相当）
-    private let proxyTargetLongSide: CGFloat = 1920
-    
-    /// 高解像度判定の閾値（MP）
-    private let highResThresholdMP: CGFloat = 18.0
-
-    /// プレビュー用低解像度画像キャッシュ
-    private var previewImage: UIImage?
-    
-    /// プレビュー・フィルタサービス（差し替え可能）
-    static var previewService: ImagePreviewing {
-        get { dependencyStore.previewService }
-        set { dependencyStore.updatePreviewService(newValue) }
-    }
-    
-    /// 編集中かどうかのフラグ（プレビュー/高品質の切り替え用）
-    private var isCurrentlyEditing: Bool = false
-    
     /// 色調補正（彩度調整）
-    var saturationAdjustment: CGFloat = 1.0
+    var saturationAdjustment: CGFloat = 1.0 { didSet { editRevision &+= 1 } }
     
     /// 色調補正（明度調整）
-    var brightnessAdjustment: CGFloat = 0.0
+    var brightnessAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
     
     /// 色調補正（コントラスト調整）
-    var contrastAdjustment: CGFloat = 1.0
+    var contrastAdjustment: CGFloat = 1.0 { didSet { editRevision &+= 1 } }
     
     /// 色調補正（ハイライト調整）
-    var highlightsAdjustment: CGFloat = 0.0
+    var highlightsAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
     
     /// 色調補正（シャドウ調整）
-    var shadowsAdjustment: CGFloat = 0.0
+    var shadowsAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 色調補正（黒レベル調整）
-    var blacksAdjustment: CGFloat = 0.0
+    var blacksAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 色調補正（白レベル調整）
-    var whitesAdjustment: CGFloat = 0.0
+    var whitesAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 色調補正（色温度調整）
-    var warmthAdjustment: CGFloat = 0.0
+    var warmthAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 色調補正（ヴィブランス調整）
-    var vibranceAdjustment: CGFloat = 0.0
+    var vibranceAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
     
     /// 色相調整（度数）
-    var hueAdjustment: CGFloat = 0.0
+    var hueAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
     
     /// シャープネス調整
-    var sharpnessAdjustment: CGFloat = 0.0
+    var sharpnessAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
     
     /// ガウシアンブラー半径
-    var gaussianBlurRadius: CGFloat = 0.0
+    var gaussianBlurRadius: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// ビネット強度
-    var vignetteAdjustment: CGFloat = 0.0
+    var vignetteAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// ブルーム強度
-    var bloomAdjustment: CGFloat = 0.0
+    var bloomAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// グレイン強度
-    var grainAdjustment: CGFloat = 0.0
+    var grainAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// フェード強度
-    var fadeAdjustment: CGFloat = 0.0
+    var fadeAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 色収差強度
-    var chromaticAberrationAdjustment: CGFloat = 0.0
+    var chromaticAberrationAdjustment: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 背景ぼかし半径（前景マスク使用時）
-    var backgroundBlurRadius: CGFloat = 0.0
+    var backgroundBlurRadius: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 背景ぼかし用マスクデータ（PNG形式）
-    var backgroundBlurMaskData: Data?
+    var backgroundBlurMaskData: Data? { didSet { editRevision &+= 1 } }
 
     /// トーンカーブデータ
-    var toneCurveData: ToneCurveData = ToneCurveData()
+    var toneCurveData: ToneCurveData = ToneCurveData() { didSet { editRevision &+= 1 } }
 
     /// カラーフィルター
-    var tintColor: UIColor?
+    var tintColor: UIColor? { didSet { editRevision &+= 1 } }
     
     /// カラーフィルターの強度
-    var tintIntensity: CGFloat = 0.0
+    var tintIntensity: CGFloat = 0.0 { didSet { editRevision &+= 1 } }
 
     /// 適用中のフィルターレシピ（nil = フィルター未適用）
-    var appliedFilterRecipe: FilterRecipe?
+    var appliedFilterRecipe: FilterRecipe? { didSet { editRevision &+= 1 } }
 
     /// 適用中のフィルタープリセットID
-    var appliedFilterPresetId: String?
+    var appliedFilterPresetId: String? { didSet { editRevision &+= 1 } }
 
     /// 画像フレーム表示
-    var showFrame: Bool = false
+    var showFrame: Bool = false { didSet { editRevision &+= 1 } }
     
     /// フレームの色
-    var frameColor: UIColor = .white
+    var frameColor: UIColor = .white { didSet { editRevision &+= 1 } }
     
     /// フレームの太さ
-    var frameWidth: CGFloat = 4.0
+    var frameWidth: CGFloat = 4.0 { didSet { editRevision &+= 1 } }
 
     /// フレームのスタイル
-    var frameStyle: ImageFrameStyle = .simple
+    var frameStyle: ImageFrameStyle = .simple { didSet { editRevision &+= 1 } }
     
     /// 画像の境界を丸くするか
-    var roundedCorners: Bool = false
+    var roundedCorners: Bool = false { didSet { editRevision &+= 1 } }
     
     /// 角丸の半径
-    var cornerRadius: CGFloat = 10.0
+    var cornerRadius: CGFloat = 10.0 { didSet { editRevision &+= 1 } }
 
     /// リバート基準として扱う初期スナップショット
     private var initialAdjustmentSnapshot: RevertAdjustmentSnapshot = .default
@@ -426,121 +292,6 @@ class ImageElement: LogoElement {
     /// 要素の種類
     override var type: LogoElementType {
         return .image
-    }
-    
-    /// 元画像を取得
-    var originalImage: UIImage? {
-        if let cachedOriginalImage = cachedOriginalImage {
-            return cachedOriginalImage
-        }
-
-        let loadedImage = ImageElement.imageSourceResolver.resolveOriginalImage(
-            imageData: imageData,
-            fileName: imageFileName,
-            url: originalImageURL,
-            path: originalImagePath
-        )
-
-        // 元画像をキャッシュ
-        cachedOriginalImage = loadedImage
-        return loadedImage
-    }
-
-    /// 編集用プロキシ画像（外部リポジトリで生成・解決）
-    private var editingImage: UIImage? {
-        if let proxy = proxyImage {
-            return proxy
-        }
-        if let resolved = ImageElement.imageSourceResolver.resolveEditingImage(
-            identifier: originalImageIdentifier,
-            fileName: imageFileName,
-            originalPath: originalImagePath,
-            originalImageProvider: { self.originalImage },
-            proxyTargetLongSide: proxyTargetLongSide,
-            highResThresholdMP: highResThresholdMP
-        ) {
-            proxyImage = resolved
-            return resolved
-        }
-        return originalImage
-    }
-    
-    /// 画像を取得
-    var image: UIImage? {
-        // 編集中はプレビュー品質のみ返してメインスレッド負荷を抑える
-        if isCurrentlyEditing {
-            let instant = getInstantPreview()
-            let fallbackEditing = editingImage
-            let fallbackOriginal = originalImage
-            let resolved = instant ?? fallbackEditing ?? fallbackOriginal
-            return resolved
-        }
-
-        if let cachedImage = cachedImage {
-            return cachedImage
-        }
-        
-        guard let originalImage = self.originalImage else {
-            return nil
-        }
-        
-        // 編集操作を適用した画像を返す（非編集時はフル品質）
-        let source = originalImage
-        let processedImage = applyFilters(to: source, quality: .full)
-        
-        // 編集後の画像をキャッシュ
-        cachedImage = processedImage
-        return processedImage
-    }
-    
-    /// フィルター適用済み画像を強制的に生成（キャッシュを無視）
-    func getFilteredImageForce() -> UIImage? {
-        guard let originalImage = self.originalImage else {
-            return nil
-        }
-        
-        // キャッシュを無視して常に最新のフィルターを適用
-        return applyFilters(to: originalImage)
-    }
-    
-    /// 非同期で画像を取得（彩度調整用）
-    @MainActor
-    func getImageAsync() async -> UIImage? {
-        if let cachedImage = cachedImage {
-            return cachedImage
-        }
-        
-        guard let originalImage = self.originalImage else {
-            return nil
-        }
-
-        // 非同期でフィルターをフル品質適用
-        let params = currentFilterParams()
-        let mode = currentRenderMode()
-        let processedImage = await ImageElement.previewService.applyFiltersAsync(
-            to: originalImage,
-            params: params,
-            quality: .full,
-            mode: mode
-        )
-        
-        // 編集後の画像をキャッシュ
-        cachedImage = processedImage
-        return processedImage
-    }
-
-    /// フル品質のフィルター適用結果を非同期で生成する
-    ///
-    /// キャッシュ書き込みを伴わないため、呼び出し側で世代管理後に採用可否を判定できる。
-    /// - Parameters: なし
-    /// - Returns: フィルター適用済み画像。元画像未解決時は nil
-    @MainActor
-    func renderFullQualityImageAsync() async -> UIImage? {
-        guard let originalImage = self.originalImage else {
-            return nil
-        }
-
-        return await applyFiltersAsync(to: originalImage, quality: .full)
     }
     
     /// ローカル保存用Imageのエンコードキー
@@ -635,7 +386,17 @@ class ImageElement: LogoElement {
     }
     
     /// カスタムデコーダー
+    /// 実行時の依存（取得先・描画サービス）は保存データに含めず、`ProjectDecodingDependencies` が userInfo で渡す。
+    /// 欠けていれば既定の実装で補わず、依存の設定不足として `MissingDecodingDependencyError` で失敗させる。
     required init(from decoder: Decoder) throws {
+        guard let sourceResolver = decoder.userInfo[.imageSourceResolver] as? any ImageSourceResolving else {
+            throw MissingDecodingDependencyError(key: .imageSourceResolver)
+        }
+        guard let previewService = decoder.userInfo[.imagePreviewService] as? any ImagePreviewing else {
+            throw MissingDecodingDependencyError(key: .imagePreviewService)
+        }
+        self.sourceResolver = sourceResolver
+        self.previewService = previewService
         let container = try decoder.container(keyedBy: ImageCodingKeys.self)
         
         // インポート順番管理用のプロパティをデコード（後方互換性のためデフォルト値を提供）
@@ -694,177 +455,56 @@ class ImageElement: LogoElement {
         appliedFilterPresetId = try container.decodeIfPresent(String.self, forKey: .appliedFilterPresetId)
 
         // 旧データ互換: 未保存の場合は復元後の現在値を初期基準として扱う
-        initialAdjustmentSnapshot = try container.decodeIfPresent(RevertAdjustmentSnapshot.self, forKey: .initialAdjustmentSnapshot) ?? makeCurrentAdjustmentSnapshot()
+        initialAdjustmentSnapshot = try container.decodeIfPresent(RevertAdjustmentSnapshot.self, forKey: .initialAdjustmentSnapshot) ?? RevertAdjustmentSnapshot(editState)
     }
     
-    /// 共通の初期化処理
+    /// 読み込み済みの値から画像要素を作る。画像の読み込み・デコードは行わない。
+    /// 画像データからの生成は `ImageElementFactory` が寸法の読み取りと配置サイズの計算を担当する。
     /// - Parameters:
+    ///   - source: 画像ソース。nil の場合はソースを持たない（保存用コピーは元画像を別途固定する）
+    ///   - size: 配置サイズ。nil の場合は既定サイズのまま。あとの差し替え・復元でも変わらない
     ///   - importOrder: インポート順序（1番目はベース画像として扱う）
-    /// - Returns: なし
-    private init(importOrder: Int) {
+    init(
+        source: ImageSource?,
+        size: CGSize?,
+        importOrder: Int = 0,
+        sourceResolver: any ImageSourceResolving,
+        previewService: any ImagePreviewing
+    ) {
+        self.sourceResolver = sourceResolver
+        self.previewService = previewService
         self.originalImportOrder = importOrder
-        
+
         super.init(name: "Image")
         originalImageIdentifier = UUID().uuidString
-        
+
         // 1番目の画像は自動的にベース画像に設定
         if importOrder == 1 {
             imageRole = .base
         }
-        
+
         // デフォルトzIndexを設定
         zIndex = ElementPriority.image.rawValue
 
         // 生成時点の調整値を初期スナップショットとして確定
-        initialAdjustmentSnapshot = makeCurrentAdjustmentSnapshot()
-    }
-    
-    /// 画像とメタデータから初期化
-    /// - Parameters:
-    ///   - imageData: 画像データ
-    ///   - metadata: 画像メタデータ（nilの場合は抽出を試みる）
-    ///   - importOrder: インポート順序
-    /// - Returns: なし
-    convenience init(imageData: Data, metadata: ImageMetadata?, importOrder: Int = 0) {
-        self.init(importOrder: importOrder)
-        setImageSource(.data(imageData))
-        self.metadata = metadata
-        
-        // 画像のサイズに合わせて要素のサイズを調整
-        if let image = UIImage(data: imageData) {
-            updateSizeFromImage(image)
-            
-            // メタデータがない場合は画像から抽出を試みる
-            if metadata == nil {
-                self.metadata = extractMetadataFromImageData(imageData)
-            }
+        initialAdjustmentSnapshot = RevertAdjustmentSnapshot(editState)
+
+        if let source {
+            setImageSource(source)
+        }
+        if let size {
+            self.size = size
         }
     }
     
-    /// ファイル名から画像要素を初期化
-    /// - Parameters:
-    ///   - fileName: 画像ファイル名
-    ///   - importOrder: インポート順序
-    /// - Returns: なし
-    convenience init(fileName: String, importOrder: Int = 0) {
-        self.init(importOrder: importOrder)
-        setImageSource(.fileName(fileName))
-        
-        // 画像のサイズに合わせて要素のサイズを調整（必要なら外部でプロキシ生成）
-        if let image = UIImage(named: fileName) {
-            updateSizeFromImage(image)
-        }
-    }
-    
-    /// URLから初期化（メタデータの抽出を含む）
-    /// - Parameters:
-    ///   - url: 画像URL
-    ///   - importOrder: インポート順序
-    /// - Returns: なし
-    convenience init(url: URL, importOrder: Int = 0) {
-        self.init(importOrder: importOrder)
-        setImageSource(.url(url))
-        
-        do {
-            // URLから画像データを読み込む
-            let data = try Data(contentsOf: url)
-            imageData = data
-            
-            // 画像サイズを調整（必要なら外部でプロキシ生成）
-            if let image = UIImage(data: data) {
-                updateSizeFromImage(image)
-            }
-            
-            // メタデータを抽出
-            metadata = extractMetadataFromImageData(data)
-        } catch {
-        }
-    }
-    
-    /// パスから画像要素を初期化
-    /// - Parameters:
-    ///   - path: 画像パス
-    ///   - importOrder: インポート順序
-    /// - Returns: なし
-    convenience init(path: String, importOrder: Int = 0) {
-        self.init(importOrder: importOrder)
-        setImageSource(.path(path))
-        
-        // 画像をロードしてサイズを調整（必要なら外部でプロキシ生成）
-        if let image = UIImage(contentsOfFile: path) {
-            updateSizeFromImage(image)
-        }
-    }
-    
-    /// データから画像要素を初期化（動的サイズ調整フラグ付き）
-    /// - Parameters:
-    ///   - imageData: 画像データ
-    ///   - isDynamicSizing: サイズを画像に合わせて自動調整するかどうか
-    ///   - importOrder: インポート順序
-    /// - Returns: なし
-    convenience init(imageData: Data, isDynamicSizing: Bool = true, importOrder: Int = 0) {
-        self.init(importOrder: importOrder)
-        setImageSource(.data(imageData))
-        
-        // isDynamicSizingフラグによってサイズ調整の実行を制御
-        if let image = UIImage(data: imageData) {
-            
-            if isDynamicSizing {
-                // 新規画像のインポート時はサイズを調整
-                updateSizeFromImage(image)
-            } else {
-                // クロップ済み画像は元のサイズを維持
-                size = image.size
-            }
-        } else {
-        }
-    }
-    
-    /// データから画像要素を初期化（キャンバスサイズ付き）
-    /// - Parameters:
-    ///   - imageData: 画像データ
-    ///   - canvasSize: キャンバスサイズ
-    ///   - importOrder: インポート順序
-    /// - Returns: なし
-    convenience init(imageData: Data, canvasSize: CGSize = CGSize(width: 3840, height: 2160), importOrder: Int = 0) {
-        self.init(importOrder: importOrder)
-        setImageSource(.data(imageData))
-        self.canvasSize = canvasSize
-        
-        // 画像のサイズに合わせて要素のサイズを調整（必要なら外部でプロキシ生成）
-        if let image = UIImage(data: imageData) {
-            updateSizeFromImage(image)
-        } else {
-        }
-    }
-    
-    /// データから画像要素を初期化
-    /// - Parameters:
-    ///   - imageData: 画像データ
-    ///   - importOrder: インポート順序
-    /// - Returns: なし
-    convenience init(imageData: Data, importOrder: Int = 0) {
-        self.init(imageData: imageData, isDynamicSizing: true, importOrder: importOrder)
-    }
-    
-    /// 編集操作を記録
-    func recordEdit(operation: ImageEditOperation) {
-        editHistory.append(operation)
-        // キャッシュをクリアして再描画を促す
-        cachedImage = nil
-    }
-    
-    /// 元の画像に戻す
+    /// 元の画像に戻す（編集値だけ。描画キャッシュの失効は、呼び出した履歴イベントの範囲で行う）
     func resetToOriginal() {
-        applyAdjustmentSnapshot(initialAdjustmentSnapshot)
+        applyEditState(initialAdjustmentSnapshot.editState)
         editHistory.removeAll()
-
-        // キャッシュをクリアして再描画を促す
-        cachedImage = nil
-        previewImage = nil  // プレビューもリセット
     }
 
-    /// 画像ソースを差し替える
+    /// 画像ソースを差し替える（値だけ。描画キャッシュは、差し替えのイベントの範囲で履歴が消す）。
+    /// 配置サイズは変えない（第23回）。画像に合わせて配置し直すときは、呼び出し側が配置サイズを計算する。
     /// - Parameters:
     ///   - imageData: 差し替える画像データ
     ///   - resetAdjustments: フィルター調整値を初期化するかどうか
@@ -881,18 +521,13 @@ class ImageElement: LogoElement {
         originalImageIdentifier = originalIdentifier ?? UUID().uuidString
         self.hasAppliedUpscale = hasAppliedUpscale
 
-        if let image = UIImage(data: imageData) {
-            updateSizeFromImage(image)
-        }
-
         if resetAdjustments {
             resetToOriginal()
         }
-
-        clearImageCaches()
     }
 
-    /// 画像ソースを復元する
+    /// 画像ソースを復元する（値だけ。描画キャッシュは、差し替えのイベントの巻き戻しの範囲で履歴が消す）。
+    /// 配置サイズは変えず、元画像も取得しない（第23回）。元画像は、失効のあとの次の表示で取得する。
     /// - Parameters:
     ///   - imageData: 復元する画像データ
     ///   - fileName: 復元する画像ファイル名
@@ -918,239 +553,145 @@ class ImageElement: LogoElement {
         setImageSource(source)
         originalImageIdentifier = originalIdentifier
         self.hasAppliedUpscale = hasAppliedUpscale
-
-        if source != nil,
-           let image = ImageElement.imageSourceResolver.resolveOriginalImage(
-               imageData: self.imageData,
-               fileName: imageFileName,
-               url: originalImageURL,
-               path: originalImagePath
-           ) {
-            updateSizeFromImage(image)
-        }
-
-        clearImageCaches()
     }
     
-    /// 画像のサイズに基づいて要素のサイズを更新
-    private func updateSizeFromImage(_ image: UIImage) {
-        // キャンバスの15%程度を最大サイズとして使用
-        let maxSize: CGFloat = min(canvasSize.width, canvasSize.height) * 0.15
-        
-        let imageSize = image.size
-        
-        // アスペクト比を保持しながらサイズを設定
-        var newSize: CGSize
-        
-        if imageSize.width > imageSize.height {
-            let aspectRatio = imageSize.height / imageSize.width
-            newSize = CGSize(width: maxSize, height: maxSize * aspectRatio)
-        } else {
-            let aspectRatio = imageSize.width / imageSize.height
-            newSize = CGSize(width: maxSize * aspectRatio, height: maxSize)
-        }
-        
-        size = CGSize(
-            width: max(1, newSize.width),
-            height: max(1, newSize.height)
-        )
-        
-    }
-    
-    private func getCanvasSize() -> CGSize {
-        // デフォルトは4Kサイズ
-        return CGSize(width: 3840, height: 2160)
-    }
-
-    /// 画像キャッシュをクリアする
-    private func clearImageCaches() {
-        cachedImage = nil
-        cachedOriginalImage = nil
-        previewImage = nil
-        proxyImage = nil
-        ImageElement.previewService.resetCache()
-    }
-
-    /// レンダリング済み画像のキャッシュを無効化
-    ///
-    /// 画像調整の値だけが更新された場合に、表示の再描画を確実に行うために使用します。
-    func invalidateRenderedImageCache() {
-        cachedImage = nil
-    }
-
-    /// メモリ警告時に画像キャッシュを解放する
-    func handleMemoryWarning() {
-        cachedImage = nil
-        cachedOriginalImage = nil
-        previewImage = nil
-        proxyImage = nil
-    }
-    
-    /// プレビュー用低解像度画像を生成
-    private func generatePreviewImage() -> UIImage? {
-        ImageElement.previewService.generatePreviewImage(
-            editingImage: editingImage,
-            originalImage: originalImage,
-            mode: currentRenderMode()
-        )
-    }
-
-    /// 即座プレビュー用の画像を取得（低解像度、高速処理）
-    func getInstantPreview() -> UIImage? {
-        if previewImage == nil {
-            previewImage = generatePreviewImage()
-        }
-
-        guard let preview = previewImage else { return nil }
-
-        let params = currentFilterParams()
-        return ImageElement.previewService.instantPreview(
-            baseImage: preview,
-            params: params,
-            quality: .preview,
-            mode: currentRenderMode()
-        )
-    }
-
-    /// 編集開始をマーク
-    func startEditing() {
-        isCurrentlyEditing = true
-        cachedImage = nil
-    }
-
-    /// 編集終了をマーク
-    func endEditing() {
-        isCurrentlyEditing = false
-    }
-    
-    /// 画像にフィルターを適用
-    private func applyFilters(to image: UIImage, quality: ToneCurveFilter.Quality = .full) -> UIImage? {
-        ImageElement.previewService.applyFilters(
-            to: image,
-            params: currentFilterParams(),
-            quality: quality,
-            mode: currentRenderMode()
-        )
-    }
-    
-    /// 画像にフィルターを非同期で適用（彩度調整特化）
-    @MainActor
-    private func applyFiltersAsync(to image: UIImage, quality: ToneCurveFilter.Quality = .full) async -> UIImage? {
-        await ImageElement.previewService.applyFiltersAsync(
-            to: image,
-            params: currentFilterParams(),
-            quality: quality,
-            mode: currentRenderMode()
-        )
-    }
-
-    /// 適用中プリセットからレンダリング経路を判定
+    /// 適用中プリセットからレンダリング経路を判定。描画のセッションが、描画の時点で読む
     /// - Parameters: なし
     /// - Returns: レンダリング経路
-    private func currentRenderMode() -> ImageRenderMode {
+    func currentRenderMode() -> ImageRenderMode {
         ImageRenderMode.fromPresetId(appliedFilterPresetId)
     }
 
-    /// 現在のフィルタ設定をまとめてサービスに渡す（filter + manual を合成）
-    private func currentFilterParams() -> ImageFilterParams {
-        let recipe = appliedFilterRecipe
-
-        // 乗算系: filter_val * manual_val（デフォルト1.0同士 = 1.0）
-        let effectiveSaturation = (recipe?.saturation ?? 1.0) * saturationAdjustment
-        let effectiveContrast = (recipe?.contrast ?? 1.0) * contrastAdjustment
-
-        // 加算系: filter_val + manual_val（デフォルト0.0同士 = 0.0）
-        let effectiveBrightness = (recipe?.brightness ?? 0.0) + brightnessAdjustment
-        let effectiveHighlights = (recipe?.highlights ?? 0.0) + highlightsAdjustment
-        let effectiveShadows = (recipe?.shadows ?? 0.0) + shadowsAdjustment
-        let effectiveBlacks = blacksAdjustment
-        let effectiveWhites = whitesAdjustment
-        let effectiveWarmth = warmthAdjustment
-        let effectiveVibrance = vibranceAdjustment
-        let effectiveHue = (recipe?.hue ?? 0.0) + hueAdjustment
-        let effectiveSharpness = (recipe?.sharpness ?? 0.0) + sharpnessAdjustment
-        let effectiveBlur = (recipe?.gaussianBlur ?? 0.0) + gaussianBlurRadius
-        let effectiveVignette = vignetteAdjustment
-        let effectiveBloom = bloomAdjustment
-        let effectiveGrain = grainAdjustment
-        let effectiveFade = fadeAdjustment
-        let effectiveChromaticAberration = chromaticAberrationAdjustment
-
-        // ティント: filter が設定されていれば filter 側を使用
-        let effectiveTintColor: UIColor?
-        let effectiveTintIntensity: CGFloat
-        if let recipe = recipe, recipe.affectsTint {
-            effectiveTintColor = recipe.tintColorHex.flatMap { UIColor(hex: $0) }
-            effectiveTintIntensity = recipe.tintIntensity ?? 0.0
-        } else {
-            effectiveTintColor = tintColor
-            effectiveTintIntensity = tintIntensity
-        }
-
-        return ImageFilterParams(
+    /// プリセット合成前の手動調整値。描画とプリセットのサムネイルが同じ値を受け取る。
+    var adjustmentValues: ImageAdjustmentValues {
+        ImageAdjustmentValues(
+            saturation: saturationAdjustment,
+            brightness: brightnessAdjustment,
+            contrast: contrastAdjustment,
+            highlights: highlightsAdjustment,
+            shadows: shadowsAdjustment,
+            blacks: blacksAdjustment,
+            whites: whitesAdjustment,
+            warmth: warmthAdjustment,
+            vibrance: vibranceAdjustment,
+            hue: hueAdjustment,
+            sharpness: sharpnessAdjustment,
+            gaussianBlurRadius: gaussianBlurRadius,
+            vignette: vignetteAdjustment,
+            bloom: bloomAdjustment,
+            grain: grainAdjustment,
+            fade: fadeAdjustment,
+            chromaticAberration: chromaticAberrationAdjustment,
             toneCurveData: toneCurveData,
-            saturation: effectiveSaturation,
-            brightness: effectiveBrightness,
-            contrast: effectiveContrast,
-            highlights: effectiveHighlights,
-            shadows: effectiveShadows,
-            blacks: effectiveBlacks,
-            whites: effectiveWhites,
-            warmth: effectiveWarmth,
-            vibrance: effectiveVibrance,
-            hue: effectiveHue,
-            sharpness: effectiveSharpness,
-            gaussianBlurRadius: effectiveBlur,
-            vignetteIntensity: effectiveVignette,
-            bloomIntensity: effectiveBloom,
-            grainIntensity: effectiveGrain,
-            fadeIntensity: effectiveFade,
-            chromaticAberrationIntensity: effectiveChromaticAberration,
-            tintColor: effectiveTintColor,
-            tintIntensity: effectiveTintIntensity,
+            tintColor: tintColor,
+            tintIntensity: tintIntensity,
             backgroundBlurRadius: backgroundBlurRadius,
             backgroundBlurMaskData: backgroundBlurMaskData
         )
     }
 
-    /// 画像を描画
-    override func draw(in context: CGContext) {
-        let filteredImage: UIImage? = {
-            guard let image = self.image else { return nil }
-            if isCurrentlyEditing {
-                return getInstantPreview() ?? applyFilters(to: image, quality: .preview) ?? image
-            } else {
-                return image
-            }
-        }()
+    /// Revert・画像差し替えの Undo と複製で受け渡す編集値30項目。
+    var editState: ImageEditState {
+        ImageEditState(
+            adjustments: adjustmentValues,
+            filterRecipe: appliedFilterRecipe,
+            filterPresetId: appliedFilterPresetId,
+            frame: ImageFrameSettings(
+                isShown: showFrame,
+                color: frameColor,
+                width: frameWidth,
+                style: frameStyle,
+                hasRoundedCorners: roundedCorners,
+                cornerRadius: cornerRadius
+            )
+        )
+    }
 
-        ImageElementRenderer.draw(self, in: context, image: filteredImage)
+    /// 編集値30項目をまとめて反映する。
+    /// 描画キャッシュの扱いは経路ごとに異なるため、無効化は呼び出し側が行う。
+    func applyEditState(_ state: ImageEditState) {
+        let values = state.adjustments
+        saturationAdjustment = values.saturation
+        brightnessAdjustment = values.brightness
+        contrastAdjustment = values.contrast
+        highlightsAdjustment = values.highlights
+        shadowsAdjustment = values.shadows
+        blacksAdjustment = values.blacks
+        whitesAdjustment = values.whites
+        warmthAdjustment = values.warmth
+        vibranceAdjustment = values.vibrance
+        hueAdjustment = values.hue
+        sharpnessAdjustment = values.sharpness
+        gaussianBlurRadius = values.gaussianBlurRadius
+        vignetteAdjustment = values.vignette
+        bloomAdjustment = values.bloom
+        grainAdjustment = values.grain
+        fadeAdjustment = values.fade
+        chromaticAberrationAdjustment = values.chromaticAberration
+        backgroundBlurRadius = values.backgroundBlurRadius
+        backgroundBlurMaskData = values.backgroundBlurMaskData
+        toneCurveData = values.toneCurveData
+        tintColor = values.tintColor
+        tintIntensity = values.tintIntensity
+        appliedFilterRecipe = state.filterRecipe
+        appliedFilterPresetId = state.filterPresetId
+        showFrame = state.frame.isShown
+        frameColor = state.frame.color
+        frameWidth = state.frame.width
+        frameStyle = state.frame.style
+        roundedCorners = state.frame.hasRoundedCorners
+        cornerRadius = state.frame.cornerRadius
+    }
+
+    /// 現在のフィルタ設定をまとめてサービスに渡す（filter + manual を合成）。描画のセッションが、描画の時点で読む
+    func currentFilterParams() -> ImageFilterParams {
+        ImageFilterParamsComposer.compose(adjustmentValues, recipe: appliedFilterRecipe)
+    }
+
+    /// 受け取った画像で描画する。キャンバスと削除エフェクトは、エディタの管理役から受け取った画像を渡す
+    /// （保存の合成は、保存の範囲から受け取った画像で `ImageElementRenderer` を直接呼ぶ）。
+    /// 画像を受け取らずに描く入口は持たない（`ContextDrawable` を採用しない。第21回で基底の描画の入口を外した）。
+    /// - Parameters:
+    ///   - context: 描き込み先
+    ///   - image: 描く画像。nil のときは何も描かない
+    func draw(in context: CGContext, image: UIImage?) {
+        ImageElementRenderer.draw(self, in: context, image: image)
     }
     
-    /// 要素のコピーを作成
+    /// UI 用の複製を作る。ソースは優先順位の1つだけを参照として写し、ファイルの読み込みや画像のデコードは行わない。
+    /// メタデータは写さない。URL のソースは第25回の前まで読み直し、読めた Data と取り出したメタデータを持たせていた。
     override func copy() -> LogoElement {
-        let copy: ImageElement
-
-        if let source = resolveImageSource(
+        // ソースのない複製元は、従来どおり空のアセット名を参照として持たせる。
+        let source = resolveImageSource(
             imageData: imageData,
             fileName: imageFileName,
             url: originalImageURL,
             path: originalImagePath
-        ) {
-            switch source {
-            case .data(let data):
-                copy = ImageElement(imageData: data)
-            case .fileName(let fileName):
-                copy = ImageElement(fileName: fileName)
-            case .url(let url):
-                copy = ImageElement(url: url)
-            case .path(let path):
-                copy = ImageElement(path: path)
-            }
-        } else {
-            copy = ImageElement(fileName: "")
-        }
-        
+        ) ?? .fileName("")
+        // 配置サイズは copyAppearance で複製元の値を写すため、ここでは渡さない。
+        let copy = ImageElement(source: source, size: nil, sourceResolver: sourceResolver, previewService: previewService)
+        copyAppearance(to: copy)
+        return copy
+    }
+
+    /// 保存専用の複製を作る。描画属性と識別子・順序・役割だけを写し、調整値・キャッシュ・編集フラグは共有しない。
+    /// 元のファイル参照を持ち越さないため、後続のソース差し替えや削除にも影響されない。
+    /// 元画像は、保存の範囲（`SaveProjectSnapshot`）が受付時にエディタの管理役から受け取って固定する。
+    func renderCopy() -> ImageElement {
+        let copy = ImageElement(
+            source: nil, size: nil, importOrder: originalImportOrder,
+            sourceResolver: sourceResolver, previewService: previewService
+        )
+        copyAppearance(to: copy)
+        copy.id = id
+        copy.name = name
+        copy.zIndex = zIndex
+        copy.imageRole = imageRole
+        return copy
+    }
+
+    /// UI 用複製と保存用複製で、描画属性のコピー漏れを防ぐ。
+    private func copyAppearance(to copy: ImageElement) {
         copy.position = position
         copy.size = size
         copy.rotation = rotation
@@ -1158,55 +699,18 @@ class ImageElement: LogoElement {
         copy.name = "\(name) Copy"
         copy.isVisible = isVisible
         copy.isLocked = isLocked
-        
-        copy.saturationAdjustment = saturationAdjustment
-        copy.brightnessAdjustment = brightnessAdjustment
-        copy.contrastAdjustment = contrastAdjustment
-        copy.highlightsAdjustment = highlightsAdjustment
-        copy.shadowsAdjustment = shadowsAdjustment
-        copy.blacksAdjustment = blacksAdjustment
-        copy.whitesAdjustment = whitesAdjustment
-        copy.warmthAdjustment = warmthAdjustment
-        copy.vibranceAdjustment = vibranceAdjustment
-        copy.hueAdjustment = hueAdjustment
-        copy.sharpnessAdjustment = sharpnessAdjustment
-        copy.gaussianBlurRadius = gaussianBlurRadius
-        copy.vignetteAdjustment = vignetteAdjustment
-        copy.bloomAdjustment = bloomAdjustment
-        copy.grainAdjustment = grainAdjustment
-        copy.fadeAdjustment = fadeAdjustment
-        copy.chromaticAberrationAdjustment = chromaticAberrationAdjustment
-        copy.backgroundBlurRadius = backgroundBlurRadius
-        copy.backgroundBlurMaskData = backgroundBlurMaskData
-        copy.toneCurveData = toneCurveData
-        copy.tintColor = tintColor
-        copy.tintIntensity = tintIntensity
-        copy.appliedFilterRecipe = appliedFilterRecipe
-        copy.appliedFilterPresetId = appliedFilterPresetId
-
-        copy.showFrame = showFrame
-        copy.frameColor = frameColor
-        copy.frameWidth = frameWidth
-        copy.frameStyle = frameStyle
-        copy.roundedCorners = roundedCorners
-        copy.cornerRadius = cornerRadius
+        copy.applyEditState(editState)
         copy.hasAppliedUpscale = hasAppliedUpscale
         copy.initialAdjustmentSnapshot = initialAdjustmentSnapshot
-
-        return copy
     }
 
     // MARK: - Revert Support
 
-    /// 画像要素内で保持する調整値を初期状態に戻す
+    /// 画像要素内で保持する調整値を初期状態に戻す（編集値だけ。描画キャッシュの失効は、Revert のイベントの範囲で行う）
     /// - Parameters: なし
     /// - Returns: なし
     func resetAdjustmentsToInitialState() {
-        // フィルター設定をリセット
         resetToOriginal()
-
-        // キャッシュをクリア
-        clearRevertImageCaches()
     }
 
     /// 既存呼び出し元向けに調整値リセットを維持する互換口
@@ -1219,292 +723,128 @@ class ImageElement: LogoElement {
         resetAdjustmentsToInitialState()
     }
 
-    /// リバート後に再解決すべき画像キャッシュをクリアする
-    /// - Parameters: なし
-    /// - Returns: なし
-    func clearRevertImageCaches() {
-        cachedImage = nil
-        cachedOriginalImage = nil
-    }
-    
-    /// メタデータから画像プロパティを復元する
-    func applyMetadataToImageProperties(_ metadata: ImageMetadata) {
-        // フレーム太さの復元
-        if let frameWidthString = metadata.additionalMetadata["frameWidth"],
-           let frameWidthValue = Double(frameWidthString) {
-            self.frameWidth = CGFloat(frameWidthValue)
-        }
-
-        if let frameStyleString = metadata.additionalMetadata["frameStyle"],
-           let decodedFrameStyle = ImageFrameStyle(rawValue: frameStyleString) {
-            self.frameStyle = decodedFrameStyle
-        }
-        
-        // 角丸の復元
-        if let roundedCornersString = metadata.additionalMetadata["roundedCorners"] {
-            self.roundedCorners = roundedCornersString == "true"
-        }
-        
-        // 角丸半径の復元
-        if let cornerRadiusString = metadata.additionalMetadata["cornerRadius"],
-           let cornerRadiusValue = Double(cornerRadiusString) {
-            self.cornerRadius = CGFloat(cornerRadiusValue)
-        }
-        
-        // フレーム表示の復元
-        if let showFrameString = metadata.additionalMetadata["showFrame"] {
-            self.showFrame = showFrameString == "true"
-        }
-        
-        // フレーム色の復元
-        if let frameColorString = metadata.additionalMetadata["frameColor"],
-           let frameColor = UIColor(rgbaHex: frameColorString) ?? UIColor(hex: frameColorString) {
-            self.frameColor = frameColor
-        }
-    }
-    
     /// 初期状態から外れた調整値変更があるかを確認
     /// - Parameters: なし
     /// - Returns: 現在値が初期スナップショットから外れている場合はtrue、そうでなければfalse
     var hasAdjustmentChangesFromInitialState: Bool {
-        makeCurrentAdjustmentSnapshot() != initialAdjustmentSnapshot
-    }
-
-    /// ジェスチャー操作中に即時プレビュー経路へ切り替えるべきかを返す
-    /// - Parameters: なし
-    /// - Returns: 即時プレビュー経路を許可する場合は true
-    ///
-    /// 移動・拡縮・回転は操作頻度が高く、編集中の追従性が体感品質へ直結する。
-    /// そのため manipulation 中の軽量描画可否は編集差分とは切り離し、常に preview 経路を許可する。
-    /// 高解像度画像に対して実際に切り替えるかどうかは ManipulationRenderingUseCase 側で判定する。
-    var shouldUseInstantPreviewForManipulation: Bool {
-        true
-    }
-
-    /// 現在の調整値スナップショットを生成
-    /// - Parameters: なし
-    /// - Returns: 現在状態を表すスナップショット
-    private func makeCurrentAdjustmentSnapshot() -> RevertAdjustmentSnapshot {
-        RevertAdjustmentSnapshot(
-            saturationAdjustment: saturationAdjustment,
-            brightnessAdjustment: brightnessAdjustment,
-            contrastAdjustment: contrastAdjustment,
-            highlightsAdjustment: highlightsAdjustment,
-            shadowsAdjustment: shadowsAdjustment,
-            blacksAdjustment: blacksAdjustment,
-            whitesAdjustment: whitesAdjustment,
-            warmthAdjustment: warmthAdjustment,
-            vibranceAdjustment: vibranceAdjustment,
-            hueAdjustment: hueAdjustment,
-            sharpnessAdjustment: sharpnessAdjustment,
-            gaussianBlurRadius: gaussianBlurRadius,
-            vignetteAdjustment: vignetteAdjustment,
-            bloomAdjustment: bloomAdjustment,
-            grainAdjustment: grainAdjustment,
-            fadeAdjustment: fadeAdjustment,
-            chromaticAberrationAdjustment: chromaticAberrationAdjustment,
-            backgroundBlurRadius: backgroundBlurRadius,
-            backgroundBlurMaskData: backgroundBlurMaskData,
-            toneCurveData: toneCurveData,
-            tintColorRGBA: makeRGBAColor(from: tintColor),
-            tintIntensity: tintIntensity,
-            appliedFilterRecipe: appliedFilterRecipe,
-            appliedFilterPresetId: appliedFilterPresetId,
-            showFrame: showFrame,
-            frameColorRGBA: RGBAColor(
-                red: frameColor.rgbComponents.red,
-                green: frameColor.rgbComponents.green,
-                blue: frameColor.rgbComponents.blue,
-                alpha: frameColor.rgbComponents.alpha
-            ),
-            frameWidth: frameWidth,
-            frameStyle: frameStyle,
-            roundedCorners: roundedCorners,
-            cornerRadius: cornerRadius
-        )
-    }
-
-    /// スナップショットを現在の調整値へ反映
-    /// - Parameters:
-    ///   - snapshot: 反映する調整値スナップショット
-    /// - Returns: なし
-    private func applyAdjustmentSnapshot(_ snapshot: RevertAdjustmentSnapshot) {
-        saturationAdjustment = snapshot.saturationAdjustment
-        brightnessAdjustment = snapshot.brightnessAdjustment
-        contrastAdjustment = snapshot.contrastAdjustment
-        highlightsAdjustment = snapshot.highlightsAdjustment
-        shadowsAdjustment = snapshot.shadowsAdjustment
-        blacksAdjustment = snapshot.blacksAdjustment
-        whitesAdjustment = snapshot.whitesAdjustment
-        warmthAdjustment = snapshot.warmthAdjustment
-        vibranceAdjustment = snapshot.vibranceAdjustment
-        hueAdjustment = snapshot.hueAdjustment
-        sharpnessAdjustment = snapshot.sharpnessAdjustment
-        gaussianBlurRadius = snapshot.gaussianBlurRadius
-        vignetteAdjustment = snapshot.vignetteAdjustment
-        bloomAdjustment = snapshot.bloomAdjustment
-        grainAdjustment = snapshot.grainAdjustment
-        fadeAdjustment = snapshot.fadeAdjustment
-        chromaticAberrationAdjustment = snapshot.chromaticAberrationAdjustment
-        backgroundBlurRadius = snapshot.backgroundBlurRadius
-        backgroundBlurMaskData = snapshot.backgroundBlurMaskData
-        toneCurveData = snapshot.toneCurveData
-        tintColor = makeUIColor(from: snapshot.tintColorRGBA)
-        tintIntensity = snapshot.tintIntensity
-        appliedFilterRecipe = snapshot.appliedFilterRecipe
-        appliedFilterPresetId = snapshot.appliedFilterPresetId
-        showFrame = snapshot.showFrame
-        frameColor = UIColor(
-            red: snapshot.frameColorRGBA.red,
-            green: snapshot.frameColorRGBA.green,
-            blue: snapshot.frameColorRGBA.blue,
-            alpha: snapshot.frameColorRGBA.alpha
-        )
-        frameWidth = snapshot.frameWidth
-        frameStyle = snapshot.frameStyle
-        roundedCorners = snapshot.roundedCorners
-        cornerRadius = snapshot.cornerRadius
+        // 保存用の表現（色は RGBA 成分）で比べ、色の表現の違いを変更として扱わない。
+        RevertAdjustmentSnapshot(editState) != initialAdjustmentSnapshot
     }
 
     /// 現在値を初期スナップショットとして再定義
     /// - Parameters: なし
     /// - Returns: なし
     func captureCurrentAdjustmentAsInitialSnapshot() {
-        initialAdjustmentSnapshot = makeCurrentAdjustmentSnapshot()
+        initialAdjustmentSnapshot = RevertAdjustmentSnapshot(editState)
+    }
+}
+
+// MARK: - 初期スナップショットと編集値の変換
+
+private extension ImageElement.RevertAdjustmentSnapshot {
+    /// 編集値を保存用の表現へ変換する。色は RGBA 成分で持つ。
+    init(_ state: ImageEditState) {
+        let values = state.adjustments
+        self.init(
+            saturationAdjustment: values.saturation,
+            brightnessAdjustment: values.brightness,
+            contrastAdjustment: values.contrast,
+            highlightsAdjustment: values.highlights,
+            shadowsAdjustment: values.shadows,
+            blacksAdjustment: values.blacks,
+            whitesAdjustment: values.whites,
+            warmthAdjustment: values.warmth,
+            vibranceAdjustment: values.vibrance,
+            hueAdjustment: values.hue,
+            sharpnessAdjustment: values.sharpness,
+            gaussianBlurRadius: values.gaussianBlurRadius,
+            vignetteAdjustment: values.vignette,
+            bloomAdjustment: values.bloom,
+            grainAdjustment: values.grain,
+            fadeAdjustment: values.fade,
+            chromaticAberrationAdjustment: values.chromaticAberration,
+            backgroundBlurRadius: values.backgroundBlurRadius,
+            backgroundBlurMaskData: values.backgroundBlurMaskData,
+            toneCurveData: values.toneCurveData,
+            tintColorRGBA: values.tintColor.map(ImageElement.RGBAColor.init(tintColor:)),
+            tintIntensity: values.tintIntensity,
+            appliedFilterRecipe: state.filterRecipe,
+            appliedFilterPresetId: state.filterPresetId,
+            showFrame: state.frame.isShown,
+            frameColorRGBA: ImageElement.RGBAColor(frameColor: state.frame.color),
+            frameWidth: state.frame.width,
+            frameStyle: state.frame.style,
+            roundedCorners: state.frame.hasRoundedCorners,
+            cornerRadius: state.frame.cornerRadius
+        )
     }
 
-    /// UIColorをRGBA成分へ変換
-    /// - Parameters:
-    ///   - color: 変換対象の色
-    /// - Returns: RGBA成分（変換不可時はnil）
-    private func makeRGBAColor(from color: UIColor?) -> RGBAColor? {
-        guard let color else { return nil }
+    /// 保存用の表現を編集値へ戻す。
+    var editState: ImageEditState {
+        ImageEditState(
+            adjustments: ImageAdjustmentValues(
+                saturation: saturationAdjustment,
+                brightness: brightnessAdjustment,
+                contrast: contrastAdjustment,
+                highlights: highlightsAdjustment,
+                shadows: shadowsAdjustment,
+                blacks: blacksAdjustment,
+                whites: whitesAdjustment,
+                warmth: warmthAdjustment,
+                vibrance: vibranceAdjustment,
+                hue: hueAdjustment,
+                sharpness: sharpnessAdjustment,
+                gaussianBlurRadius: gaussianBlurRadius,
+                vignette: vignetteAdjustment,
+                bloom: bloomAdjustment,
+                grain: grainAdjustment,
+                fade: fadeAdjustment,
+                chromaticAberration: chromaticAberrationAdjustment,
+                toneCurveData: toneCurveData,
+                tintColor: tintColorRGBA?.uiColor,
+                tintIntensity: tintIntensity,
+                backgroundBlurRadius: backgroundBlurRadius,
+                backgroundBlurMaskData: backgroundBlurMaskData
+            ),
+            filterRecipe: appliedFilterRecipe,
+            filterPresetId: appliedFilterPresetId,
+            frame: ImageFrameSettings(
+                isShown: showFrame,
+                color: frameColorRGBA.uiColor,
+                width: frameWidth,
+                style: frameStyle,
+                hasRoundedCorners: roundedCorners,
+                cornerRadius: cornerRadius
+            )
+        )
+    }
+}
+
+private extension ImageElement.RGBAColor {
+    // ティントとフレームで既存データの変換方法が異なるため、保存値を変えないようそれぞれを残す。
+
+    /// ティント色を RGBA 成分へ変換する。成分を直接取り出せない色は CIColor 経由で得る。
+    init(tintColor color: UIColor) {
         var red: CGFloat = 0
         var green: CGFloat = 0
         var blue: CGFloat = 0
         var alpha: CGFloat = 0
         if color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
-            return RGBAColor(red: red, green: green, blue: blue, alpha: alpha)
+            self.init(red: red, green: green, blue: blue, alpha: alpha)
+            return
         }
 
         let ciColor = CIColor(color: color)
-        return RGBAColor(red: ciColor.red, green: ciColor.green, blue: ciColor.blue, alpha: ciColor.alpha)
+        self.init(red: ciColor.red, green: ciColor.green, blue: ciColor.blue, alpha: ciColor.alpha)
     }
 
-    /// RGBA成分からUIColorを復元
-    /// - Parameters:
-    ///   - rgba: 復元元RGBA成分
-    /// - Returns: 復元後の色（復元失敗時はnil）
-    private func makeUIColor(from rgba: RGBAColor?) -> UIColor? {
-        guard let rgba else { return nil }
-        return UIColor(red: rgba.red, green: rgba.green, blue: rgba.blue, alpha: rgba.alpha)
+    /// フレーム色を RGBA 成分へ変換する。成分を直接取り出せない色は sRGB へ変換して得る。
+    init(frameColor color: UIColor) {
+        let components = color.rgbComponents
+        self.init(red: components.red, green: components.green, blue: components.blue, alpha: components.alpha)
     }
-}
 
-extension ImageElement {
-    func resizeToFit(maxSize: CGFloat) {
-        guard let image = self.image else { return }
-        
-        let imageSize = image.size
-        if imageSize.width > imageSize.height {
-            let aspectRatio = imageSize.height / imageSize.width
-            size = CGSize(width: maxSize, height: maxSize * aspectRatio)
-        } else {
-            let aspectRatio = imageSize.width / imageSize.height
-            size = CGSize(width: maxSize * aspectRatio, height: maxSize)
-        }
-    }
-}
-
-/// 画像編集操作を表す構造体
-struct ImageEditOperation: Codable {
-    enum OperationType: String, Codable {
-        case adjustSaturation
-        case adjustBrightness
-        case adjustContrast
-        case adjustHighlights
-        case adjustShadows
-        case applyTint
-        case changeFrame
-        case changeCornerRadius
-    }
-    
-    let type: OperationType
-    let timestamp: Date
-    let parameters: [String: Double]
-    
-    init(type: OperationType, parameters: [String: Double] = [:]) {
-        self.type = type
-        self.timestamp = Date()
-        self.parameters = parameters
-    }
-}
-
-// MARK: - メタデータ関連の実装
-
-/// 画像メタデータを表す構造体
-struct ImageMetadata: Codable {
-    // 基本メタデータ
-    var creationDate: Date?
-    var modificationDate: Date?
-    var author: String?
-    var description: String?
-    var copyright: String?
-    var keywords: [String]
-    var title: String?
-    
-    // EXIF情報
-    var cameraMake: String?
-    var cameraModel: String?
-    var focalLength: Double?
-    var aperture: Double?
-    var shutterSpeed: Double?
-    var iso: Int?
-    var flash: Bool?
-    var longitude: Double?
-    var latitude: Double?
-    var altitude: Double?
-    
-    // その他のメタデータ（汎用的なDictionary形式で保存）
-    var additionalMetadata: [String: String]
-    
-    init(
-        creationDate: Date? = nil,
-        modificationDate: Date? = nil,
-        author: String? = nil,
-        description: String? = nil,
-        copyright: String? = nil,
-        keywords: [String] = [],
-        title: String? = nil,
-        cameraMake: String? = nil,
-        cameraModel: String? = nil,
-        focalLength: Double? = nil,
-        aperture: Double? = nil,
-        shutterSpeed: Double? = nil,
-        iso: Int? = nil,
-        flash: Bool? = nil,
-        longitude: Double? = nil,
-        latitude: Double? = nil,
-        altitude: Double? = nil,
-        additionalMetadata: [String: String] = [:]
-    ) {
-        self.creationDate = creationDate
-        self.modificationDate = modificationDate
-        self.author = author
-        self.description = description
-        self.copyright = copyright
-        self.keywords = keywords
-        self.title = title
-        self.cameraMake = cameraMake
-        self.cameraModel = cameraModel
-        self.focalLength = focalLength
-        self.aperture = aperture
-        self.shutterSpeed = shutterSpeed
-        self.iso = iso
-        self.flash = flash
-        self.longitude = longitude
-        self.latitude = latitude
-        self.altitude = altitude
-        self.additionalMetadata = additionalMetadata
+    var uiColor: UIColor {
+        UIColor(red: red, green: green, blue: blue, alpha: alpha)
     }
 }

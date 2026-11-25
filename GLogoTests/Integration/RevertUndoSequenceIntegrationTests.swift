@@ -32,7 +32,7 @@ final class RevertUndoSequenceIntegrationTests: XCTestCase {
         let viewModel = EditorViewModel(project: project)
 
         let imageData = try XCTUnwrap(makeSolidImage(color: .white, size: CGSize(width: 64, height: 64)).pngData())
-        let imageElement = ImageElement(imageData: imageData, importOrder: 0)
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
 
         // 1) 画像追加（履歴: ElementAdded）
         viewModel.addElement(imageElement)
@@ -72,6 +72,33 @@ final class RevertUndoSequenceIntegrationTests: XCTestCase {
         viewModel.undo()
         XCTAssertEqual(project.elements.count, 0)
         XCTAssertEqual(viewModel.getHistoryDescriptions().count, 0)
+    }
+
+    /// Revert は編集値30項目を初期状態へ戻し、Undo でその直前の30項目へ戻る。
+    @MainActor
+    func test_revertUndo_restoresAllEditValues() throws {
+        let project = LogoProject(name: "revert-undo-all", canvasSize: CGSize(width: 1080, height: 1920))
+        let viewModel = EditorViewModel(project: project)
+        let imageData = try XCTUnwrap(makeSolidImage(color: .white, size: CGSize(width: 64, height: 64)).pngData())
+        let imageElement = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
+        viewModel.addElement(imageElement)
+        let initial = ImageEditStateRecord(imageElement)
+        ImageEditStateRecord.applyDistinctValues(to: imageElement)
+        let edited = ImageEditStateRecord(imageElement)
+        let tintColor = try XCTUnwrap(imageElement.tintColor)
+        let frameColor = imageElement.frameColor
+
+        viewModel.revertSelectedImageToInitialState()
+        XCTAssertEqual(ImageEditStateRecord(imageElement), initial)
+
+        viewModel.undo()
+        XCTAssertEqual(ImageEditStateRecord(imageElement), edited)
+        // 色は RGBA 成分へ変換し直さず、Revert 前の値をそのまま戻す。
+        XCTAssertTrue(imageElement.tintColor === tintColor)
+        XCTAssertTrue(imageElement.frameColor === frameColor)
+
+        viewModel.redo()
+        XCTAssertEqual(ImageEditStateRecord(imageElement), initial)
     }
 
     // MARK: - Helpers

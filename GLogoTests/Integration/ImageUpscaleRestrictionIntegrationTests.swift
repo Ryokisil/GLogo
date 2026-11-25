@@ -23,7 +23,7 @@ final class ImageUpscaleRestrictionIntegrationTests: XCTestCase {
         viewModel.addElement(imageElement)
         XCTAssertFalse(imageElement.hasAppliedUpscale)
 
-        viewModel.applyUpscaledImageResult(makeImage(color: .black), to: imageElement)
+        viewModel.imageEdits.applyUpscaledImageResult(makeImage(color: .black), to: imageElement)
 
         let upscaledElement = try XCTUnwrap(project.elements.first as? ImageElement)
         XCTAssertTrue(upscaledElement.hasAppliedUpscale)
@@ -45,10 +45,10 @@ final class ImageUpscaleRestrictionIntegrationTests: XCTestCase {
         let imageElement = try makeImageElement(color: .white)
         imageElement.hasAppliedUpscale = true
 
-        viewModel.requestImageUpscale(for: imageElement)
+        viewModel.aiTools.requestImageUpscale(for: imageElement)
 
-        XCTAssertFalse(viewModel.isProcessingUpscale)
-        XCTAssertNil(viewModel.lastUpscaleErrorMessage)
+        XCTAssertFalse(viewModel.aiTools.isProcessingUpscale)
+        XCTAssertNil(viewModel.aiTools.lastUpscaleErrorMessage)
     }
 
     /// MainActor から実際のパイプラインへ渡し、完了時の状態と連打ガードを検証する。
@@ -58,22 +58,22 @@ final class ImageUpscaleRestrictionIntegrationTests: XCTestCase {
         let element = try makeImageElement(color: .red)
         viewModel.addElement(element)
         let finished = expectation(description: "高画質化の完了")
-        let subscription = viewModel.$isProcessingUpscale
+        let subscription = viewModel.aiTools.$isProcessingUpscale
             .dropFirst()
             .filter { !$0 }
             .sink { _ in finished.fulfill() }
         defer { subscription.cancel() }
 
-        viewModel.requestImageUpscale(for: element, method: .lanczos, scaleFactor: .x2)
-        XCTAssertTrue(viewModel.isProcessingUpscale)
-        viewModel.requestImageUpscale(for: element, method: .lanczos, scaleFactor: .x4)
+        viewModel.aiTools.requestImageUpscale(for: element, method: .lanczos, scaleFactor: .x2)
+        XCTAssertTrue(viewModel.aiTools.isProcessingUpscale)
+        viewModel.aiTools.requestImageUpscale(for: element, method: .lanczos, scaleFactor: .x4)
 
         await fulfillment(of: [finished], timeout: 5)
-        XCTAssertFalse(viewModel.isProcessingUpscale)
-        XCTAssertNil(viewModel.lastUpscaleErrorMessage)
+        XCTAssertFalse(viewModel.aiTools.isProcessingUpscale)
+        XCTAssertNil(viewModel.aiTools.lastUpscaleErrorMessage)
         let updated = try XCTUnwrap(viewModel.project.elements.first as? ImageElement)
         XCTAssertTrue(updated.hasAppliedUpscale)
-        XCTAssertEqual(try XCTUnwrap(updated.originalImage).size, CGSize(width: 128, height: 128))
+        XCTAssertEqual(try XCTUnwrap(viewModel.sessionStore.originalImage(of: updated)).size, CGSize(width: 128, height: 128))
     }
 
     // MARK: - Helpers
@@ -84,7 +84,7 @@ final class ImageUpscaleRestrictionIntegrationTests: XCTestCase {
     /// - Returns: 生成したImageElement
     private func makeImageElement(color: UIColor) throws -> ImageElement {
         let data = try XCTUnwrap(makeImage(color: color).pngData())
-        return ImageElement(imageData: data, importOrder: 0)
+        return ImageElementFactory().makeElement(imageData: data, importOrder: 0)
     }
 
     /// 単色画像を生成

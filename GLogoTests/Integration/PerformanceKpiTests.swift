@@ -15,7 +15,9 @@ import UniformTypeIdentifiers
 /// パフォーマンスKPI向けの計測テスト
 final class PerformanceKpiTests: XCTestCase {
     /// 4K画像のインポート + プレビュー生成の性能を計測
+    @MainActor
     func testImportPreviewPerformance_4K() {
+        let store = ImageRenderSessionStore()
         let size = CGSize(width: 3840, height: 2160)
         let sourceData = makeHEICData(size: size)
         let coordinator = ImageImportCoordinator()
@@ -33,7 +35,7 @@ final class PerformanceKpiTests: XCTestCase {
                 return
             }
 
-            _ = result.element.getInstantPreview()
+            _ = store.instantPreview(of: result.element)
         }
     }
 
@@ -41,7 +43,7 @@ final class PerformanceKpiTests: XCTestCase {
     func testSaveProcessingPerformance_4K_HEIC() {
         let size = CGSize(width: 3840, height: 2160)
         let sourceData = makeHEICData(size: size)
-        let imageElement = ImageElement(imageData: sourceData)
+        let imageElement = ImageElementFactory().makeElement(imageData: sourceData)
         imageElement.saturationAdjustment = 1.2
         imageElement.brightnessAdjustment = 0.1
         imageElement.contrastAdjustment = 1.1

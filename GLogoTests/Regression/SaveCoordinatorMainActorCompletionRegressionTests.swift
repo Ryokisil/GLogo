@@ -16,23 +16,23 @@ import UIKit
 
 /// 常に先頭要素を選択する選択スタブ
 private struct MainActorCompletionImageSelectingStub: ImageSelecting {
-    func selectBaseImageElement(from elements: [ImageElement]) -> ImageElement? {
+    func selectBaseImageElement(from elements: [ImageElement], images: any SaveImageReading) -> ImageElement? {
         elements.first
     }
 
-    func selectHighestResolutionImageElement(from elements: [ImageElement]) -> ImageElement? {
+    func selectHighestResolutionImageElement(from elements: [ImageElement], images: any SaveImageReading) -> ImageElement? {
         elements.first
     }
 }
 
 /// 常に画像生成成功させる処理スタブ
 private struct MainActorCompletionImageProcessingStub: ImageProcessing {
-    func applyFilters(to imageElement: ImageElement) -> UIImage? {
+    func applyFilters(to imageElement: ImageElement, images: any SaveImageReading) -> UIImage? {
         _ = imageElement
         return makeMainActorCompletionSolidImage(color: .white)
     }
 
-    func makeCompositeImage(baseElement: ImageElement, project: LogoProject) -> UIImage? {
+    func makeCompositeImage(baseElement: ImageElement, project: LogoProject, images: any SaveImageReading) -> UIImage? {
         _ = baseElement; _ = project
         return makeMainActorCompletionSolidImage(color: .white)
     }
@@ -151,7 +151,7 @@ final class SaveCoordinatorMainActorCompletionRegressionTests: XCTestCase {
     private func makeProjectWithSingleImageElement() -> LogoProject {
         let project = LogoProject(name: "MainActorCompletion", canvasSize: CGSize(width: 256, height: 256))
         let imageData = makeMainActorCompletionSolidImage(color: .red).pngData() ?? Data()
-        let element = ImageElement(imageData: imageData, importOrder: 0)
+        let element = ImageElementFactory().makeElement(imageData: imageData, importOrder: 0)
         project.addElement(element)
         return project
     }

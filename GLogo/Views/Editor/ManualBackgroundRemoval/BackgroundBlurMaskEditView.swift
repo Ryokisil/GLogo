@@ -20,23 +20,36 @@ struct BackgroundBlurMaskEditView: View {
     @State private var guideStepIndex = 0
 
     /// 背景ぼかしマスク編集用イニシャライザ
+    /// 依存は画面を開くたびに作る。作る関数は StateObject が ViewModel を作るときにだけ呼ばれ、再描画では呼ばれない。
+    /// 画像も同じく、StateObject が ViewModel を作るときにだけ管理役から受け取る（画面の値を作るだけでは受け取らない）。
     /// - Parameters:
     ///   - imageElement: 編集対象の画像要素
+    ///   - renderSessions: 元画像の受け取り先（エディタの管理役）
     ///   - initialMaskData: 初期マスクデータ（既存のマスクがある場合）
     ///   - blurRadius: 背景ぼかし半径（プレビュー用）
+    ///   - makeManualBackgroundBlurUseCase: 手動の背景ぼかしを作る
+    ///   - makeBackgroundRemover: AI背景除去を作る
+    ///   - makeImageSourceResolver: 編集用画像の取得を作る
     ///   - onComplete: 編集完了時の処理（マスクデータを返す）
-    /// - Returns: なし
     init(
         imageElement: ImageElement,
+        renderSessions: any ImageRenderSessionReading,
         initialMaskData: Data?,
         blurRadius: CGFloat,
+        makeManualBackgroundBlurUseCase: @escaping @MainActor () -> ManualBackgroundBlurUseCase,
+        makeBackgroundRemover: @escaping @MainActor () -> any BackgroundRemovalProcessing,
+        makeImageSourceResolver: @escaping @MainActor () -> any ImageSourceResolving,
         onComplete: @escaping (Data?) -> Void
     ) {
         self._viewModel = StateObject(wrappedValue: BackgroundBlurMaskEditViewModel(
             imageElement: imageElement,
+            renderSessions: renderSessions,
             initialMaskData: initialMaskData,
             blurRadius: blurRadius,
-            completion: onComplete
+            completion: onComplete,
+            manualBackgroundBlurUseCase: makeManualBackgroundBlurUseCase(),
+            backgroundRemovalUseCase: makeBackgroundRemover(),
+            imageSourceResolver: makeImageSourceResolver()
         ))
     }
 
@@ -248,6 +261,7 @@ struct BackgroundBlurMaskEditView: View {
                     viewModel.cancel()
                     presentationMode.wrappedValue.dismiss()
                 }
+                .accessibilityIdentifier("editor.blurMaskEdit.cancelButton")
             }
 
             ToolbarItem(placement: .principal) {

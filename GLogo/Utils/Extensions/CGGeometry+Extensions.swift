@@ -1,6 +1,5 @@
 //
 //  CGGeometry+Extensions.swift
-//  GameLogoMaker
 //
 //  概要:
 //  このファイルはCoreGraphicsジオメトリタイプ（CGPoint, CGSize, CGRect）の拡張を提供します。

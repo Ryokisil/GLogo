@@ -48,7 +48,7 @@ final class ImageElementMetadataRevertUseCaseRegressionTests: XCTestCase {
             )
         )
 
-        ImageElementMetadataRevertUseCase(metadataManager: manager)
+        ImageElementMetadataRevertUseCase(store: manager)
             .revertToInitialState(imageElement)
 
         XCTAssertEqual(imageElement.frameWidth, 7.5, accuracy: 0.0001)
@@ -99,7 +99,7 @@ final class ImageElementMetadataRevertUseCaseRegressionTests: XCTestCase {
     private func makeImageElement() throws -> ImageElement {
         let image = makeSolidImage(size: CGSize(width: 64, height: 64), color: .white)
         let data = try XCTUnwrap(image.pngData())
-        return ImageElement(imageData: data, importOrder: 0)
+        return ImageElementFactory().makeElement(imageData: data, importOrder: 0)
     }
 
     /// 単色画像を生成する
